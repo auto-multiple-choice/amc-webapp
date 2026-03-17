@@ -176,3 +176,22 @@ html, body {
 
 .message {
 }
+
+.centered {
+    text-align: center;
+}
+
+#document-view {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+#layout-cont {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+#layout-cont > div {
+    height: 100%;
+}

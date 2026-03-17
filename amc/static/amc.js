@@ -195,8 +195,11 @@ socket.on("document-content", function(html) {
 });
 
 function change_doc_type() {
-    socket.emit("doc-type",
-                document.getElementById('doc-type').value);
+    t = document.getElementById('doc-type').value;
+    upd = document.getElementById('doc-update');
+    if(t == "calage") upd.classList.add("hidden");
+    else upd.classList.remove("hidden");
+    socket.emit("doc-type", t);
 }
 
 function doc_update() {

@@ -1,6 +1,8 @@
 
 import re
 import os
+from pathlib import Path
+import tempfile
 import sys
 import logging
 import subprocess
@@ -19,6 +21,10 @@ app.config.from_mapping(
 socketio = SocketIO(app)
 
 users = {}
+
+temp_dir = tempfile.mkdtemp(prefix="amcapp")
+
+app.logger.info(f"Temp dir: {temp_dir}")
 
 def set_var(name, value):
     sid = request.sid
@@ -111,8 +117,9 @@ def io_projects_list():
 @socketio.on('project-name')
 def io_project_name(name):
     set_project(name)
-    amc_command(request.sid, "db", "upgrade")
-    emit("ncopies", str(ncopies(request.sid)))
+    if name:
+        amc_command(request.sid, "db", "upgrade")
+        emit("ncopies", str(ncopies(request.sid)))
 
 @socketio.on('ncopies')
 def io_ncopies(n):
@@ -171,7 +178,7 @@ def io_doc_type(t):
             emit("document-content",
                  render_template("document_missing.html"))
 
-def amc_command(uid, *args):
+def amc_command(uid, *args, messages=None, variables=None):
     command = [ "/usr/bin/auto-multiple-choice",
                 *args,
                 "--project-dir", project_dir(uid) ]
@@ -180,8 +187,10 @@ def amc_command(uid, *args):
                                stderr=subprocess.STDOUT,
                                text=True)
     prop = 0
-    messages = { "ERR":[], "INFO":[], "WARN":[] }
-    variables = {}
+    if messages is None:
+        messages = { "ERR":[], "INFO":[], "WARN":[] }
+    if variables is None:
+        variables = {}
     while True:
         line = process.stdout.readline()
         if not line:
@@ -230,6 +239,12 @@ def show_messages(messages):
              select_messages(messages["ERR"]))
         emit("warn",
              select_messages(messages["WARN"]))
+    return len(messages["ERR"])
+
+def log_messages(messages):
+    if len(messages["WARN"]) + len(messages["ERR"]) > 0:
+        app.logger.error(select_messages(messages["ERR"]))
+        app.logger.warning(select_messages(messages["WARN"]))
 
 def clear_data(steps):
     app.logger.info(f"Clear data: {steps}")
@@ -241,33 +256,54 @@ def io_doc_update(t):
         return { "error": "Document type missing" }
     app.logger.info(f"Doc update: {t} for {get_var('project_name')}")
     emit("begin-command")
-    if t=="calage":
-        emit("t", "Detecting layouts…")
-        messages, variables = amc_command(request.sid,
-                                          "meptex",
-                                          "--progression-id", "MEP",
-                                          "--progression", "1")
-    else:
-        if t == "sujet":
-            emit("t", "Clear all project data…")
-            clear_data("mep:")
-        mode = {
-            "sujet": "s[]",
-            "catalog": "C",
-            "corrige": "S",
-            "indiv-solution": "k",
-        }[t]
-        messages, variables = amc_command(request.sid,
-                                          "prepare",
-                                          "--mode", mode,
-                                          "--progression-id", "MAJ")
+
+    if t == "sujet":
+        emit("t", "Clear all project data…")
+        clear_data("mep:")
+
+    mode = {
+        "sujet": "s[]",
+        "catalog": "C",
+        "corrige": "S",
+        "indiv-solution": "k",
+    }.get(t)
+
+    if not mode:
+        app.logger.error(f"Unknown mode: {t}")
+        return
+
+    messages, variables = amc_command(request.sid,
+                                      "prepare",
+                                      "--mode", mode,
+                                      "--progression-id", "MAJ")
     app.logger.info(f"Variables: {variables}")
+
+    e = len(messages["ERR"])
+    if t == "sujet" and e == 0:
+        emit("t", "Detecting layouts…")
+        amc_command(request.sid,
+                    "meptex",
+                    "--progression-id", "MEP",
+                    "--progression", "1",
+                    messages=messages, variables=variables)
+
     emit("end-command")
     show_messages(messages)
+        
     io_doc_type(t)
 
+@app.route("/<sid>/layout/<student>/<page>/<filename>")
+def get_layout_file(sid, student, page, filename):
+    return send_file(f"{temp_dir}/{sid}/{student}/{page}/{filename}")
+    
 def layout_set_page(student, page):
-    url = f"/{request.sid}/layout/{student}/{page}"
+    rep = f"{temp_dir}/{request.sid}/{student}/{page}"
+    Path(rep).mkdir(parents=True, exist_ok=True)
+    messages, variables = amc_command(request.sid, "db", "layout-image",
+                                      f"{student}/{page}",
+                                      "--dest-file", f"{rep}/layout")
+    log_messages(messages)
+    url = f"/{request.sid}/layout/{student}/{page}/layout.svg"
     emit("layout-set-page", [f"{student}/{page}", url])
 
 @socketio.on("layout-add")
