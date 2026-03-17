@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AMC</title>
+    <script src="/static/socket.io.js"></script>
+    <script src="/static/amc.js"></script>
+    <script src="/static/ace/ace.js"></script>
+    <link rel="stylesheet" href="/static/amc.css">
+</head>
+<body>
+
+  <div id="app">
+    
+    <div id="menu">
+      <div class="menubtn" onclick="tab_main();">PRO</div>
+      <div class="menubtn" onclick="tab_source();">SRC</div>
+      <div id="project-name"></div>
+    </div>
+
+    <div id="tab">
+    </div>
+
+  </div>
+
+  <div id="info-panel" class="hidden">
+    <div id="info-content">
+      <p id="info-text">
+      </p>
+      <p>
+        <progress id="info-prop" value="0" max="100"></progress>
+      </p>
+    </div>
+  </div>
+
+  <div id="warn-panel" class="hidden">
+    <div id="warn-content">
+      <div id="warn-err">
+        <p class="message-title">Errors</p>
+        <p id="warn-err-text" class="message">
+        </p>
+      </div>
+      <div id="warn-warn">
+        <p class="message-title">Warnings</p>
+        <p id="warn-warn-text" class="message">
+        </p>
+      </div>
+      <div class="bandeau">
+        <span class="btn btn-neutral" onclick="warn_ok();">OK</span>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

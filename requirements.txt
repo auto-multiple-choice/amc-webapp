@@ -1,0 +1,4 @@
+flask
+flask-socketio
+lxml
+sqlite3

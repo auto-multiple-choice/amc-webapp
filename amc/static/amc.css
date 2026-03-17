@@ -1,0 +1,178 @@
+
+html, body, #app, #tab, #source {
+    height: 100%;
+}
+
+html, body {
+    margin: 0px;
+}
+
+#app {
+    display: flex;
+    flex-direction: row;
+}
+
+#menu {
+    flex-grow: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.menubtn {
+    padding: 2px;
+    border-radius: 5px;
+    margin: 2px;
+    background: #002ebf;
+    color: white;
+    cursor: pointer;
+}
+
+.btn {
+    padding: 2px;
+    border-radius: 5px;
+    margin: 2px;
+    cursor: pointer;
+    text-decoration: none;
+    color: black;
+}
+
+.btn.disabled {
+    background: #cfcfcf;
+    cursor: not-allowed;
+}
+
+.btn-ok {
+    background: #00e462;
+}
+
+.btn-neutral {
+    background: #84c8e0;
+}
+
+.btn-warning {
+    background: #ffac29;
+}
+
+#project-name {
+    writing-mode: vertical-lr;
+    margin-top: 10px;
+    margin-left: 4px;
+}
+
+#tab {
+    flex-grow: 1;
+}
+
+.bandeau {
+    margin: 5px;
+}
+
+#source-name {
+    font-family: monospace;
+}
+
+#source {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+}
+
+#code, #document {
+    display: flex;
+    flex-direction: column;
+}
+
+#source > div {
+    flex-grow: 1;
+}
+
+#files-list {
+    flex-grow: 1;
+}
+
+#code-code-a {
+    flex-grow: 3;
+}
+
+#code-code {
+    width: 100%;
+    height: 100%;
+}
+
+#document-view {
+    flex-grow: 1;
+}
+
+.hidden {
+    display: none;
+}
+
+.clickable {
+    cursor: pointer;
+}
+
+#ncopies {
+    width: 5em;
+}
+
+#info-panel, #warn-panel {
+    position: fixed; /* Sit on top of the page content */
+
+    width: 100%; /* Full width (cover the whole page) */
+    height: 100%; /* Full height (cover the whole page) */
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0,0,0,0.5); /* Black background with opacity */
+}
+
+#info-panel {
+    z-index: 10;
+}
+
+#warn-panel {
+    z-index: 11;
+}
+
+#info-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 50%;
+    color: black;
+    transform: translate(-50%,-50%);
+    background: white;
+}
+
+#info-content > p {
+    text-align: center;
+}
+
+#info-prop {
+    width: 90%;
+}
+
+#warn-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 65%;
+    max-height: 50%;
+    color: black;
+    transform: translate(-50%,-50%);
+    background: white;
+    overflow-y: scroll;
+
+    padding: 5px;
+    border-color: red;
+    border-width: 4px;
+    border-style: solid;
+}
+
+.message-title {
+    font-weight: bold;
+}
+
+.message {
+}

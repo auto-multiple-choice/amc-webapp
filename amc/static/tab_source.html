@@ -1,0 +1,34 @@
+<div id="source">
+  <div id="code">
+    <div class="bandeau">
+      <span id="source-name" class="clickable" onclick="source_other();"></span>
+      <span id="source-upload" class="btn btn-warning" onclick="source_upload();">Upload</span>
+      <a href="" id="source-download" class="btn btn-neutral">Download</a>
+      <span id="source-revert" class="btn btn-warning disabled" onclick="source_revert();">Revert</span>
+      <span id="source-save" class="btn btn-ok disabled" onclick="source_save();">Save</span>
+    </div>
+    <div id="files-list" class="hidden">
+    </div>
+    <div id="code-code-a">
+      <div id="code-code">
+      </div>
+    </div>
+  </div>
+  <div id="document">
+    <div class="bandeau">
+      #copies: <input id="ncopies" type="number" min="0"
+                      onchange="change_ncopies();"/>
+      <select id="doc-type" onchange="change_doc_type();">
+        <option value="">-- choose --</option>
+        <option value="sujet">Subject</option>
+        <option value="calage">Layout</option>
+        <option value="catalog">Catalog</option>
+        <option value="corrige">Answers</option>
+        <option value="indiv-solution">Corrected</option>
+      </select>
+      <span id="doc-update" class="btn btn-ok disabled" onclick="doc_update();">Update</span>
+    </div>
+    <div id="document-view">
+    </div>
+  </div>
+</div>
