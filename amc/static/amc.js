@@ -294,4 +294,12 @@ function print_to_printer() {
                 [ ...print_range(), p]);
 }
 
-    
+function print_to_files() {
+    var b = document.getElementById('print-files-btn');
+    socket.emit("print-to-files", print_range());
+}
+
+socket.on("print-to-files", function(url) {
+    window.location.href = url;
+    doc_print_finished();
+});

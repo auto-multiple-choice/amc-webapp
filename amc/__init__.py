@@ -7,12 +7,16 @@ import sys
 import logging
 import subprocess
 import cups
+import io
+import zipfile
 from lxml import etree
 
 from amc.db import Amcdb
 
 from flask import Flask, render_template, request, send_file
 from flask_socketio import SocketIO, emit
+
+DEBUG=True
 
 app = Flask(__name__)
 
@@ -198,6 +202,8 @@ def amc_command(uid, *args, messages=None, variables=None):
         if not line:
             break  # Reached the end of stdout
         line = line.strip()
+        if DEBUG:
+            app.logger.info(line)
         avance = re.match(r'===<(.*)>=\+([0-9,.]+(?:e[+-]?[0-9]+)?)', line)
         if avance:
             aid = avance[1]
@@ -338,6 +344,7 @@ def io_print_dialog():
 @socketio.on("print-to-printer")
 def io_print_to_printer(data):
     student1, student2, printer = data
+    emit("begin-command")
     emit("t", f"Printing subject to {printer}…")
     messages, variables = amc_command(
         request.sid, "imprime",
@@ -356,6 +363,49 @@ def io_print_to_printer(data):
                  "warn_dialog.html",
                  err = "", warn = "",
                  info = "Printing done!"))
+
+@socketio.on("print-to-files")
+def io_print_to_files(data):
+    student1, student2 = data
+    app.logger.info(f"Printing <{get_var('project_name')}> to files: {student1}--{student2}")
+    rep = f"{temp_dir}/{request.sid}/printed/{get_var('project_name')}"
+    Path(rep).mkdir(parents=True, exist_ok=True)
+    for f in os.listdir(rep):
+        os.remove(f"{rep}/{f}")
+    emit("begin-command")
+    emit("t", f"Printing subject to files…")
+    messages, variables = amc_command(
+        request.sid, "imprime",
+        "--methode", "file",
+        "--student-min", student1,
+        "--student-max", student2,
+        "--progression-id", "PRT",
+        "--progression", "1",
+        "--output", rep
+    )
+    log_messages(messages)
+    emit("end-command")
+    n = show_messages(messages)
+    if n==0:
+        emit("print-done")
+        emit("print-to-files",
+             f"/{request.sid}/printed/{get_var('project_name')}/printed.zip")
+
+@app.route("/<sid>/printed/<project>/printed.zip")
+def build_printed_zip(sid, project):
+    rep = f"{temp_dir}/{sid}/printed/{project}"
+
+    data = io.BytesIO()
+    with zipfile.ZipFile(data, mode='w') as z:
+        for f_name in os.listdir(rep):
+            z.write(f"{rep}/{f_name}", arcname=f_name)
+    data.seek(0)
+    return send_file(
+        data,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name='printed.zip'
+    )
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
