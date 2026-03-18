@@ -43,3 +43,6 @@ class Amcdb:
                 student,page = s[-1]
         return student,page
         
+    def student_range(self):
+        self.use_module("layout")
+        return self.db.execute("SELECT min(student), max(student) FROM layout.layout_page").fetchone()

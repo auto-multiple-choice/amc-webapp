@@ -181,7 +181,12 @@ function change_ncopies() {
                 document.getElementById('ncopies').value);
 }
 
-socket.on("document-content", function(html) {
+socket.on("document-content", function(data) {
+    var pb = document.getElementById('doc-print-btn');
+    if(pb) {
+        if(data[0]) pb.classList.remove("hidden");
+        else pb.classList.add("hidden");
+    }
     var du = document.getElementById('doc-update');
     if(du) {
         if(document.getElementById('doc-type').value)
@@ -190,7 +195,7 @@ socket.on("document-content", function(html) {
     }
     var view = document.getElementById('document-view');
     if(view) {
-        view.innerHTML = html;
+        view.innerHTML = data[1];
     }
 });
 
@@ -235,26 +240,9 @@ socket.on("end-command", function() {
     panel.classList.add('hidden');
 });
 
-socket.on("err", function(html) {
-    var w = document.getElementById('warn-err-text');
+socket.on("dialog", function(html) {
+    var w = document.getElementById('warn-content');
     w.innerHTML = html;
-
-    w = document.getElementById('warn-err');
-    if(html) w.classList.remove('hidden');
-    else w.classList.add('hidden');
-
-    var panel = document.getElementById('warn-panel');
-    panel.classList.remove('hidden');
-});
-
-socket.on("warn", function(html) {
-    var w = document.getElementById('warn-warn-text');
-    w.innerHTML = html;
-
-    w = document.getElementById('warn-warn');
-    if(html) w.classList.remove('hidden');
-    else w.classList.add('hidden');
-
     var panel = document.getElementById('warn-panel');
     panel.classList.remove('hidden');
 });
@@ -275,3 +263,35 @@ socket.on("layout-set-page", function(data) {
     o = document.getElementById('layout-svg');
     if(o) o.setAttribute("data", data[1])
 });
+
+function doc_print() {
+    document.getElementById('code').classList.add("hidden");
+    document.getElementById('print').classList.remove("hidden");
+    socket.emit("print-dialog");
+}
+
+socket.on("print-dialog", function(data) {
+    document.getElementById('print').innerHTML = data;
+});
+
+function doc_print_finished() {
+    document.getElementById('code').classList.remove("hidden");
+    document.getElementById('print').classList.add("hidden");
+}
+
+socket.on("print-done", function(data) {
+    doc_print_finished();
+});
+
+function print_range() {
+    return [document.getElementById('student1').value,
+            document.getElementById('student2').value];
+}
+
+function print_to_printer() {
+    var p = document.getElementById('printer').value;
+    socket.emit("print-to-printer",
+                [ ...print_range(), p]);
+}
+
+    

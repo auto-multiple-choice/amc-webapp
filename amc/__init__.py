@@ -6,6 +6,7 @@ import tempfile
 import sys
 import logging
 import subprocess
+import cups
 from lxml import etree
 
 from amc.db import Amcdb
@@ -153,30 +154,31 @@ def io_files_list():
 def io_doc_type(t):
     if not t:
         emit("document-content",
-             render_template("document_choose.html"))
+             [False, render_template("document_choose.html")])
 
     if t=="calage":
         db = get_db(modules=("layout",))
         if db.layout_npages() > 0 :
             emit("document-content",
-                 render_template("document_calage.html"))
+                 [False, render_template("document_calage.html")])
             layout_set_page(1, 1)
         else:
             emit("document-content",
-                 render_template("document_missing.html"))
+                 [False, render_template("document_missing.html")])
 
     else:
         doc = "/DOC-" + t + ".pdf"
         filename = project_dir(request.sid) + doc
 
         if os.path.isfile(filename):
+            can_print = (t == "sujet")
             url = "/" + request.sid + "/fs/" + get_var("project_name") + doc
             emit("document-content",
-                 render_template("document_content.html",
-                                 url=url))
+                 [can_print, render_template("document_content.html",
+                                             url=url)])
         else:
             emit("document-content",
-                 render_template("document_missing.html"))
+                 [False, render_template("document_missing.html")])
 
 def amc_command(uid, *args, messages=None, variables=None):
     command = [ "/usr/bin/auto-multiple-choice",
@@ -235,10 +237,12 @@ def select_messages(messages):
 
 def show_messages(messages):
     if len(messages["WARN"]) + len(messages["ERR"]) > 0:
-        emit("err",
-             select_messages(messages["ERR"]))
-        emit("warn",
-             select_messages(messages["WARN"]))
+        emit("dialog",
+             render_template(
+                 "warn_dialog.html",
+                 err = select_messages(messages["ERR"]),
+                 warn = select_messages(messages["WARN"]),
+                 info = ""))
     return len(messages["ERR"])
 
 def log_messages(messages):
@@ -313,6 +317,45 @@ def io_layout_add(data):
     student, page = list(map(int, page.split("/")))
     student, page = db.layout_page_add(student, page, delta)
     layout_set_page(student, page)
+
+@socketio.on("print-dialog")
+def io_print_dialog():
+    db = get_db()
+    student_min, student_max = db.student_range()
+    conn = cups.Connection()
+    ps = conn.getPrinters()
+    printers = []
+    for i in sorted(list(ps)):
+        printers.append({
+            "id": i,
+            "name": f"{i} ({ps[i].get('printer-info','?')})",
+        })              
+    emit("print-dialog",
+         render_template('print_dialog.html',
+                         printers=printers,
+                         student_min=student_min, student_max=student_max))
+
+@socketio.on("print-to-printer")
+def io_print_to_printer(data):
+    student1, student2, printer = data
+    emit("t", f"Printing subject to {printer}…")
+    messages, variables = amc_command(
+        request.sid, "imprime",
+        "--methode", "cups",
+        "--imprimante", printer,
+        "--student-min", student1,
+        "--student-max", student2,
+    )
+    log_messages(messages)
+    emit("end-command")
+    n = show_messages(messages)
+    emit("print-done")
+    if n==0:
+        emit("dialog",
+             render_template(
+                 "warn_dialog.html",
+                 err = "", warn = "",
+                 info = "Printing done!"))
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)

@@ -1,0 +1,26 @@
+{% if err %}
+<div id="warn-err">
+  <p class="message-title">Errors</p>
+  <p id="warn-err-text" class="message">
+    {{ err | safe }}
+  </p>
+</div>
+{% endif %}
+{% if warn %}
+<div id="warn-warn">
+  <p class="message-title">Warnings</p>
+  <p id="warn-warn-text" class="message">
+    {{ warn | safe }}
+  </p>
+</div>
+{% endif %}
+{% if info %}
+<div id="warn-info">
+  <p id="warn-warn-text" class="message">
+    {{ info | safe }}
+  </p>
+</div>
+{% endif %}
+<div class="bandeau adroite">
+  <span class="btn btn-neutral" onclick="warn_ok();">OK</span>
+</div>

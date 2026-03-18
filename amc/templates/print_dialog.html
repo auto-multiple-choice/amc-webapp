@@ -1,0 +1,30 @@
+<h1>Print</h1>
+<p>
+  First select the students copies to print:
+  from
+  <input type="number" min="{{ student_min }}" max="{{ student_max }}" id="student1" name="student1" value="{{ student_min }}"/>
+  to
+  <input type="number" min="{{ student_min }}" max="{{ student_max }}" id="student2" name="student2" value="{{ student_max }}"/>.<br/>
+  Then choose a printing method, or
+  <span id="print-cancel-btn" class="btn btn-warning" onclick="doc_print_finished();">cancel</span>
+</p>
+{% if printers %}
+<h2>Send to printer</h2>
+<p>
+  Print to
+  <select id="printer" name="printer">
+    {% for p in printers %}
+    <option value="{{ p['id'] }}">{{ p['name'] }}</option>
+    {% endfor %}
+  </select>
+  <span id="print-printer-btn" class="btn btn-ok" onclick="print_to_printer();">Print</span>
+</p>
+{% endif %}
+<h2>Download files</h2>
+<p>
+  <select id="files" name="files">
+    <option value="one">One file for all</option>
+    <option value="many">One file per student</option>
+  </select>
+  <span id="print-printer-btn" class="btn btn-ok" onclick="print_to_files();">Print</span>
+</p>

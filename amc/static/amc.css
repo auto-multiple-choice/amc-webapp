@@ -82,7 +82,17 @@ html, body {
     flex-direction: column;
 }
 
-#source > div {
+#code.hidden, #document.hidden, #print.hidden {
+    display: none;
+}
+
+#print {
+    padding: 10px;
+    border: #002ebf solid 3px;
+    flex-grow: 0;
+}
+
+#code, #document {
     flex-grow: 1;
 }
 
@@ -109,6 +119,10 @@ html, body {
 
 .clickable {
     cursor: pointer;
+}
+
+.adroite {
+    text-align: right;
 }
 
 #ncopies {
