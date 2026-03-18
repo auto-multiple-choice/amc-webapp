@@ -18,6 +18,14 @@ html, body {
     flex-direction: column;
 }
 
+.offline {
+    color: #f42727;
+}
+
+.online {
+    color: #008d19;
+}
+
 .menubtn {
     padding: 2px;
     border-radius: 5px;

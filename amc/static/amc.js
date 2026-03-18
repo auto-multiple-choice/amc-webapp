@@ -18,6 +18,14 @@ function show_tab(tab_name) {
         });
 }
 
+function connection_status(s) {
+    cs = document.getElementById('connection-status');
+    for(x of ["online", "offline"]) {
+        if(x==s) cs.classList.add(x);
+        else cs.classList.remove(x);
+    }
+}
+
 socket.on("projects-list", function(html) {
     var list = document.getElementById('projects-list');
     if(list) {
@@ -173,7 +181,12 @@ function select_project(name) {
 }
 
 socket.on("connect", () => {
+    connection_status("online");
     socket.emit("project-name", project_name);
+});
+
+socket.on("disconnect", () => {
+    connection_status("offline");
 });
 
 function change_ncopies() {
