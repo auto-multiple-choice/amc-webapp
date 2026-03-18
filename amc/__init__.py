@@ -311,7 +311,8 @@ def layout_set_page(student, page):
     Path(rep).mkdir(parents=True, exist_ok=True)
     messages, variables = amc_command(request.sid, "db", "layout-image",
                                       f"{student}/{page}",
-                                      "--dest-file", f"{rep}/layout")
+                                      "--dest-file", f"{rep}/layout",
+                                      "--css-url", "/static/svg.css")
     log_messages(messages)
     url = f"/{request.sid}/layout/{student}/{page}/layout.svg"
     emit("layout-set-page", [f"{student}/{page}", url])
