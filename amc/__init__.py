@@ -2,6 +2,7 @@
 import re
 import os
 from pathlib import Path
+import shutil
 import tempfile
 import sys
 import logging
@@ -52,12 +53,23 @@ def get_db(modules=()):
 def projects_dir(uid):
     return os.path.expanduser('~') + "/Projets-QCM"
 
-def project_dir(uid):
-    p = get_var("project_name")
+def project_dir(uid, p=None):
+    if not p:
+        p = get_var("project_name")
     if p:
         return projects_dir(uid) + "/" + p
     else:
         return None
+
+def project_clone_name(uid, name):
+    d = projects_dir(uid)
+    i = 0
+    while i<1000:
+        i += 1
+        nn = f"{name}_{i:03}"
+        if not os.path.exists(f"{d}/{nn}"):
+            return(nn)
+    return None
 
 def read_options(uid):
     d = project_dir(uid)
@@ -126,6 +138,82 @@ def io_project_name(name):
         amc_command(request.sid, "db", "upgrade")
         emit("ncopies", str(ncopies(request.sid)))
 
+def copy_files_progress(src_folder, dst_folder):
+    nfiles = 0
+    for root, dirs, files in os.walk(src_folder):
+        nfiles += len(files)
+    emit("p", 0)
+    os.mkdir(dst_folder)
+    n = 0
+    for root, dirs, files in os.walk(src_folder):
+        dst_root = root.replace(src_folder, dst_folder, 1)
+        for d in dirs:
+            os.mkdir(f"{dst_root}/{d}")
+        for f in files:
+            try:
+                shutil.copy2(f"{root}/{f}", f"{dst_root}/{f}",
+                             follow_symlinks=False)
+                n += 1
+            except:
+                pass
+            emit("p", n/nfiles)
+    return n, nfiles
+
+@socketio.on('project-clone')
+def io_project_clone(name):
+    clone_name = project_clone_name(request.sid, name)
+    source = project_dir(request.sid, p=name)
+    dest = project_dir(request.sid, p=clone_name)
+    emit("t", "Cloning project…")
+    emit("begin-command")
+    n, ntotal = copy_files_progress(source, dest)
+    emit("end-command")
+    io_projects_list()
+    if n==ntotal:
+        emit("dialog",
+             render_template(
+                 "warn_dialog.html",
+                 err = "",
+                 warn = "",
+                 info = f"Project cloned to {clone_name}."))
+    else:
+        emit("dialog",
+             render_template(
+                 "warn_dialog.html",
+                 err = f"Errors while cloning to {clone_name}: only {n} files copied out of {ntotal}.",
+                 warn = "",
+                 info = ""))
+
+@socketio.on('project-delete')
+def io_project_clone(name):
+    rep = project_dir(request.sid, p=name)
+    shutil.rmtree(rep)
+    io_projects_list()
+
+@socketio.on('project-rename')
+def io_project_rename(data):
+    old, new = data
+    new.replace('/','')
+
+    if new == old:
+        app.logger.info(f"Project {old} not renamed")
+        io_projects_list()
+        return
+
+    src = project_dir(request.sid, p=old)
+    dst = project_dir(request.sid, p=new)
+    if(os.path.exists(dst)):
+        emit("dialog",
+             render_template(
+                 "warn_dialog.html",
+                 err = f'Can\'t rename "{old}" to "{new}": "{new}" already exists.',
+                 warn = "",
+                 info = ""))
+    else:
+        app.logger.info(f'Project "{old}" renamed to "{new}"')
+        os.rename(src, dst)
+        io_projects_list()
+
 @socketio.on('ncopies')
 def io_ncopies(n):
     n = int(n)
@@ -186,8 +274,9 @@ def io_doc_type(t):
 
 def amc_command(uid, *args, messages=None, variables=None):
     command = [ "/usr/bin/auto-multiple-choice",
-                *args,
-                "--project-dir", project_dir(uid) ]
+                *args ]
+    if uid:
+        command += ["--project-dir", project_dir(uid)]
     process = subprocess.Popen(command,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,

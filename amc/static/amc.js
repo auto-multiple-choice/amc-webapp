@@ -26,9 +26,84 @@ function connection_status(s) {
     }
 }
 
+var projects_action = null;
+
+function select_action(e) {
+    projects_action = e.id;
+    for(x of document.getElementsByClassName("project-action")) {
+        x.classList.remove("selected");
+    }
+    pul = document.getElementById("projects-ul");
+    for(c of ["ok", "neutral", "danger"]) {
+        pul.classList.remove(c);
+    }
+    for(c of ["ok", "neutral", "danger"]) {
+        if(e.classList.contains(c))
+            pul.classList.add(c);
+    }
+    e.classList.add("selected");
+}
+
+function project_rename(name) {
+    li = null;
+    for(i of document.getElementsByClassName("project-name")) {
+        if(i.textContent == name) {
+            li = i;
+        }
+    }
+    if(li != null) {
+        inp = document.createElement("input");
+        inp.setAttribute("type", "text");
+        inp.setAttribute("id", "project-rename");
+        inp.setAttribute("name", "project-rename");
+        inp.setAttribute("onchange", "project_do_rename(this);");
+        inp.setAttribute("onkeyup", "project_rename_key(this, event);");
+        inp.setAttribute("oldname", name);
+        inp.setAttribute("class", "project-change-name");
+        inp.value = name;
+        li.textContent = "";
+        li.appendChild(inp);
+    }
+}
+
+function project_rename_key(e, event) {
+    if(event.key === "Escape") {
+        var name = e.getAttribute("oldname");
+        var p = e.parentElement;
+        p.innerHTML = '';
+        p.textContent = name;
+    }
+}
+
+function project_do_rename(e) {
+    socket.emit("project-rename", [e.getAttribute("oldname"), e.value]);
+}
+
+function select_project(name) {
+    switch(projects_action) {
+    case "project-open":
+        project_name = name;
+        document.getElementById('project-name').innerHTML = name;
+        tab_source();
+        break;
+    case "project-rename":
+        project_rename(name);
+        break;
+    case "project-delete":
+        if(!confirm(`Are you sure you want to delete project "${name}"? This will permanentely delete all related files.`))
+            break;
+    case "project-clone":
+        socket.emit(projects_action, name);
+        break;
+    default:
+        console.log(`Unknown action: ${projects_action}.`);
+    }
+}
+
 socket.on("projects-list", function(html) {
     var list = document.getElementById('projects-list');
     if(list) {
+        projects_action = "project-open"
         list.innerHTML = html;
     }
 });
@@ -174,12 +249,6 @@ function tab_source() {
     });
 }
 
-function select_project(name) {
-    project_name = name;
-    document.getElementById('project-name').innerHTML = name;
-    tab_source();
-}
-
 socket.on("connect", () => {
     connection_status("online");
     socket.emit("project-name", project_name);
@@ -316,3 +385,4 @@ socket.on("print-to-files", function(url) {
     window.location.href = url;
     doc_print_finished();
 });
+

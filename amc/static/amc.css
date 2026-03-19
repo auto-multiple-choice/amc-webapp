@@ -91,10 +91,54 @@ li.selectable:hover {
     background: #9bdfa8;
 }
 
+ul.neutral > li.selectable:hover {
+    background: #9bbedf;
+}
+
+ul.danger > li.selectable:hover {
+    background: #df9b9c;
+}
+
+#projects-action {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-end;
+}
+
+#projects-action > div {
+    background: #eee;
+    border-radius: 7px;
+    padding: 7px;
+    margin: 5px;
+    cursor: pointer;
+}
+
+#projects-action > div.selected {
+    font-size: xx-large;
+    order: -1;
+    cursor: default;
+}
+
+#projects-action > div.selected.ok {
+    background: #9bdfa8;
+}
+
+#projects-action > div.selected.neutral {
+    background: #9bbedf;
+}
+
+#projects-action > div.selected.danger {
+    background: #df9b9c;
+}
+
 #project-name {
     writing-mode: vertical-lr;
     margin-top: 10px;
     margin-left: 4px;
+}
+
+.project-change-name {
+    border-radius: 7px;
 }
 
 #tab {
