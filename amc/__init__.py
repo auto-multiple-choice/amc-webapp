@@ -77,23 +77,46 @@ def read_options(uid):
     options = etree.parse(of)
     return options
 
+def first_or_none(l):
+    if l:
+        return l[0]
+    else:
+        return None
+
 def change_option(uid, name, value):
     d = project_dir(uid)
     of = d + "/" + "options.xml"
     options = etree.parse(of)
-    x = options.xpath("/project/" + name)[0]
-    x.text = str(value)
+    x = first_or_none(options.xpath("/project/" + name))
+    if x is None:
+        glob = options.xpath("/project")[0]
+        opt = etree.Element(name)
+        opt.text = str(value)
+        glob.append(opt)
+    else:
+        x.text = str(value)
     options.write(of)
 
-def main_source_file(uid):
+def get_option(uid, name):
     options = read_options(uid)
-    src = options.xpath("/project/texsrc/text()")[0]
-    return src.replace("%PROJET/", "")
+    return first_or_none(options.xpath(f"/project/{name}/text()"))
+
+def main_source_file(uid):
+    src = get_option(uid, "texsrc")
+    if src:
+        return src.replace("%PROJET/", "")
+    else:
+        return None
+
+def default_source_file(uid):
+    filt = get_option(uid, "filter")
+    if filt == "plain":
+        return "source.txt"
+    else:
+        return "source.tex"
 
 def ncopies(uid):
-    options = read_options(uid)
-    n = options.xpath("/project/nombre_copies/text()")[0]
-    return n
+    return get_option(uid, "nombre_copies")
     
 @app.route('/')
 def index():
@@ -223,10 +246,15 @@ def io_ncopies(n):
 def io_source_code(filename):
     if not filename:
         filename = main_source_file(request.sid)
+    if not filename:
+        filename = default_source_file(request.sid)
+        change_option(request.sid, "texsrc", filename)
     emit("source-name", filename)
+    fn = project_dir(request.sid) + "/" + filename
     filecontent = ""
-    with open(project_dir(request.sid) + "/" + filename, "r") as f:
-        filecontent = f.read()
+    if os.path.exists(fn):
+        with open(fn, "r") as f:
+            filecontent = f.read()
     emit("source-code", filecontent)
 
 @socketio.on('source-save')
