@@ -7,3 +7,4 @@ __pycache__
 amc/static/ace/unused
 
 venv
+dev.sh
