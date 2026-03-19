@@ -4,7 +4,7 @@
   <div id="project-clone" class="project-action neutral" onclick="select_action(this);">Clone</div>
   <div id="project-delete" class="project-action danger" onclick="select_action(this);">Delete</div>
 </div>
-<div class="espace">
+<div class="espace overy">
   <ul id="projects-ul" class="projects-list selectable">
     {% for p in projects %}
     <li class="project-name selectable" onclick="select_project('{{p}}');">{{ p }}</li>
