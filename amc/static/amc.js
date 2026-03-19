@@ -1,6 +1,7 @@
 var socket = io();
 
 var project_name = null;
+var editor = null;
 
 function show_tab(tab_name) {
     return fetch('/static/tab_' + tab_name + '.html')
@@ -19,10 +20,14 @@ function show_tab(tab_name) {
 }
 
 function connection_status(s) {
-    cs = document.getElementById('connection-status');
-    for(x of ["online", "offline"]) {
-        if(x==s) cs.classList.add(x);
-        else cs.classList.remove(x);
+    var cs = document.getElementById('connection-status');
+    if(cs) {
+        for(x of ["online", "offline"]) {
+            if(x==s) cs.classList.add(x);
+            else cs.classList.remove(x);
+        }
+    } else {
+        console.error("Can't find connection-status")
     }
 }
 
@@ -45,7 +50,7 @@ function select_action(e) {
 }
 
 function project_rename(name) {
-    li = null;
+    var li = null;
     for(i of document.getElementsByClassName("project-name")) {
         if(i.textContent == name) {
             li = i;
@@ -79,12 +84,18 @@ function project_do_rename(e) {
     socket.emit("project-rename", [e.getAttribute("oldname"), e.value]);
 }
 
+function project_open(name) {
+    project_name = name;
+    document.getElementById('project-name').innerHTML = name;
+    tab_source();
+}
+
+socket.on("project-open", project_open );
+
 function select_project(name) {
     switch(projects_action) {
     case "project-open":
-        project_name = name;
-        document.getElementById('project-name').innerHTML = name;
-        tab_source();
+        project_open(name);
         break;
     case "project-rename":
         project_rename(name);
@@ -108,13 +119,50 @@ socket.on("projects-list", function(html) {
     }
 });
 
+socket.on("project-new", function(html) {
+    var part = document.getElementById('project-new');
+    if(part) {
+        part.innerHTML = html;
+    }
+});
+
 function tab_main() {
     show_tab("main").then(() => {
         socket.emit("projects-list");
+        socket.emit("project-new");
     });
 }
 
-tab_main();
+function template_group_select(gid) {
+    var tlist = document.getElementById('template-list');
+    for (t of tlist.children) {
+        if(t.getAttribute("gid") === gid || gid === "")
+            t.classList.remove("hidden");
+        else
+            t.classList.add("hidden");
+    }
+}
+
+function do_create_project() {
+    var name = document.getElementById('new-project-name').value;
+    var way = document.querySelector('input[name="way"]:checked').value;
+    if(name === "") {
+        alert("Please choose a name for your new project!");
+        return;
+    }
+    if(way == "empty") {
+        var stype = document.getElementById('source-type').value;
+        socket.emit("create-project-empty", [name, stype]);
+    } else if(way == "template") {
+        var tid = document.querySelector('input[name="tid"]:checked');
+        if(tid === null) {
+            alert("Please choose a template!");
+            return;
+        }
+        tid = tid.value;
+        socket.emit("create-project-template", [name, tid]);
+    }
+}
 
 function source_url() {
     var cn = document.getElementById('source-name');
@@ -139,13 +187,11 @@ socket.on("source-name", function(name) {
 });
 
 socket.on("ncopies", function(n) {
-    nc = document.getElementById('ncopies');
+    var nc = document.getElementById('ncopies');
     if(nc) {
         nc.value = n;
     }
 });
-
-var editor = null;
 
 function source_modified(t) {
     for(const i of ["source-save", "source-revert"]) {
@@ -197,7 +243,7 @@ function select_file(f) {
 }
 
 function source_other() {
-    fl = document.getElementById("files-list");
+    var fl = document.getElementById("files-list");
     if(fl.classList.contains("hidden")) {
         fl.classList.remove("hidden");
         socket.emit("files-list");
@@ -282,8 +328,8 @@ socket.on("document-content", function(data) {
 });
 
 function change_doc_type() {
-    t = document.getElementById('doc-type').value;
-    upd = document.getElementById('doc-update');
+    var t = document.getElementById('doc-type').value;
+    var upd = document.getElementById('doc-update');
     if(t == "calage") upd.classList.add("hidden");
     else upd.classList.remove("hidden");
     socket.emit("doc-type", t);
@@ -335,14 +381,14 @@ function warn_ok() {
 }
 
 function layout_add(delta) {
-    p = document.getElementById('layout-page');
+    var p = document.getElementById('layout-page');
     socket.emit("layout-add", [p.textContent, delta]);
 }
 
 socket.on("layout-set-page", function(data) {
-    p = document.getElementById('layout-page');
+    var p = document.getElementById('layout-page');
     if(p) p.textContent = data[0];
-    o = document.getElementById('layout-svg');
+    var o = document.getElementById('layout-svg');
     if(o) o.setAttribute("data", data[1])
 });
 
@@ -384,5 +430,9 @@ function print_to_files() {
 socket.on("print-to-files", function(url) {
     window.location.href = url;
     doc_print_finished();
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+   tab_main();
 });
 

@@ -7,6 +7,16 @@ html, body {
     margin: 0px;
 }
 
+p {
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+h1 {
+    margin-top: 5px;
+    margin-bottom: 10px;
+}
+
 #app {
     display: flex;
     flex-direction: row;
@@ -63,6 +73,12 @@ html, body {
 
 .espace {
     margin: 10px;
+}
+
+#tab-main {
+    height: 100%;
+    display: flex;
+    flex-direction: row;
 }
 
 #projects-list {
@@ -296,4 +312,48 @@ ul.danger > li.selectable:hover {
 
 #layout-cont > div {
     height: 100%;
+}
+
+#project-new {
+    width: 25em;
+    flex-shrink: 0;
+    flex-grow: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    border-left: #aaa dashed 2px;
+    padding-left: 5px;
+    padding-right: 5px;
+}
+
+div.one-way {
+    border-radius: 2pt;
+    border: #bbb solid 1pt;
+    margin-top: 5px;
+}
+
+#way-templates {
+    overflow-y: auto;
+}
+
+input.one-way ~ div {
+    display: none;
+}
+
+input.one-way:checked ~ div {
+    display: block;
+}
+
+#template-list {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.template-title {
+    font-weight: bold;
+}
+
+.template-info {
+    max-width: 30em;
 }

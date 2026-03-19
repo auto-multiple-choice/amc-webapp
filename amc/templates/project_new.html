@@ -1,0 +1,59 @@
+<h1>New project</h1>
+<p>
+  Choose a name for your new AMC project, and one of the following
+  ways to create it.
+</p>
+<p>
+  Project name:
+  <input id="new-project-name" type="text"></input>
+</p>
+<div class="one-way">
+  <input class="one-way" type="radio" name="way" value="empty" checked="checked"/>
+  <span class="way-title">Empty project</span>
+  <div>
+    Start from an empty project source file, with format
+    <select id="source-type" name="source-type">
+      <option value="latex">LaTeX</option>
+      <option value="plain">AMC-TXT</option>
+    </select>
+  </div>
+</div>
+<div class="one-way">
+  <input class="one-way" type="radio" name="way" value="file"/>
+  <span class="way-title">Archive or source file</span>
+  <div>
+    Use a source file you already wrote, or an archive (zip file) of
+    another project.
+    <input id="source-file" type="file"></input>
+  </div>
+</div>
+{% if templates %}
+<div id="way-templates" class="one-way">
+  <input class="one-way" type="radio" name="way" value="template"/>
+  <span class="way-title">Template</span>
+  <div>
+    <select id="template-group" name="template-group" onchange="template_group_select(this.value);">
+      <option value="">all groups</option>
+      {% for g in groups %}
+      <option value="{{ g["id"] }}">{{ g["title"] }}</option>
+      {% endfor %}
+    </select>
+    <div id="template-list">
+      {% for t in templates %}
+      <div class="template-info"
+           tid="{{ t["id"] }}" gid="{{ t["gid"] }}">
+        <input id="t:{{ t["gid"] }}:{{ t["id"] }}"
+               type="radio" name="tid" value="{{ t["gid"] }}/{{ t["id"] }}"/>
+        <label for="t:{{ t["gid"] }}:{{ t["id"] }}" class="template-title">{{ t["title"] }}</label>
+        <div class="template-text">
+          {{ t["text"] }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+<div class="bandeau">
+  <span class="btn btn-ok" onclick="do_create_project();">Create new project</span>
+</div>

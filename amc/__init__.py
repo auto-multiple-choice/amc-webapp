@@ -10,6 +10,7 @@ import subprocess
 import cups
 import io
 import zipfile
+import tarfile
 from lxml import etree
 
 from amc.db import Amcdb
@@ -18,6 +19,7 @@ from flask import Flask, render_template, request, send_file
 from flask_socketio import SocketIO, emit
 
 DEBUG=True
+TEMPLATES_DIR="/usr/share/auto-multiple-choice/models"
 
 app = Flask(__name__)
 
@@ -87,9 +89,9 @@ def change_option(uid, name, value):
     d = project_dir(uid)
     of = d + "/" + "options.xml"
     options = etree.parse(of)
-    x = first_or_none(options.xpath("/project/" + name))
+    x = first_or_none(options.xpath("/*/" + name))
     if x is None:
-        glob = options.xpath("/project")[0]
+        glob = options.xpath("/*")[0]
         opt = etree.Element(name)
         opt.text = str(value)
         glob.append(opt)
@@ -99,7 +101,7 @@ def change_option(uid, name, value):
 
 def get_option(uid, name):
     options = read_options(uid)
-    return first_or_none(options.xpath(f"/project/{name}/text()"))
+    return first_or_none(options.xpath(f"/*/{name}/text()"))
 
 def main_source_file(uid):
     src = get_option(uid, "texsrc")
@@ -237,6 +239,179 @@ def io_project_rename(data):
         os.rename(src, dst)
         io_projects_list()
 
+def template_group_info(g):
+    f = f"{TEMPLATES_DIR}/{g}/directory.xml"
+    if os.path.isfile(f):
+        desc = etree.parse(f)
+        info = { "id": g }
+        for k in ("title", "text"):
+            info[k] = first_or_none(desc.xpath(f"/description/{k}/text()"))
+        return info
+    else:
+        return { "id": g, "title": g, "text": "" }
+
+def template_info(gid, tid, filename):
+    info = {}
+    desc = None
+    if os.path.isdir(filename):
+        if os.path.isfile(f"{filename}/description.xml"):
+            desc = etree.parse(f"{filename}/description.xml")
+    else:
+        t = tarfile.open(filename)
+        for m in t.getmembers():
+            if m.name.endswith("/description.xml"):
+                desc = etree.parse(t.extractfile(m))
+
+    if desc:
+        for k in ("title", "text"):
+            i = first_or_none(desc.xpath(f"/description/{k}/text()"))
+            if i:
+                info[k] = i
+                
+    if info:
+        info["id"] = tid
+        info["gid"] = gid
+        return info
+    else:
+        return None
+
+template_groups = []
+templates = []
+for g in sorted(os.listdir(TEMPLATES_DIR)):
+    rep = f"{TEMPLATES_DIR}/{g}"
+    if os.path.isdir(rep):
+        template_groups.append(template_group_info(g))
+        for t in sorted(os.listdir(rep)):
+            if os.path.isdir(t) or t.endswith(".tgz"):
+                tid = t.replace(".tgz","")
+                info = template_info(g, tid, f"{rep}/{t}")
+                if info:
+                    templates.append(info)
+
+app.logger.info(f"Templates: {len(templates)}, from {len(template_groups)} groups")
+                    
+@socketio.on('project-new')
+def io_project_new():
+    emit("project-new",
+         render_template(
+             "project_new.html",
+             groups=template_groups, templates=templates
+         ))
+
+def create_project_dirs(rep):
+    for d in ("", "/data", "/exports", "/scans", "/anonymous",
+              "/cr", "/cr/corrections", "/cr/corrections/jpg", "/cr/corrections/pdf",
+              "/cr/diagnostic"):
+        if not os.path.exists(rep + d):
+            os.mkdir(rep + d)
+
+def check_unused_name(name):
+    rep = project_dir(request.sid, p=name)
+    if os.path.exists(rep):
+        emit("dialog",
+             render_template(
+                 "warn_dialog.html",
+                 err = f"Can't create project \"{name}\": some file or directory already exists with this name.",
+                 warn = "",
+                 info = ""))
+        return None
+    else:
+        return rep
+            
+@socketio.on('create-project-empty')
+def io_create_project_empty(data):
+    name, stype = data
+    rep = check_unused_name(name)
+    if rep:
+        app.logger.info(f"Create empty project \"{name}\" with source {stype}")
+        create_project_dirs(rep)
+        if stype == "plain":
+            f = "source.txt"
+        else:
+            f = "source.tex"
+        with open(f"{rep}/{f}", "w") as source_file:
+            source_file.write("\n")
+        with open(f"{rep}/options.xml", "w") as options_file:
+            options_file.write(
+                """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<project>
+  <texsrc>%PROJET/""" + f + """</texsrc>
+  <filter>""" + stype + """</filter>
+</project>
+"""
+            )
+        emit("project-open", name)
+
+def info_remove_root(m, root):
+    if m.type in (tarfile.SYMTYPE, tarfile.CHRTYPE, tarfile.BLKTYPE,
+                  tarfile.FIFOTYPE, tarfile.GNUTYPE_LONGLINK):
+        return None
+    if m.name.startswith(root):
+        m.name.replace(root, "", 1)
+        m.uid = None
+        m.gid = None
+        m.uname = None
+        m.gname = None
+        return m
+    else:
+        return None
+        
+def extract_options_siblings(tarf, dest):
+    root = None
+    for m in tarf.getmembers():
+        app.logger.info(m.name)
+        o = re.match(r'^(.*/|)options.xml$', m.name)
+        if o:
+            root = o[1]
+    if root:
+        if not os.path.exists(rep):
+            os.mkdir(dest)
+        tarf.extractall(
+            dest, filter=lambda m,p: info_remove_root(m, root))
+        return True
+    else:
+        app.logger.error(f"Can't find options.xml in archive {tarf}")
+        return False
+
+def project_install_from_dir(source_dir, dest):
+    options_found = False
+    finished = False
+    while not finished:
+        finished = True
+        if os.path.isfile(f"{source_dir}/options.xml"):
+            options_found = True
+        else:
+            x = os.listdir(source_dir)
+            if len(x)==1:
+                d = f"{source_dir}/{x[0]}"
+                if os.path.isdir(d):
+                    source_dir = d
+                    finished = False
+
+    if options_found:
+        shutil.copytree(source_dir, dest)
+        return True
+    else:
+        app.logger.error(f"Can't find options.xml in directory {source_dir}")
+        return False
+    
+@socketio.on('create-project-template')
+def io_create_project_template(data):
+    name, template = data
+    rep = check_unused_name(name)
+    if rep:
+        app.logger.info(f"Create project \"{name}\" from template {template}")
+        tpath = f"{TEMPLATES_DIR}/{template}"
+        if os.path.isfile(tpath + ".tgz"):
+            tarf = tarfile.open(tpath + ".tgz")
+            if not extract_options_siblings(tarf, rep):
+                return
+        elif os.path.isdir(tpath):
+            if not project_install_from_dir(tpath, rep):
+                return
+        create_project_dirs(rep)
+        emit("project-open", name)
+    
 @socketio.on('ncopies')
 def io_ncopies(n):
     n = int(n)
