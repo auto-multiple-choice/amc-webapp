@@ -151,8 +151,9 @@ def fs_file(uid, path):
             return { "ok": True }
     else:
         app.logger.info(f"Send file: {path}")
+        attach = bool(int(request.args.get('attach', "1")))
         return send_file(path,
-                         as_attachment=True)
+                         as_attachment=attach)
 
 def is_project_dir(path):
     return os.path.isdir(path) and os.path.isfile(path + "/options.xml")
