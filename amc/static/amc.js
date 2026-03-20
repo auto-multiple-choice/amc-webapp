@@ -143,6 +143,40 @@ function template_group_select(gid) {
     }
 }
 
+function upload_file(url, file,
+                     message,
+                     params={}, callback=null) {
+    const formData = new FormData();
+    formData.append('file', file);
+    for(k of Object.keys(params)) {
+        formData.append(k, params[k]);
+    }
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.upload.onprogress = e => {
+        if (e.lengthComputable) {
+            set_p(e.loaded / e.total);
+        }
+    };
+    xhr.onreadystatechange = () => {
+        if (xhr.readyState == XMLHttpRequest.DONE) {
+            if (xhr.status === 200) {
+                console.log("Upload response: " + xhr.responseText);
+                var r = JSON.parse(xhr.responseText);
+                if(r["ok"]) {
+                    if(callback) callback();
+                } else {
+                    alert("Error: " + r["error"]);
+                }
+            } else {
+                alert(`Error: upload failed (status ${xhr.status})`);
+            }
+        }
+    };
+    begin_command(message);
+    xhr.send(formData);
+}
+
 function do_create_project() {
     var name = document.getElementById('new-project-name').value;
     var way = document.querySelector('input[name="way"]:checked').value;
@@ -161,6 +195,19 @@ function do_create_project() {
         }
         tid = tid.value;
         socket.emit("create-project-template", [name, tid]);
+    } else if(way == "file") {
+        var f = document.getElementById('source-file');
+        if(f.files[0]) {
+            upload_file(`/${socket.id}/upload/create`,
+                        f.files[0], "Uploading…",
+                        { "name": name },
+                        function() { project_open(name); }
+                       )
+        } else {
+            alert("Please choose a file to send!");
+        }
+    } else {
+        console.error("Unknown way: " + way)
     }
 }
 
@@ -356,17 +403,21 @@ socket.on("t", set_t);
 
 socket.on("p", set_p);
 
-socket.on("begin-command", function() {
-    set_t("");
+function begin_command(message="") {
+    set_t(message);
     set_p(0);
     var panel = document.getElementById('info-panel');
     panel.classList.remove('hidden');
-});
+}
 
-socket.on("end-command", function() {
+socket.on("begin-command", begin_command);
+
+function end_command() {
     var panel = document.getElementById('info-panel');
     panel.classList.add('hidden');
-});
+}
+
+socket.on("end-command", end_command);
 
 socket.on("dialog", function(html) {
     var w = document.getElementById('warn-content');

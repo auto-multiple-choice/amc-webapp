@@ -18,7 +18,6 @@ from amc.db import Amcdb
 from flask import Flask, render_template, request, send_file
 from flask_socketio import SocketIO, emit
 
-DEBUG=True
 TEMPLATES_DIR="/usr/share/auto-multiple-choice/models"
 
 app = Flask(__name__)
@@ -34,17 +33,29 @@ temp_dir = tempfile.mkdtemp(prefix="amcapp")
 
 app.logger.info(f"Temp dir: {temp_dir}")
 
-def set_var(name, value):
-    sid = request.sid
-    if not users.get(sid):
-        users[sid] = {}
-    users[sid][name] = value
+def set_var(name, value, uid=None):
+    if uid is None:
+        uid = request.sid
+    if not users.get(uid):
+        users[uid] = {}
+    users[uid][name] = value
 
-def get_var(name):
-    sid = request.sid
-    if not users.get(sid):
-        users[sid] = {}
-    return users[sid].get(name)
+def get_var(name, uid=None):
+    if uid is None:
+        uid = request.sid
+    if not users.get(uid):
+        users[uid] = {}
+    return users[uid].get(name)
+
+def add_var(name, delta, uid=None):
+    if uid is None:
+        uid = request.sid
+    if not users.get(uid):
+        users[uid] = {}
+    if not users[uid].get(name):
+        users[uid][name] = 0
+    users[uid][name] += delta
+    return users[uid][name]
 
 def set_project(name):
     set_var("project_name", name)
@@ -305,18 +316,36 @@ def create_project_dirs(rep):
         if not os.path.exists(rep + d):
             os.mkdir(rep + d)
 
-def check_unused_name(name):
-    rep = project_dir(request.sid, p=name)
+def check_unused_name(name, uid=None, warn=True):
+    if uid is None:
+        uid = request.sid
+    rep = project_dir(uid, p=name)
     if os.path.exists(rep):
-        emit("dialog",
-             render_template(
-                 "warn_dialog.html",
-                 err = f"Can't create project \"{name}\": some file or directory already exists with this name.",
-                 warn = "",
-                 info = ""))
+        if warn:
+            emit("dialog",
+                 render_template(
+                     "warn_dialog.html",
+                     err = f"Can't create project \"{name}\": some file or directory already exists with this name.",
+                     warn = "",
+                     info = ""))
         return None
     else:
         return rep
+
+def create_options_file(rep, source_file, filt=None):
+    if filt is None:
+        filt = "plain"
+        if re.match(r'.*\.(tex|latex)$', source_file, re.IGNORECASE):
+            filt = "latex"
+    with open(f"{rep}/options.xml", "w") as options_file:
+            options_file.write(
+                """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<project>
+  <texsrc>%PROJET/""" + source_file + """</texsrc>
+  <filter>""" + filt + """</filter>
+</project>
+"""
+            )
             
 @socketio.on('create-project-empty')
 def io_create_project_empty(data):
@@ -331,23 +360,19 @@ def io_create_project_empty(data):
             f = "source.tex"
         with open(f"{rep}/{f}", "w") as source_file:
             source_file.write("\n")
-        with open(f"{rep}/options.xml", "w") as options_file:
-            options_file.write(
-                """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<project>
-  <texsrc>%PROJET/""" + f + """</texsrc>
-  <filter>""" + stype + """</filter>
-</project>
-"""
-            )
+        create_options_file(rep, f, filt=stype)
         emit("project-open", name)
 
-def info_remove_root(m, root):
+def info_remove_root(m, root, uid=None):
+    if uid:
+        n = add_var("files_n", 1, uid=uid)
+        total = get_var("files_total", uid=uid)
+        socketio.emit("p", n/total, to=uid)
     if m.type in (tarfile.SYMTYPE, tarfile.CHRTYPE, tarfile.BLKTYPE,
                   tarfile.FIFOTYPE, tarfile.GNUTYPE_LONGLINK):
         return None
     if m.name.startswith(root):
-        m.name.replace(root, "", 1)
+        m.name = m.name.replace(root, "", 1)
         m.uid = None
         m.gid = None
         m.uname = None
@@ -356,21 +381,62 @@ def info_remove_root(m, root):
     else:
         return None
         
-def extract_options_siblings(tarf, dest):
+def tar_extract_options_siblings(tarf, dest, uid=None):
+    if uid:
+        socketio.emit("t", "Looking for the options file…", to=uid)
     root = None
+    total = 0
     for m in tarf.getmembers():
-        app.logger.info(m.name)
+        total += 1
+        app.logger.debug(f"tar> {m.name}")
         o = re.match(r'^(.*/|)options.xml$', m.name)
         if o:
             root = o[1]
+            app.logger.debug("found root: " + root)
+    set_var("files_total", total, uid=uid)
+    set_var("files_n", 0, uid=uid)
     if root:
-        if not os.path.exists(rep):
+        if uid:
+            socketio.emit("t", "Extracting…", to=uid)
+            socketio.emit("p", 0, to=uid)
+        if not os.path.exists(dest):
             os.mkdir(dest)
         tarf.extractall(
-            dest, filter=lambda m,p: info_remove_root(m, root))
+            dest, filter=lambda m,p: info_remove_root(m, root, uid=uid))
         return True
     else:
-        app.logger.error(f"Can't find options.xml in archive {tarf}")
+        app.logger.error(f"Can't find options.xml in archive")
+        return False
+
+def zip_extract_options_siblings(zipf, dest, uid=None):
+    if uid:
+        socketio.emit("t", "Looking for the options file…", to=uid)
+    root = None
+    total = 0
+    for m in zipf.infolist():
+        total += 1
+        app.logger.debug(f"zip> {m.filename}")
+        o = re.match(r'^(.*/|)options.xml$', m.filename)
+        if o:
+            root = o[1]
+            app.logger.debug("found root: " + root)
+    if root:
+        if uid:
+            socketio.emit("t", "Extracting…", to=uid)
+            socketio.emit("p", 0, to=uid)
+        if not os.path.exists(dest):
+            os.mkdir(dest)
+        n = 0
+        for m in zipf.infolist():
+            n += 1
+            if m.filename.startswith(root):
+                m.filename = m.filename.replace(root, "", 1)
+                if m.filename != "":
+                    zipf.extract(m, dest)
+            if uid:
+                socketio.emit("p", n/total, to=uid)
+        return True
+    else:
         return False
 
 def project_install_from_dir(source_dir, dest):
@@ -404,13 +470,64 @@ def io_create_project_template(data):
         tpath = f"{TEMPLATES_DIR}/{template}"
         if os.path.isfile(tpath + ".tgz"):
             tarf = tarfile.open(tpath + ".tgz")
-            if not extract_options_siblings(tarf, rep):
+            if not tar_extract_options_siblings(tarf, rep):
                 return
         elif os.path.isdir(tpath):
             if not project_install_from_dir(tpath, rep):
                 return
         create_project_dirs(rep)
         emit("project-open", name)
+
+def create_from_source_file(uid, rep, f, fn):
+    create_project_dirs(rep)
+    f.save(f"{rep}/{fn}")
+    create_options_file(rep, fn)
+    socketio.emit("end-command", to=uid)
+    return { "ok": True }
+
+def create_from_archive(uid, rep, f):
+    socketio.emit("t", "Saving archive…", to=uid)
+    handle, fn = tempfile.mkstemp()
+    f.save(fn)
+    ok = False
+    if zipfile.is_zipfile(fn):
+        zipf = zipfile.ZipFile(fn)
+        ok = zip_extract_options_siblings(zipf, rep, uid=uid)
+    elif tarfile.is_tarfile(fn):
+        tarf = tarfile.open(fn)
+        ok = tar_extract_options_siblings(tarf, rep, uid=uid)
+    else:
+        app.logger.error("Archive type unknown")
+    socketio.emit("end-command", to=uid)
+    return { "ok": ok }
+
+@app.route('/<uid>/upload/<dest>', methods=['POST'])
+def file_upload(uid, dest):
+    if 'file' not in request.files:
+        return { 'error': 'File missing' }
+    f = request.files['file']
+    fn = f.filename.replace("/", "").replace(" ","_")
+    if fn == '':
+        return { 'error': 'Empty file' }
+    if dest=="create":
+        name = request.form['name']
+        rep = check_unused_name(name, uid=uid, warn=False)
+        if rep:
+            socketio.emit("p", 0, to=uid)
+            if re.match(r'.*\.(tgz|tar\.gz|tar|zip)', fn, re.IGNORECASE):
+                return create_from_archive(uid, rep, f)
+            elif re.match(r'.*\.(tex|latex|txt)', fn, re.IGNORECASE):
+                return create_from_source_file(uid, rep, f, fn)
+            else:
+                socketio.emit("end-command", to=uid)
+                return { "error": f"File {fn} can't be used to create a project" }
+        else:
+            socketio.emit("end-command", to=uid)
+            return { "error": f"Can't create project {name}: already used" }
+    else:
+        socketio.emit("end-command", to=uid)
+        return { "error": f"Unknown upload dest: {dest}" }
+
     
 @socketio.on('ncopies')
 def io_ncopies(n):
@@ -494,8 +611,7 @@ def amc_command(uid, *args, messages=None, variables=None):
         if not line:
             break  # Reached the end of stdout
         line = line.strip()
-        if DEBUG:
-            app.logger.info(line)
+        app.logger.debug("c-out> " + line)
         avance = re.match(r'===<(.*)>=\+([0-9,.]+(?:e[+-]?[0-9]+)?)', line)
         if avance:
             aid = avance[1]
