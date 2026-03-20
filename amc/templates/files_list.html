@@ -1,5 +1,9 @@
 <ul class="selectable">
   {% for f in files %}
-  <li class="file-name selectable" onclick="select_file('{{f}}');">{{ f }}</li>
+  <li class="file-name selectable">
+    {{ f }}
+    <span class="subbtn subbtn-green" onclick="select_file('{{f}}');">✎</span>
+    <a class="subbtn subbtn-blue" href="{{ base_url}}/{{ f }}">⇩<a>
+  </li>
   {% endfor %}
 </ul>

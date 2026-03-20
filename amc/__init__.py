@@ -561,7 +561,9 @@ def io_files_list():
     files = [ f for f in os.listdir(project_dir(request.sid))
               if re.match(r'.*\.(tex|yaml|yml|csv|txt)$', f, re.IGNORECASE) ]
     emit("files-list",
-         render_template("files_list.html", files=sorted(files)))
+         render_template("files_list.html",
+                         files=sorted(files),
+                         base_url=f"/{request.sid}/fs/{get_var('project_name')}"))
 
 @socketio.on("doc-type")
 def io_doc_type(t):
