@@ -314,6 +314,10 @@ ul.danger > li.selectable:hover {
     height: 100%;
 }
 
+#layout-svg {
+    border: #aaa solid 1px;
+}
+
 #project-new {
     width: 25em;
     flex-shrink: 0;
