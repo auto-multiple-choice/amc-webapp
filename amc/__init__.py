@@ -68,7 +68,7 @@ def projects_dir(uid):
 
 def project_dir(uid, p=None):
     if not p:
-        p = get_var("project_name")
+        p = get_var("project_name", uid=uid)
     if p:
         return projects_dir(uid) + "/" + p
     else:
@@ -152,8 +152,13 @@ def fs_file(uid, path):
     else:
         app.logger.info(f"Send file: {path}")
         attach = bool(int(request.args.get('attach', "1")))
-        return send_file(path,
-                         as_attachment=attach)
+        if os.path.isfile(path):
+            return send_file(path,
+                             as_attachment=attach)
+        elif os.path.isdir(path):
+            return send_dir_as_zip(path)
+        else:
+            return { "error": "Unknown path type" }
 
 def is_project_dir(path):
     return os.path.isdir(path) and os.path.isfile(path + "/options.xml")
@@ -525,6 +530,14 @@ def file_upload(uid, dest):
         else:
             socketio.emit("end-command", to=uid)
             return { "error": f"Can't create project {name}: already used" }
+    elif dest=="project":
+        rep = project_dir(uid);
+        socketio.emit("end-command", to=uid);
+        if rep:
+            f.save(f"{rep}/{fn}");
+            return { "ok": True }
+        else:
+            return { "error": f"Project unknown" }
     else:
         socketio.emit("end-command", to=uid)
         return { "error": f"Unknown upload dest: {dest}" }
@@ -556,14 +569,44 @@ def io_source_save(filename, code):
         f.write(code)
     emit("source-saved");
 
+def file_level(base, main_source, f):
+    ff = f"{base}/{f}"
+    if os.path.isdir(ff):
+        return 2
+    if f == main_source:
+        return -1
+    if re.match(r'.*\.(tex|yaml|yml|csv|txt)$', f, re.IGNORECASE):
+        return 0
+    else:
+        return 1
+    
 @socketio.on("files-list")
-def io_files_list():
-    files = [ f for f in os.listdir(project_dir(request.sid))
-              if re.match(r'.*\.(tex|yaml|yml|csv|txt)$', f, re.IGNORECASE) ]
+def io_files_list(all_files):
+    base = project_dir(request.sid)
+    main_source = main_source_file(request.sid)
+    files = [ (file_level(base, main_source, f), f)
+              for f in os.listdir(base) ]
+    if not all_files:
+        files = [ x for x in files if x[0]<=0 ]
     emit("files-list",
          render_template("files_list.html",
                          files=sorted(files),
                          base_url=f"/{request.sid}/fs/{get_var('project_name')}"))
+
+@socketio.on("project-delete-file")
+def io_project_delete_file(data):
+    filename, all_files = data
+    filename = filename.replace("/", "")
+    base = project_dir(request.sid)
+    if base:
+        try:
+            os.unlink(f"{base}/{filename}")
+        except e:
+            app.logger.error("Can't delete project file" + e)
+            return
+        io_files_list(all_files)
+    else:
+        app.logger.error("Can't delete project file: unknown project")
 
 @socketio.on("doc-type")
 def io_doc_type(t):
@@ -803,21 +846,31 @@ def io_print_to_files(data):
         emit("print-to-files",
              f"/{request.sid}/printed/{get_var('project_name')}/printed.zip")
 
-@app.route("/<sid>/printed/<project>/printed.zip")
-def build_printed_zip(sid, project):
-    rep = f"{temp_dir}/{sid}/printed/{project}"
-
+def send_dir_as_zip(path, name=None, recursive=True):
+    if name is None:
+        name = re.sub(r'.*/', "", path) + ".zip"
     data = io.BytesIO()
     with zipfile.ZipFile(data, mode='w') as z:
-        for f_name in os.listdir(rep):
-            z.write(f"{rep}/{f_name}", arcname=f_name)
+        if recursive:
+            for root, dirs, files in os.walk(path):
+                subroot = root.replace(path, ".", 1)
+                for f in files:
+                    z.write(f"{root}/{f}", arcname=f"{subroot}/{f}")
+        else:
+            for f_name in os.listdir(path):
+                z.write(f"{path}/{f_name}", arcname=f_name)
     data.seek(0)
     return send_file(
         data,
         mimetype='application/zip',
         as_attachment=True,
-        download_name='printed.zip'
+        download_name=name
     )
+        
+@app.route("/<sid>/printed/<project>/printed.zip")
+def build_printed_zip(sid, project):
+    rep = f"{temp_dir}/{sid}/printed/{project}"
+    send_dir_as_zip(rep, name="printed.zip", recursive=False)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)

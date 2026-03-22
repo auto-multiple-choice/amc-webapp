@@ -10,6 +10,17 @@
       <span id="source-save" class="btn btn-ok disabled" onclick="source_save();">Save</span>
     </div>
     <div id="files-list" class="hidden">
+      <div class="bandeau">
+        <input type="checkbox" id="all-files" name="all-files" value="1"
+               onchange="all_files_change();"/>
+        <label for="all-files">All</label>
+        |
+        <input type="file" id="project-upload-file" name="file" class="hidden"
+               onchange="upload_file_to_project();"/>
+        <span  class="btn btn-neutral" onclick="open_upload_file();">Upload</span>
+      </div>       
+      <div id="files-list-list">
+      </div>
     </div>
     <div id="code-code-a">
       <div id="code-code">

@@ -177,6 +177,30 @@ function upload_file(url, file,
     xhr.send(formData);
 }
 
+function upload_file_to_project_done() {
+    var uf = document.getElementById('project-upload-file');
+    uf.classList.add("hidden");
+    uf.value = "";
+    all_files_change();
+}
+
+function upload_file_to_project() {
+    var f = document.getElementById('project-upload-file');
+    if(f.files[0]) {
+        upload_file(`/${socket.id}/upload/project`,
+                    f.files[0], "Uploading…", {},
+                    upload_file_to_project_done
+                   );
+    }
+}
+
+function delete_project_file(filename) {
+    var all_files = document.getElementById("all-files").checked;
+    if(confirm(`Are you sure you want to delete ${filename}?`)) {
+        socket.emit("project-delete-file", [filename, all_files]);
+    }
+}
+
 function do_create_project() {
     var name = document.getElementById('new-project-name').value;
     var way = document.querySelector('input[name="way"]:checked').value;
@@ -275,7 +299,7 @@ socket.on("source-saved", function() {
 });
 
 socket.on("files-list", function(html) {
-    var list = document.getElementById('files-list');
+    var list = document.getElementById('files-list-list');
     if(list) {
         list.innerHTML = html;
     }
@@ -289,14 +313,25 @@ function select_file(f) {
     }
 }
 
+function all_files_change() {
+    var all_files = document.getElementById("all-files").checked;
+    socket.emit("files-list", all_files);
+}
+
 function source_other() {
     var fl = document.getElementById("files-list");
     if(fl.classList.contains("hidden")) {
         fl.classList.remove("hidden");
-        socket.emit("files-list");
+        document.getElementById("all-files").checked = false;
+        document.getElementById("project-upload-file").classList.add("hidden");
+        all_files_change();
     } else {
         fl.classList.add("hidden");
     }
+}
+
+function open_upload_file() {
+    document.getElementById("project-upload-file").classList.remove("hidden");
 }
 
 function source_revert() {

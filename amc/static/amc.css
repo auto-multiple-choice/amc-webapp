@@ -109,6 +109,10 @@ li.selectable {
     cursor: default;
 }
 
+li.selectable.short {
+    margin: 2px;
+}
+
 li.selectable.direct {
     cursor: pointer;
 }
@@ -144,6 +148,10 @@ ul.danger > li.selectable:hover {
 
 .subbtn-blue {
     background: #003bad;
+}
+
+.subbtn-red {
+    background: #f00015;
 }
 
 #projects-action {
@@ -207,6 +215,10 @@ ul.danger > li.selectable:hover {
     align-items: stretch;
 }
 
+#source > div {
+    flex-basis: 0;
+}
+
 #code, #document {
     display: flex;
     flex-direction: column;
@@ -228,10 +240,38 @@ ul.danger > li.selectable:hover {
 
 #files-list {
     flex-grow: 1;
+    flex-basis: 0;
+    border: #aaa solid 2px;
+    border-radius: 0px 0px 10px 10px;
+    margin-bottom: 5px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: hidden;
+}
+
+#files-list.hidden {
+    display: none;
+}
+
+#files-list-list {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    overflow-y: auto;
+}
+
+.filename {
+    font-family: monospace;
+}
+
+.dirname {
+    font-weight: bold;
 }
 
 #code-code-a {
-    flex-grow: 3;
+    flex-grow: 2;
+    flex-basis: 0;
 }
 
 #code-code {

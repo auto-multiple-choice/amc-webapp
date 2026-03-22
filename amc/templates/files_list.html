@@ -1,9 +1,16 @@
 <ul class="selectable">
-  {% for f in files %}
-  <li class="file-name selectable">
-    {{ f }}
+  {% for level,f in files %}
+  <li class="file-name selectable short">
+    <span class="filename
+                 {% if level==2 %}dirname{% endif %}
+                 ">{{ f }}</span>
+    {% if level<=0 %}
     <span class="subbtn subbtn-green" onclick="select_file('{{f}}');">✎</span>
-    <a class="subbtn subbtn-blue" href="{{ base_url}}/{{ f }}">⇩<a>
+    {% endif %}
+    <a class="subbtn subbtn-blue" href="{{ base_url }}/{{ f }}">⇩<a>
+    {% if level in (0,1) %}
+    <span class="subbtn subbtn-red" onclick="delete_project_file('{{f}}');">⊗</span>
+    {% endif %}
   </li>
   {% endfor %}
 </ul>
