@@ -556,12 +556,21 @@ def io_source_code(filename):
         filename = default_source_file(request.sid)
         change_option(request.sid, "texsrc", filename)
     emit("source-name", filename)
+
+    mode = "plain_text"
+    if re.match(r'.*\.(tex|latex)$', filename, re.IGNORECASE):
+        mode = "latex"
+    elif re.match(r'.*\.(yml|yaml)$', filename, re.IGNORECASE):
+        mode = "yaml"
+    elif re.match(r'.*\.(csv)$', filename, re.IGNORECASE):
+        mode = "csv"
+
     fn = project_dir(request.sid) + "/" + filename
     filecontent = ""
     if os.path.exists(fn):
         with open(fn, "r") as f:
             filecontent = f.read()
-    emit("source-code", filecontent)
+    emit("source-code", [mode, filecontent])
 
 @socketio.on('source-save')
 def io_source_save(filename, code):

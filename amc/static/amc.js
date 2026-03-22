@@ -274,7 +274,7 @@ function source_modified(t) {
     }
 }
 
-socket.on("source-code", function(code) {
+socket.on("source-code", function(data) {
     var cc = document.getElementById('code-code');
     if(cc) {
         if(!editor) {
@@ -284,8 +284,8 @@ socket.on("source-code", function(code) {
                 source_modified(true);
             });
         }
-        editor.session.setMode("ace/mode/latex");
-        editor.session.setValue(code, -1);
+        editor.session.setMode("ace/mode/" + data[0]);
+        editor.session.setValue(data[1], -1);
         source_modified(false);
         fl = document.getElementById("files-list");
         if(fl) {
