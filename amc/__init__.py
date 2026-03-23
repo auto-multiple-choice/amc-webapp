@@ -787,10 +787,7 @@ def io_scans_mode():
         app.logger.warning("Options: auto_capture_mode not found")
         emit("scans-mode", -1)
 
-@socketio.on('scans-report')
-def io_scans_report():
-    threshold = float(get_option(request.sid, "seuil"))
-    threshold_up = float(get_option(request.sid, "seuil_up"))
+def scans_report(threshold, threshold_up):
     db = get_db()
     pages = db.capture_pages(threshold, threshold_up)
     app.logger.info(f"Scans report: {len(pages)} pages")
@@ -801,6 +798,19 @@ def io_scans_report():
     emit("scans-report",
          render_template('scans_report.html',
                          pages=pages))
+
+@socketio.on('scans-report')
+def io_scans_report():
+    threshold = float(get_option(request.sid, "seuil"))
+    threshold_up = float(get_option(request.sid, "seuil_up"))
+    emit("thresholds", [threshold, threshold_up])
+    scans_report(threshold, threshold_up)
+
+@socketio.on('set-thresholds')
+def io_set_thresholds(data):
+    change_option(request.sid, "seuil", data[0])
+    change_option(request.sid, "seuil_up", data[1])
+    scans_report(float(data[0]), float(data[1]))
 
 @app.route("/<sid>/manual/<student>/<page>/<copy>/<filename>")
 def get_manual_file(sid, student, page, copy, filename):

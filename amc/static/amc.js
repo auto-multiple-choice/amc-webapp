@@ -540,6 +540,20 @@ socket.on("unlock-photocopy", function() {
     p.disabled = false;
 });
 
+socket.on("thresholds", function(data) {
+    var d;
+    d = document.getElementById("threshold");
+    if(d) d.value = parseFloat(data[0]);
+    d = document.getElementById("threshold-up");
+    if(d) d.value = parseFloat(data[1]);
+});
+
+function threshold_change() {
+    var threshold = document.getElementById("threshold").value;
+    var threshold_up = document.getElementById("threshold-up").value;
+    socket.emit("set-thresholds", [ threshold, threshold_up ]);
+}
+
 socket.on("scans-report", function(html) {
     var report = document.getElementById('scans-report');
     if(report) {
