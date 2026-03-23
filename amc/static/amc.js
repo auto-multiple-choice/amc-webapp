@@ -86,6 +86,7 @@ function project_do_rename(e) {
 
 function project_open(name) {
     project_name = name;
+    localStorage.setItem("project-name", name)
     document.getElementById('project-name').innerHTML = name;
     tab_source();
 }
@@ -518,7 +519,171 @@ socket.on("print-to-files", function(url) {
     doc_print_finished();
 });
 
+function scans_mode_change() {
+    var m = document.getElementById('scans-photocopied').checked;
+    socket.emit("scans-mode-change", (m ? 1 : 0));
+}
+
+socket.on("scans-mode", function(m) {
+    var sm = document.getElementById('scans-photocopied');
+    if(sm) {
+        sm.checked = (m == 1);
+    }
+});
+
+socket.on("lock-photocopy", function() {
+    var p = document.getElementById('scans-photocopied');
+    p.disabled = true;
+});
+socket.on("unlock-photocopy", function() {
+    var p = document.getElementById('scans-photocopied');
+    p.disabled = false;
+});
+
+socket.on("scans-report", function(html) {
+    var report = document.getElementById('scans-report');
+    if(report) {
+        report.innerHTML = html;
+    }
+});
+
+function tab_scans() {
+    show_tab("scans").then(() => {
+        socket.emit("scans-mode");
+        socket.emit("scans-report");
+    });
+}
+
+function update_zoom_ticked(question, answer) {
+    var x = document.getElementById("box1_" + question + "_" + answer);
+    if(x) {
+        var y;
+        for(y of document.querySelectorAll("div[amc-question=\"" + question + "\"][amc-answer=\"" + answer + "\"]")) {
+            if(x.classList.contains("ticked")) {
+                y.classList.remove("not-ticked");
+                y.classList.add("ticked");
+            } else {
+                y.classList.remove("ticked");
+                y.classList.add("not-ticked");
+            }
+        }
+    } else {
+        console.log("Rect not found", question, answer);
+    }
+}
+
+function update_all_zooms_ticked() {
+    var x;
+    for(x of document.getElementsByClassName("box1")) {
+        var i = x.getAttribute("id").split("_");
+        update_zoom_ticked(i[1], i[2]);
+    }
+    var z;
+    z = document.getElementById('zooms-0');
+    z.scrollTo(0, z.scrollHeight);
+    z = document.getElementById('zooms-1');
+    z.scrollTo(0, 0);
+}
+
+socket.on("scans-manual", function(html) {
+    var manual = document.getElementById('manual');
+    if(manual) {
+        manual.innerHTML = html;
+    }
+});
+
+socket.on("update-ticked-zooms", update_all_zooms_ticked);
+
+socket.on("scans-zooms", function(html) {
+    var z0 = document.getElementById('zooms-0');
+    if(z0) {
+        z0.innerHTML = html;
+    }
+    var z1 = document.getElementById('zooms-1');
+    if(z1) {
+        z1.innerHTML = html;
+    }
+});
+
+function scans_page_select(e, student, page, copy) {
+    for(old of document.getElementsByClassName("selected pagerow")) {
+        old.classList.remove("selected");
+    }
+    e.classList.add("selected");
+    socket.emit("scans-page-select", [student,page,copy]);
+}
+
+socket.on("set-manual", function(data) {
+    var question = data[0];
+    var answer = data[1];
+    var ticked = data[2];
+    var b = document.getElementById(`box1_${question}_${answer}`);
+    if(b) {
+        if(ticked)
+            b.classList.add("ticked");
+        else
+            b.classList.remove("ticked");
+    }
+    update_zoom_ticked(question, answer);
+});
+
+function compare_reports(a, b, column) {
+    var x = 0;
+    if(column) {
+        x = parseFloat(b.getAttribute("amc-" + column)) - parseFloat(a.getAttribute("amc-" + column));
+    }
+    if(x==0) {
+        x = parseInt(a.getAttribute("amc-student")) - parseInt(b.getAttribute("amc-student"));
+    }
+    if(x==0) {
+        x = parseInt(a.getAttribute("amc-copy")) - parseInt(b.getAttribute("amc-copy"));
+    }
+    if(x==0) {
+        x = parseInt(a.getAttribute("amc-page")) - parseInt(b.getAttribute("amc-page"));
+    }
+    return(x);
+}
+
+function scans_report_sort(column) {
+    rows = Array.from(document.getElementsByClassName("pagerow")).sort((a,b)=> compare_reports(a,b,column));
+    c = document.getElementById("scans-pages-rows");
+    for(r of rows) {
+        c.appendChild(r);
+    }
+}
+
+function clickBox(question, answer) {
+    var mv = document.getElementById('manual-view');
+    var b = document.getElementById(`box1_${question}_${answer}`);
+    if(mv && b) {
+        console.log(`Click on box(${question}/${answer})`);
+        var ticked = !b.classList.contains("ticked");
+        socket.emit("set-manual",
+                    [ mv.getAttribute("amc-student"),
+                      mv.getAttribute("amc-page"),
+                      mv.getAttribute("amc-copy"),
+                      question, answer, ticked ]);
+    }
+}
+
+function upload_scans_done() {
+    console.log("Scans uploaded.");
+}
+
+function upload_scans() {
+    var f = document.getElementById('scans-upload');
+    if(f.files[0]) {
+        upload_file(`/${socket.id}/upload/scans`,
+                    f.files[0], "Uploading…", { "project_name": project_name },
+                    upload_scans_done
+                   );
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
    tab_main();
+    project_name = localStorage.getItem("project-name");
+    if(project_name)
+        project_open(project_name);
 });
 

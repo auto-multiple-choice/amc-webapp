@@ -1,5 +1,5 @@
 
-html, body, #app, #tab, #source {
+html, body, #app, #tab, #source, #scans {
     height: 100%;
 }
 
@@ -427,3 +427,156 @@ input.one-way:checked ~ div {
 .template-info {
     max-width: 30em;
 }
+
+#scans {
+    display: flex;
+    flex-direction: row;
+}
+
+#pages {
+    flex-grow: 0;
+    flex-shrink: 0;
+}
+
+#zooms {
+    flex-grow: 1;
+    flex-basis: 0;
+    border-right: #aaa solid 1px;
+    border-left: #aaa solid 1px;
+    margin-left: 2px;
+    margin-right: 2px;
+}
+
+#manual {
+    flex-grow: 3;
+    flex-basis: 0;
+    height: 100%;
+}
+
+#manual-view {
+    height: 100%;
+    overflow-y: auto;
+}
+
+#pages {
+    display: flex;
+    flex-direction: column;
+}
+
+#scans-upload {
+    color: transparent;
+    overflow-x: clip;
+}
+
+#scans-report {
+    overflow-y: auto;
+}
+
+#scans-pages th, #scan-pages td {
+    border-bottom: #bbb solid 1px;
+}
+
+#scans-pages thead th {
+    cursor: pointer;
+}
+
+#scans-pages tbody {
+    cursor: default;
+}
+
+#scans-pages tbody tr:nth-child(odd) {
+    background: #eee;
+}
+
+#scans-pages tbody tr.selected {
+    background: #84c8e0;
+}
+
+#scans-pages tbody tr:hover {
+    background: #9bdfa8;
+}
+
+.lock-header thead { 
+    position: sticky;
+    background: white;
+    top: 0; 
+}
+
+.box1 {
+    stroke: #00e462;
+    stroke-width: 10;
+    fill: transparent;
+}
+
+.box1.ticked {
+    stroke: #e40038;
+}
+
+.box2 {
+    stroke: #0074e4;
+    stroke-width: 10;
+    fill: none;
+}
+
+.namefield, .corner-mark {
+    stroke: none;
+    fill: none;
+}
+
+#zooms {
+    display: flex;
+    flex-direction: column;
+}
+
+.zooms-title {
+    text-align: center;
+}
+
+.zooms-title.zooms-0 {
+    background: #9bdfa8;
+}
+
+#zooms-0 {
+    flex-grow: 3;
+    flex-basis: 0;
+}
+
+.zooms-title.zooms-1 {
+    background: #df9b9c;
+}
+
+#zooms-1 {
+    flex-grow: 2;
+    flex-basis: 0;
+}
+
+#zooms-0, #zooms-1 {
+    overflow-y: auto;
+}
+
+.zoom-image {
+    max-width: 4em;
+    max-height: 4em;
+}
+
+#zooms-0 .zoom-one.ticked {
+    display: none;
+}
+
+#zooms-1 .zoom-one.not-ticked {
+    display: none;
+}
+
+.zoom-one {
+    display: inline-block;
+    border: #aaa solid 1px;
+    border-radius: 0px 0px 10px 10px;
+    margin: 2px;
+}
+
+.zoom-prop {
+    text-align: center;
+    margin-top: -5px;
+}
+
+

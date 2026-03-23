@@ -1,5 +1,12 @@
 
+import datetime
 import sqlite3
+
+from amc.basic import *
+from amc.command import amc_command
+
+def dict_factory(cursor, row):
+    return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 class Amcdb:
 
@@ -46,3 +53,49 @@ class Amcdb:
     def student_range(self):
         self.use_module("layout")
         return self.db.execute("SELECT min(student), max(student) FROM layout.layout_page").fetchone()
+
+    def capture_pages(self, threshold=None, threshold_up=None):
+        self.use_module("capture")
+        self.db.row_factory = dict_factory
+        sensitivity_values = [ "1" ]
+        prop = "cast(z.black as real)/cast(z.total as real)"
+        if threshold is not None and threshold>0:
+            sensitivity_values.append(f"min(ABS({prop}-{threshold})/{threshold})")
+        if threshold_up is not None and threshold_up<1:
+            sensitivity_values.append(f"min(ABS({prop}-{threshold_up})/{1-threshold_up})")
+        sensitivity = "10 * ( 1 - min(" + ",".join(sensitivity_values) + "))"
+        return self.db.execute(f"SELECT p.student,p.page,p.copy,p.timestamp_manual,p.mse,{sensitivity} as sensitivity FROM capture.capture_page as p LEFT JOIN capture.capture_zone as z ON p.student=z.student and p.page=z.page and p.copy=z.copy and z.type=4 GROUP BY p.student,p.page,p.copy ORDER BY p.student,p.copy,p.page").fetchall()
+
+    def page_t_manual(self, student, page, copy):
+        self.use_module("capture")
+        return self.db.execute("SELECT timestamp_manual FROM capture.capture_page WHERE student=? AND page=? AND copy=?", (student, page, copy)).fetchone()[0]       
+
+    def set_manual(self, student, page, copy, question, answer, ticked,
+                   uid=None):
+        self.use_module("capture")
+        if self.page_t_manual(student, page, copy)==0:
+            messages, variables = amc_command(
+                uid, "db", "force-manual",
+                f"{student}/{page}:{copy}",
+            )
+            if messages["ERR"]:
+                return
+        self.db.execute("UPDATE capture.capture_zone SET manual=? WHERE student=? AND page=? AND copy=? AND type=? AND id_a=? AND id_b=?",
+                        ((1 if ticked else 0), student,page,copy,
+                         4, question, answer))
+        time = int(datetime.datetime.now().timestamp())
+        self.db.execute("UPDATE capture.capture_page SET timestamp_manual=? WHERE student=? AND page=? AND copy=?",
+                        (time, student, page, copy))
+        self.db.commit()
+
+    def page_zooms(self, student, page, copy):
+        self.use_module("capture")
+        self.db.row_factory = dict_factory
+        z = self.db.execute(
+            """SELECT id_a, id_b, imagedata,
+            cast(black as real)/cast(total as real) as prop
+            FROM capture.capture_zone
+            WHERE student=? AND page=? AND copy=? AND type=?
+                  AND imagedata IS NOT NULL""",
+            (student, page, copy, 4)).fetchall()
+        return z

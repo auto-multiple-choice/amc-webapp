@@ -1,0 +1,25 @@
+<table id="scans-pages" class="lock-header">
+  <thead>
+    <tr>
+      <th onclick="scans_report_sort('');">page</th>
+      <th onclick="scans_report_sort('mse');">MSE</th>
+      <th onclick="scans_report_sort('sens');">sens</th>
+    </tr>
+  </thead>
+  <tbody id="scans-pages-rows">
+    {% for p in pages %}
+    <tr onclick="scans_page_select(this,{{ p["student"] }},{{ p["page"] }},{{ p["copy"] }});"
+        class="pagerow"
+        amc-student="{{ p["student"] }}" amc-copy="{{ p["copy"] }}" amc-page="{{ p["page"] }}"
+        amc-mse="{{ p["mse"] }}" amc-sens="{{ p["sensitivity"] }}">
+      <td>{{ p["student"] }}/{{ p["page"] }}
+        {%- if p["copy"]>0 -%}
+        :{{ p["copy"] }}
+        {%- endif -%}
+      </td>
+      <td>{{ p["mse"]|round(1) }}</td>
+      <td>{% if p["timestamp_manual"] >0 %}({% endif %}{{ p["sensitivity"]|round(1) }}{% if p["timestamp_manual"] >0 %}){% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

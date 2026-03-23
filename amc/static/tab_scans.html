@@ -1,0 +1,29 @@
+<div id="scans">
+  <div id="pages">
+    <div>
+      <input type="checkbox" id="scans-photocopied"
+             name="scans-photocopied" onchange="scans_mode_change();"/>
+      <label for="scans-photocopied">Photocopy mode</label>
+    </div>
+    <div>
+      <input type="file" id="scans-upload" name="file" class="hidden"
+             onchange="upload_scans();"/>
+      <label class="btn btn-ok" for="scans-upload">Add scans…</label>
+    </div>
+    <div id="scans-report">
+    </div>
+  </div>
+  <div id="zooms">
+    <div class="zooms-title zooms-0">Not ticked</div>
+    <div id="zooms-0">
+    </div>
+    <div class="zooms-title zooms-1">Ticked</div>
+    <div id="zooms-1">
+    </div>
+  </div>
+  <div id="manual">
+    <p>
+      Please select a page.
+    </p>
+  </div>
+</div>

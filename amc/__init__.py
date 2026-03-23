@@ -6,14 +6,16 @@ import shutil
 import tempfile
 import sys
 import logging
-import subprocess
 import cups
 import io
 import zipfile
 import tarfile
+import base64
 from lxml import etree
 
 from amc.db import Amcdb
+from amc.command import amc_command
+from amc.basic import *
 
 from flask import Flask, render_template, request, send_file
 from flask_socketio import SocketIO, emit
@@ -26,111 +28,17 @@ app.config.from_mapping(
     SECRET_KEY='dev',
 )
 socketio = SocketIO(app)
-
-users = {}
+app.socketio = socketio
 
 temp_dir = tempfile.mkdtemp(prefix="amcapp")
 
 app.logger.info(f"Temp dir: {temp_dir}")
 
-def set_var(name, value, uid=None):
+def get_db(modules=(), uid=None):
     if uid is None:
         uid = request.sid
-    if not users.get(uid):
-        users[uid] = {}
-    users[uid][name] = value
+    return Amcdb(project_dir(uid), modules)
 
-def get_var(name, uid=None):
-    if uid is None:
-        uid = request.sid
-    if not users.get(uid):
-        users[uid] = {}
-    return users[uid].get(name)
-
-def add_var(name, delta, uid=None):
-    if uid is None:
-        uid = request.sid
-    if not users.get(uid):
-        users[uid] = {}
-    if not users[uid].get(name):
-        users[uid][name] = 0
-    users[uid][name] += delta
-    return users[uid][name]
-
-def set_project(name):
-    set_var("project_name", name)
-
-def get_db(modules=()):
-    return Amcdb(project_dir(request.sid), modules)
-
-def projects_dir(uid):
-    return os.path.expanduser('~') + "/Projets-QCM"
-
-def project_dir(uid, p=None):
-    if not p:
-        p = get_var("project_name", uid=uid)
-    if p:
-        return projects_dir(uid) + "/" + p
-    else:
-        return None
-
-def project_clone_name(uid, name):
-    d = projects_dir(uid)
-    i = 0
-    while i<1000:
-        i += 1
-        nn = f"{name}_{i:03}"
-        if not os.path.exists(f"{d}/{nn}"):
-            return(nn)
-    return None
-
-def read_options(uid):
-    d = project_dir(uid)
-    of = d + "/" + "options.xml"
-    options = etree.parse(of)
-    return options
-
-def first_or_none(l):
-    if l:
-        return l[0]
-    else:
-        return None
-
-def change_option(uid, name, value):
-    d = project_dir(uid)
-    of = d + "/" + "options.xml"
-    options = etree.parse(of)
-    x = first_or_none(options.xpath("/*/" + name))
-    if x is None:
-        glob = options.xpath("/*")[0]
-        opt = etree.Element(name)
-        opt.text = str(value)
-        glob.append(opt)
-    else:
-        x.text = str(value)
-    options.write(of)
-
-def get_option(uid, name):
-    options = read_options(uid)
-    return first_or_none(options.xpath(f"/*/{name}/text()"))
-
-def main_source_file(uid):
-    src = get_option(uid, "texsrc")
-    if src:
-        return src.replace("%PROJET/", "")
-    else:
-        return None
-
-def default_source_file(uid):
-    filt = get_option(uid, "filter")
-    if filt == "plain":
-        return "source.txt"
-    else:
-        return "source.tex"
-
-def ncopies(uid):
-    return get_option(uid, "nombre_copies")
-    
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -177,7 +85,7 @@ def io_projects_list():
 def io_project_name(name):
     set_project(name)
     if name:
-        amc_command(request.sid, "db", "upgrade")
+        amc_command(request.sid, "db", "upgrade", app=app)
         emit("ncopies", str(ncopies(request.sid)))
 
 def copy_files_progress(src_folder, dst_folder):
@@ -513,6 +421,9 @@ def file_upload(uid, dest):
         return { 'error': 'File missing' }
     f = request.files['file']
     fn = f.filename.replace("/", "").replace(" ","_")
+    ext = ""
+    if r := re.match(r'.*\.([a-z0-9]{1,3})$', fn):
+        ext = r[1].lower()
     if fn == '':
         return { 'error': 'Empty file' }
     if dest=="create":
@@ -538,6 +449,37 @@ def file_upload(uid, dest):
             return { "ok": True }
         else:
             return { "error": f"Project unknown" }
+    elif dest=="scans":
+        project_name = request.form['project_name']
+        rep = f"{temp_dir}/{uid}/scans"
+        Path(rep).mkdir(parents=True, exist_ok=True)
+        n, path = tempfile.mkstemp(suffix="." + ext, dir=rep)
+        f.save(path)
+        n, list_path = tempfile.mkstemp(prefix="list-", dir=rep)
+        with open(list_path, "w") as f:
+            print(path, file=f)
+        socketio.emit("begin-command", to=uid)
+        socketio.emit("t", "Extracting scans images…", to=uid)
+        messages, variables = amc_command(
+            uid, "getimages",
+            "--list", list_path,
+            "--copy-to", project_dir(uid) + "/scans",
+            "--progression-id", "GETI", app=app
+        )
+        socketio.emit("t", "Automatic data capture…", to=uid)
+        amc_command(
+            uid, "analyse",
+            "--liste-fichiers", list_path,
+            "--unlink-on-global-error",
+            "--progression-id", "SCAN",
+            "--progression", "1",
+            messages=messages, variables=variables, app=app
+        )
+        socketio.emit("end-command", to=uid)
+        socketio.emit("lock-photocopy", to=uid)
+        show_messages(messages)
+        #io_scans_report()
+        return { "ok": True }
     else:
         socketio.emit("end-command", to=uid)
         return { "error": f"Unknown upload dest: {dest}" }
@@ -647,58 +589,6 @@ def io_doc_type(t):
             emit("document-content",
                  [False, render_template("document_missing.html")])
 
-def amc_command(uid, *args, messages=None, variables=None):
-    command = [ "/usr/bin/auto-multiple-choice",
-                *args ]
-    if uid:
-        command += ["--project-dir", project_dir(uid)]
-    process = subprocess.Popen(command,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT,
-                               text=True)
-    prop = 0
-    if messages is None:
-        messages = { "ERR":[], "INFO":[], "WARN":[] }
-    if variables is None:
-        variables = {}
-    while True:
-        line = process.stdout.readline()
-        if not line:
-            break  # Reached the end of stdout
-        line = line.strip()
-        app.logger.debug("c-out> " + line)
-        avance = re.match(r'===<(.*)>=\+([0-9,.]+(?:e[+-]?[0-9]+)?)', line)
-        if avance:
-            aid = avance[1]
-            delta = float(avance[2])
-            prop += delta
-            if prop < 0:
-                prop=0
-            if prop > 1:
-                prop = 1
-            emit("p", prop)
-        avance = re.match(r'===<(.*)>=T\((.*)\)$', line)
-        if avance:
-            aid = avance[1]
-            text = avance[2]
-            prop = 0
-            emit("t", text)
-            emit("p", prop)
-        m = re.match(r'^(ERR|INFO|WARN)[:>]\s*(.*)', line)
-        if m:
-            messages[m[1]].append(m[2])
-        v = re.match(r'^VAR:\s*([^=]+)=(.*)', line)
-        if v:
-            variables[v[1]] = v[2]
-        v = re.match(r'^VAR\+:\s*(.*)', line)
-        if v:
-            variables[v[1]] = int(variables[v[1]]) + 1
-        of = re.match(r'^(OK|FAILED)', line)
-        if of:
-            variables[of[1]] = int(variables.get(of[1], 0)) + 1
-            
-    return messages, variables
-
 def select_messages(messages):
     if len(messages) > 10:
         messages = ["<i>Only display the first 10 messages…</i>"] + messages[:10]
@@ -721,7 +611,7 @@ def log_messages(messages):
 
 def clear_data(steps):
     app.logger.info(f"Clear data: {steps}")
-    amc_command(request.sid, "db", "clear", steps)
+    amc_command(request.sid, "db", "clear", steps, app=app)
 
 @socketio.on("doc-update")
 def io_doc_update(t):
@@ -748,7 +638,7 @@ def io_doc_update(t):
     messages, variables = amc_command(request.sid,
                                       "prepare",
                                       "--mode", mode,
-                                      "--progression-id", "MAJ")
+                                      "--progression-id", "MAJ", app=app)
     app.logger.info(f"Variables: {variables}")
 
     e = len(messages["ERR"])
@@ -758,7 +648,7 @@ def io_doc_update(t):
                     "meptex",
                     "--progression-id", "MEP",
                     "--progression", "1",
-                    messages=messages, variables=variables)
+                    messages=messages, variables=variables, app=app)
 
     emit("end-command")
     show_messages(messages)
@@ -775,7 +665,8 @@ def layout_set_page(student, page):
     messages, variables = amc_command(request.sid, "db", "layout-image",
                                       f"{student}/{page}",
                                       "--dest-file", f"{rep}/layout",
-                                      "--css-url", "/static/svg.css")
+                                      "--css-url", "/static/svg.css",
+                                      app=app)
     log_messages(messages)
     url = f"/{request.sid}/layout/{student}/{page}/layout.svg"
     emit("layout-set-page", [f"{student}/{page}", url])
@@ -816,6 +707,7 @@ def io_print_to_printer(data):
         "--imprimante", printer,
         "--student-min", student1,
         "--student-max", student2,
+        app=app
     )
     log_messages(messages)
     emit("end-command")
@@ -845,7 +737,8 @@ def io_print_to_files(data):
         "--student-max", student2,
         "--progression-id", "PRT",
         "--progression", "1",
-        "--output", rep
+        "--output", rep,
+        app=app
     )
     log_messages(messages)
     emit("end-command")
@@ -881,5 +774,81 @@ def build_printed_zip(sid, project):
     rep = f"{temp_dir}/{sid}/printed/{project}"
     send_dir_as_zip(rep, name="printed.zip", recursive=False)
 
+@socketio.on('scans-mode-change')
+def io_scans_mode_change(m):
+    change_option(request.sid, "auto_capture_mode", m)
+
+@socketio.on('scans-mode')
+def io_scans_mode():
+    m = get_option(request.sid, "auto_capture_mode")
+    if m is not None:
+        emit("scans-mode", m)
+    else:
+        app.logger.warning("Options: auto_capture_mode not found")
+        emit("scans-mode", -1)
+
+@socketio.on('scans-report')
+def io_scans_report():
+    threshold = float(get_option(request.sid, "seuil"))
+    threshold_up = float(get_option(request.sid, "seuil_up"))
+    db = get_db()
+    pages = db.capture_pages(threshold, threshold_up)
+    app.logger.info(f"Scans report: {len(pages)} pages")
+    if pages:
+        emit("lock-photocopy")
+    else:
+        emit("unlock-photocopy")
+    emit("scans-report",
+         render_template('scans_report.html',
+                         pages=pages))
+
+@app.route("/<sid>/manual/<student>/<page>/<copy>/<filename>")
+def get_manual_file(sid, student, page, copy, filename):
+    return send_file(f"{temp_dir}/{sid}/{student}/{page}/{copy}/{filename}")
+    
+@socketio.on('scans-page-select')
+def io_scans_page_select(data):
+    student, page, copy = data
+    rep = f"{temp_dir}/{request.sid}/{student}/{page}/{copy}"
+    Path(rep).mkdir(parents=True, exist_ok=True)
+    messages, variables = amc_command(request.sid, "db", "layout-image",
+                                      f"{student}/{page}:{copy}",
+                                      "--scan",
+                                      "--dest-file", f"{rep}/manual",
+                                      "--url-prefix", f"/{request.sid}/manual/{student}/{page}/{copy}/",
+                                      app=app)
+    log_messages(messages)
+    url = f"/{request.sid}/manual/{student}/{page}/{copy}/manual.svg"
+
+    with open(rep + "/manual.svg", "r") as svgf:
+        svg = svgf.read()
+    
+    scans_page_zooms(student, page, copy)
+
+    emit("scans-manual",
+         render_template("manual_view.html",
+                         svg=svg,
+                         student=student, page=page, copy=copy))
+
+    emit("update-ticked-zooms")
+
+def scans_page_zooms(student, page, copy, uid=None):
+    if uid is None:
+        uid = request.sid
+    db = get_db(uid=uid)
+    zooms = sorted(db.page_zooms(student, page, copy), key=lambda z: z['prop'])
+    for z in zooms:
+        z["image"] = "data:image/png;base64," + base64.b64encode(z["imagedata"]).decode("utf-8")
+    emit("scans-zooms",
+         render_template("zooms.html", zooms=zooms))
+
+@socketio.on('set-manual')
+def io_set_manual(data):
+    student, page, copy, question, answer, ticked = data
+    db = get_db()
+    db.set_manual(student, page, copy, question, answer, ticked,
+                  uid=request.sid)
+    emit("set-manual", [question, answer, ticked])
+    
 if __name__ == '__main__':
     socketio.run(app, debug=True)
