@@ -71,7 +71,7 @@ class Amcdb:
         return self.db.execute("SELECT timestamp_manual FROM capture.capture_page WHERE student=? AND page=? AND copy=?", (student, page, copy)).fetchone()[0]       
 
     def set_manual(self, student, page, copy, question, answer, ticked,
-                   uid=None):
+                   uid=None, app=None):
         self.use_module("capture")
         if self.page_t_manual(student, page, copy)==0:
             messages, variables = amc_command(
@@ -80,6 +80,8 @@ class Amcdb:
             )
             if messages["ERR"]:
                 return
+            if app:
+                app.socketio.emit("allow-revert", to=uid)
         self.db.execute("UPDATE capture.capture_zone SET manual=? WHERE student=? AND page=? AND copy=? AND type=? AND id_a=? AND id_b=?",
                         ((1 if ticked else 0), student,page,copy,
                          4, question, answer))
@@ -87,6 +89,12 @@ class Amcdb:
         self.db.execute("UPDATE capture.capture_page SET timestamp_manual=? WHERE student=? AND page=? AND copy=?",
                         (time, student, page, copy))
         self.db.commit()
+
+    def revert_manual(self, student, page, copy, uid=None):
+        messages, variables = amc_command(
+            uid, "db", "remove-manual",
+            f"{student}/{page}:{copy}",
+        )
 
     def page_zooms(self, student, page, copy):
         self.use_module("capture")
@@ -99,3 +107,22 @@ class Amcdb:
                   AND imagedata IS NOT NULL""",
             (student, page, copy, 4)).fetchall()
         return z
+
+    def get_boxes_status(self, student, page, copy,
+                         threshold, threshold_up):
+        self.use_module("capture")
+        self.db.row_factory = dict_factory
+        return self.db.execute(
+            """SELECT id_a AS question, id_b AS answer, manual,
+            CASE WHEN total <= 0 THEN 0
+                 WHEN black >= ? * total
+                      AND black <= ? * total THEN 1
+                 ELSE 0
+            END as auto_ticked
+            FROM capture.capture_zone
+            WHERE student=? AND page=? AND copy=?
+            """,
+            (threshold, threshold_up,
+             student, page, copy)
+        ).fetchall()
+

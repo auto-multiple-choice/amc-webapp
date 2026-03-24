@@ -71,6 +71,14 @@ h1 {
     background: #ffac29;
 }
 
+.btn-fixed {
+    position: sticky;
+    display: flex;
+    justify-content: flex-end;
+    padding-right: 5px;
+    top: 5px;
+}
+
 .espace {
     margin: 10px;
 }
@@ -494,6 +502,10 @@ input.one-way:checked ~ div {
 
 #scans-pages tbody tr:hover {
     background: #9bdfa8;
+}
+
+tr[amc-manual="0"] .manual-tag {
+    display: none;
 }
 
 .lock-header thead { 

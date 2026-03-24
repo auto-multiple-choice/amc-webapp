@@ -11,6 +11,7 @@
     <tr onclick="scans_page_select(this,{{ p["student"] }},{{ p["page"] }},{{ p["copy"] }});"
         class="pagerow"
         amc-student="{{ p["student"] }}" amc-copy="{{ p["copy"] }}" amc-page="{{ p["page"] }}"
+        amc-manual="{% if p["timestamp_manual"]>0 %}1{%else %}0{% endif %}"
         amc-mse="{{ p["mse"] }}" amc-sens="{{ p["sensitivity"] }}">
       <td>{{ p["student"] }}/{{ p["page"] }}
         {%- if p["copy"]>0 -%}
@@ -18,7 +19,7 @@
         {%- endif -%}
       </td>
       <td>{{ p["mse"]|round(1) }}</td>
-      <td>{% if p["timestamp_manual"] >0 %}({% endif %}{{ p["sensitivity"]|round(1) }}{% if p["timestamp_manual"] >0 %}){% endif %}</td>
+      <td><span class="manual-tag">(</span>{{ p["sensitivity"]|round(1) }}<span class="manual-tag">)</span></td>
     </tr>
     {% endfor %}
   </tbody>

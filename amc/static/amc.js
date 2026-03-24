@@ -599,12 +599,39 @@ function update_all_zooms_ticked() {
     z.scrollTo(0, 0);
 }
 
+function allow_manual_revert(ok) {
+    var r = document.getElementById("manual-revert");
+    if(ok) {
+        r.classList.remove("hidden");
+    } else {
+        r.classList.add("hidden");
+    }
+    r = document.getElementsByClassName("selected pagerow")[0];
+    r.setAttribute("amc-manual", ok ? "1" : "0");
+}
+
+socket.on("allow-revert", ()=> allow_manual_revert(true));
+socket.on("disallow-revert", ()=> allow_manual_revert(false));
+
 socket.on("scans-manual", function(html) {
     var manual = document.getElementById('manual');
     if(manual) {
         manual.innerHTML = html;
+
+        var s = document.getElementsByClassName("selected pagerow")[0];
+        allow_manual_revert(s.getAttribute("amc-manual") == "1");
     }
 });
+
+function revert_manual() {
+    var v = document.getElementById('manual-view');
+    socket.emit(
+        "revert-manual",
+        [ v.getAttribute("amc-student"),
+          v.getAttribute("amc-page"),
+          v.getAttribute("amc-copy") ]
+    );
+}
 
 socket.on("update-ticked-zooms", update_all_zooms_ticked);
 
@@ -627,7 +654,7 @@ function scans_page_select(e, student, page, copy) {
     socket.emit("scans-page-select", [student,page,copy]);
 }
 
-socket.on("set-manual", function(data) {
+socket.on("tick-box", function(data) {
     var question = data[0];
     var answer = data[1];
     var ticked = data[2];

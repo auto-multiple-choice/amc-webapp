@@ -857,8 +857,24 @@ def io_set_manual(data):
     student, page, copy, question, answer, ticked = data
     db = get_db()
     db.set_manual(student, page, copy, question, answer, ticked,
-                  uid=request.sid)
-    emit("set-manual", [question, answer, ticked])
+                  uid=request.sid, app=app)
+    emit("tick-box", [question, answer, ticked])
+
+@socketio.on('revert-manual')
+def io_revert_manual(data):
+    student, page, copy = data
+    threshold = float(get_option(request.sid, "seuil"))
+    threshold_up = float(get_option(request.sid, "seuil_up"))
+    db = get_db()
+    boxes = db.get_boxes_status(student, page, copy,
+                                threshold, threshold_up)
+    db.revert_manual(student, page, copy,
+                     uid=request.sid)
+    # update view
+    emit("disallow-revert")
+    for b in boxes:
+        if b["auto_ticked"] != b["manual"]:
+            emit("tick-box", [ b["question"], b["answer"], b["auto_ticked"] ])
     
 if __name__ == '__main__':
     socketio.run(app, debug=True)
