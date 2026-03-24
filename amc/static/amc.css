@@ -72,11 +72,9 @@ h1 {
 }
 
 .btn-fixed {
-    position: sticky;
-    display: flex;
-    justify-content: flex-end;
-    padding-right: 5px;
+    position: fixed;
     top: 5px;
+    right: 5px;
 }
 
 .espace {
