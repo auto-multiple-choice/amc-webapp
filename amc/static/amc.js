@@ -721,8 +721,14 @@ function upload_scans() {
     }
 }
 
+function add_student() {
+    var student = parseInt(document.getElementById('add-student-n').value);
+    socket.emit("add-student", student);
+    document.getElementById('add-student-n').value = "";
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-   tab_main();
+    tab_main();
     project_name = localStorage.getItem("project-name");
     if(project_name)
         project_open(project_name);

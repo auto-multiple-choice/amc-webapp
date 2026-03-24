@@ -476,7 +476,7 @@ def file_upload(uid, dest):
             messages=messages, variables=variables, app=app
         )
         socketio.emit("end-command", to=uid)
-        socketio.emit("lock-photocopy", to=uid)
+        lock_scans_mode()
         show_messages(messages)
         #io_scans_report()
         return { "ok": True }
@@ -787,6 +787,17 @@ def io_scans_mode():
         app.logger.warning("Options: auto_capture_mode not found")
         emit("scans-mode", -1)
 
+def lock_scans_mode(uid=None):
+    if uid is None:
+        uid = request.sid
+    m = int(get_option(uid, "auto_capture_mode"))
+    if m is None or m < 0:
+        m = 0
+        emit("scans-mode", m)
+        change_option(request.sid, "auto_capture_mode", m)
+    socketio.emit("lock-photocopy", to=uid)
+    return m
+
 def scans_report(threshold, threshold_up):
     db = get_db()
     pages = db.capture_pages(threshold, threshold_up)
@@ -868,13 +879,22 @@ def io_revert_manual(data):
     db = get_db()
     boxes = db.get_boxes_status(student, page, copy,
                                 threshold, threshold_up)
-    db.revert_manual(student, page, copy,
-                     uid=request.sid)
+    db.revert_manual(student, page, copy)
     # update view
     emit("disallow-revert")
     for b in boxes:
         if b["auto_ticked"] != b["manual"]:
             emit("tick-box", [ b["question"], b["answer"], b["auto_ticked"] ])
-    
+
+@socketio.on('add-student')
+def io_add_student(student):
+    app.logger.info(f"Add student: {student}")
+    m = lock_scans_mode()
+    db = get_db()
+    first_page, copy = db.add_student(student, m)
+    if first_page:
+        io_scans_report()        
+        io_scans_page_select([student, first_page, copy])
+        
 if __name__ == '__main__':
     socketio.run(app, debug=True)

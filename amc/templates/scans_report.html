@@ -18,8 +18,8 @@
         :{{ p["copy"] }}
         {%- endif -%}
       </td>
-      <td>{{ p["mse"]|round(1) }}</td>
-      <td><span class="manual-tag">(</span>{{ p["sensitivity"]|round(1) }}<span class="manual-tag">)</span></td>
+      <td>{% if p["mse"] == None %}--{% else %}{{ p["mse"]|round(1) }}{% endif %}</td>
+      <td>{% if p["sensitivity"] == None %}--{% else %}<span class="manual-tag">(</span>{{ p["sensitivity"]|round(1) }}<span class="manual-tag">)</span>{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody>

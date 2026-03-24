@@ -591,4 +591,11 @@ tr[amc-manual="0"] .manual-tag {
     margin-top: -5px;
 }
 
-
+#add-student {
+    margin-top: 5px;
+    margin-bottom: 5px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    border-top: #aaa dashed 1px;
+    border-bottom: #aaa dashed 1px;
+}

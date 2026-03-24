@@ -68,7 +68,20 @@ class Amcdb:
 
     def page_t_manual(self, student, page, copy):
         self.use_module("capture")
-        return self.db.execute("SELECT timestamp_manual FROM capture.capture_page WHERE student=? AND page=? AND copy=?", (student, page, copy)).fetchone()[0]       
+        return self.db.execute("SELECT timestamp_manual FROM capture.capture_page WHERE student=? AND page=? AND copy=?", (student, page, copy)).fetchone()[0]
+
+    def get_zoneid(self, student, page, copy, question, answer):
+        self.use_module("capture")
+        self.db.execute(
+            """INSERT OR IGNORE INTO capture.capture_zone
+            (student, page, copy, type, id_a, id_b) VALUES (?,?,?,?,?,?)""",
+            (student, page, copy, 4, question, answer))
+        self.db.commit()
+        return self.db.execute(
+            """SELECT zoneid FROM capture.capture_zone
+            WHERE student=? AND page=? AND copy=?
+              AND type=? AND id_a=? AND id_b=?""",
+              (student, page, copy, 4, question, answer)).fetchone()[0]
 
     def set_manual(self, student, page, copy, question, answer, ticked,
                    uid=None, app=None):
@@ -82,19 +95,25 @@ class Amcdb:
                 return
             if app:
                 app.socketio.emit("allow-revert", to=uid)
-        self.db.execute("UPDATE capture.capture_zone SET manual=? WHERE student=? AND page=? AND copy=? AND type=? AND id_a=? AND id_b=?",
-                        ((1 if ticked else 0), student,page,copy,
-                         4, question, answer))
+        zoneid = self.get_zoneid(student, page, copy, question, answer)
+        self.db.execute("UPDATE capture.capture_zone SET manual=? WHERE zoneid=?",
+                        ((1 if ticked else 0), zoneid))
         time = int(datetime.datetime.now().timestamp())
         self.db.execute("UPDATE capture.capture_page SET timestamp_manual=? WHERE student=? AND page=? AND copy=?",
                         (time, student, page, copy))
         self.db.commit()
 
-    def revert_manual(self, student, page, copy, uid=None):
-        messages, variables = amc_command(
-            uid, "db", "remove-manual",
-            f"{student}/{page}:{copy}",
-        )
+    def revert_manual(self, student, page, copy):
+        self.use_module("capture")
+        self.db.execute(
+            """UPDATE capture.capture_zone SET manual=-1
+            WHERE student=? AND page=? AND copy=? AND type=4""",
+            (student, page, copy))
+        self.db.execute(
+            """UPDATE capture.capture_page SET timestamp_manual=0
+            WHERE student=? AND page=? AND copy=?""",
+            (student, page, copy))
+        self.db.commit()
 
     def page_zooms(self, student, page, copy):
         self.use_module("capture")
@@ -126,3 +145,43 @@ class Amcdb:
              student, page, copy)
         ).fetchall()
 
+    def add_student(self, student, photocopy):
+        self.use_module("layout")
+        self.use_module("capture")
+        pages = [ x[0] for x in self.db.execute(
+            """SELECT page FROM layout.layout_box
+            WHERE role=1 AND student=? GROUP BY page""",
+            (student,)).fetchall() ]
+
+        if not pages:
+            return None, None
+
+        first_page = min(pages)
+
+        c = self.db.execute("SELECT max(copy) FROM capture.capture_page WHERE student=?",
+                            (student,)).fetchone()[0]
+        if photocopy:
+            if c is not None:
+                copy = c + 1
+            else:
+                copy = 1
+        else:
+            if c is not None:
+                return first_page, 0
+            copy = 0
+
+        # create empty manual data capture for all pages for given student
+
+        for page in pages:
+            time = 1
+            self.db.execute(
+                """INSERT INTO capture.capture_page(student, page, copy, timestamp_manual)
+                VALUES (?, ?, ?, ?)""",
+                (student, page, copy, time))
+
+        self.db.commit()
+        return first_page, copy
+            
+                
+        
+            
