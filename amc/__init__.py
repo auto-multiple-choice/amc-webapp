@@ -893,7 +893,8 @@ def io_add_student(student):
     db = get_db()
     first_page, copy = db.add_student(student, m)
     if first_page:
-        io_scans_report()        
+        io_scans_report()
+        emit("scans-page-select", [student, first_page, copy])
         io_scans_page_select([student, first_page, copy])
         
 if __name__ == '__main__':

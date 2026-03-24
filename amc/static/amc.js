@@ -646,13 +646,24 @@ socket.on("scans-zooms", function(html) {
     }
 });
 
-function scans_page_select(e, student, page, copy) {
+function highlight_selected_page(e, student, page, copy) {
+    if(e == null) {
+        e = document.querySelector(`.pagerow[amc-student="${student}"][amc-page="${page}"][amc-copy="${copy}"]`);
+    }
     for(old of document.getElementsByClassName("selected pagerow")) {
         old.classList.remove("selected");
     }
-    e.classList.add("selected");
+    if(e) e.classList.add("selected");
+}
+
+function scans_page_select(e, student, page, copy) {
+    highlight_selected_page(e, student, page, copy);
     socket.emit("scans-page-select", [student,page,copy]);
 }
+
+socket.on("scans-page-select", function(data) {
+    highlight_selected_page(null, ...data);
+});
 
 socket.on("tick-box", function(data) {
     var question = data[0];
