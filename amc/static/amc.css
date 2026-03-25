@@ -32,6 +32,13 @@ h1 {
     flex-direction: column;
 }
 
+.part-title {
+    font-weight: bold;
+    background: #eee;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
 .offline {
     color: #f42727;
 }
@@ -610,10 +617,9 @@ tr[amc-manual="0"] .manual-tag {
 #grading {
     display: flex;
     flex-direction: column;
+    flex-wrap: wrap;
 }
 
-#identification {
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: #aaa solid 2px;
+#grading > div {
+    width: 20em;
 }

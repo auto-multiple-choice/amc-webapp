@@ -982,6 +982,19 @@ def unique_keys(rows):
             ukeys.append(k)
     return ukeys
 
+@socketio.on('change-lkey')
+def io_change_lkey(data):
+    lkey, force = data
+    change_option(request.sid, "liste_key", lkey)
+    if force:
+        db = get_db()
+        db.clear_associations()
+        io_identification()
+
+@socketio.on('change-acode')
+def io_change_lkey(acode):
+    change_option(request.sid, "assoc_code", acode)
+
 @socketio.on('identification')
 def io_identification():
     path = students_list_file()
@@ -999,19 +1012,33 @@ def io_identification():
         for x in ('etud','etu','student','number','id','ID'):
             if x in ukeys:
                 lkey = x
+        if lkey:
+            change_option(request.sid, "liste_key", lkey)
 
     db = get_db()
     codes = db.codes_list()
+    n_id = db.n_identifications()
+    n_students = db.n_graded_students()
     acode = get_option(request.sid, "assoc_code")
     if not acode:
         if len(codes) == 1:
             acode = codes[0]
+            change_option(request.sid, "assoc_code", acode)
         
     emit("identification",
          render_template("identification.html",
                          filename=lname, ukeys=ukeys, lkey=lkey,
-                         codes=codes, acode=acode))
-    
+                         codes=codes, acode=acode,
+                         n_id=n_id, n_students=n_students))
+
+@socketio.on('association-auto')
+def io_association_auto():
+    messages, variables = amc_command(
+            request.sid, "association-auto",
+            app=app
+    )
+    show_messages(messages)
+    io_identification()
         
 if __name__ == '__main__':
     socketio.run(app, debug=True)

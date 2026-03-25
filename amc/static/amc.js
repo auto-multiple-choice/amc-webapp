@@ -766,6 +766,26 @@ socket.on("show-marks", function(html) {
     }
 });
 
+function change_lkey(e, fixed) {
+    if(fixed) {
+        if(confirm("Do you really want to change this key? This will cancel all the papers/students associations!")) {
+            socket.emit("change-lkey", [e.value, true]);
+        } else {
+            e.value = fixed;
+        }
+    } else {
+        socket.emit("change-lkey", [e.value, false]);
+    }
+}
+
+function change_acode(e) {
+    socket.emit("change-acode", e.value);
+}
+
+function association_auto() {
+    socket.emit("association-auto");
+}
+
 // ----------------------- MAIN
 
 document.addEventListener('DOMContentLoaded', function() {

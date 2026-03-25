@@ -195,5 +195,21 @@ class Amcdb:
         maxis = self.db.execute(
             "SELECT DISTINCT max FROM scoring.scoring_mark").fetchall()
         return [ x[0] for x in marks ], [ x[0] for x in maxis ]
+
+    def n_graded_students(self):
+        self.use_module("scoring")
+        x = self.db.execute("SELECT count(*) FROM scoring.scoring_mark").fetchone()
+        return x[0]
         
-            
+    def n_identifications(self):
+        self.use_module("association")
+        x = self.db.execute("""
+        SELECT count(*) FROM association.association_association
+        WHERE manual IS NOT NULL OR auto IS NOT NULL""").fetchone()
+        return x[0]
+
+    def clear_associations(self):
+        self.use_module("association")
+        self.db.execute("DELETE FROM association.association_association")
+        self.db.commit()
+        
