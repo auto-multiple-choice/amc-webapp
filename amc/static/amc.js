@@ -738,6 +738,36 @@ function add_student() {
     document.getElementById('add-student-n').value = "";
 }
 
+// ----------------------- GRADING
+
+function tab_grading() {
+    show_tab("grading").then(() => {
+        socket.emit("show-marks");
+        socket.emit("identification");
+    });
+}
+
+socket.on("identification", function(html) {
+    var i = document.getElementById('identification');
+    if(i) {
+        i.innerHTML = html;
+    }
+});
+
+function do_mark() {
+    var u = document.getElementById('extract-scale').checked;
+    socket.emit("do-mark", u);
+}
+
+socket.on("show-marks", function(html) {
+    var i = document.getElementById('marks-report');
+    if(i) {
+        i.innerHTML = html;
+    }
+});
+
+// ----------------------- MAIN
+
 document.addEventListener('DOMContentLoaded', function() {
     tab_main();
     project_name = localStorage.getItem("project-name");

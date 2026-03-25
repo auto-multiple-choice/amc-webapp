@@ -181,7 +181,19 @@ class Amcdb:
 
         self.db.commit()
         return first_page, copy
-            
-                
+
+    def codes_list(self):
+        self.use_module("scoring")
+        codes = self.db.execute(
+            "SELECT DISTINCT code FROM scoring.scoring_code").fetchall()
+        return [ x[0] for x in codes ]
+
+    def get_marks(self):
+        self.use_module("scoring")
+        marks = self.db.execute(
+            "SELECT mark FROM scoring.scoring_mark").fetchall()
+        maxis = self.db.execute(
+            "SELECT DISTINCT max FROM scoring.scoring_mark").fetchall()
+        return [ x[0] for x in marks ], [ x[0] for x in maxis ]
         
             

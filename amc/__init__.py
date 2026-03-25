@@ -11,6 +11,7 @@ import io
 import zipfile
 import tarfile
 import base64
+import csv
 from lxml import etree
 
 from amc.db import Amcdb
@@ -896,6 +897,121 @@ def io_add_student(student):
         io_scans_report()
         emit("scans-page-select", [student, first_page, copy])
         io_scans_page_select([student, first_page, copy])
+
+@socketio.on('show-marks')
+def io_show_marks():
+    db = get_db()
+    marks, maxis = db.get_marks()
+    full = float(get_option(request.sid, "note_max"))
+    if full == 0:
+        if len(maxis) == 1:
+            full = maxis[0]
+        else:
+            full = None
+    if marks:
+        mean = sum(marks)/len(marks)
+    else:
+        mean = None
+    emit("show-marks",
+         render_template("show_marks.html",
+                         marks=marks, nmarks=len(marks),
+                         mean=mean, full=full))
+
+@socketio.on('do-mark')
+def io_do_mark(update):
+    messages = {}
+    variables = {}
+    emit("begin-command")
+    if update:
+        amc_command(
+            request.sid, "prepare",
+            "--mode", "b",
+            "--progression-id", "MAJ", "--progression", "1",
+            messages=messages, variables=variables, app=app
+        )
+    amc_command(
+        request.sid, "note",
+        "--progression-id", "GRD",
+        "--progression", "1",
+        messages=messages, variables=variables, app=app
+    )
+    emit("end-command")
+    show_messages(messages)
+    io_show_marks()
+    io_identification()
+
+def students_list_file(uid=None):
+    if uid is None:
+        uid = request.sid
+    path = get_option(uid, "listeetudiants")
+    pdir = project_dir(uid)
+    if path:
+        path = path.replace('%PROJETS/', projects_dir(uid) + "/", 1)
+        path = path.replace('%PROJET/', pdir + "/", 1)
+    else:
+        for x in ('students.csv', 'students.txt',
+                  'etudiants.csv', 'etudiants.txt'):
+            if os.path.isfile(f"{pdir}/{x}"):
+                path = f"{pdir}/{x}"
+    return path
+
+def list_file_read(path):
+    skip = 0
+    f = open(path, "r")
+    line = "#"
+    while line[0]=="#":
+        skip = f.tell()
+        line = f.readline()
+    f.seek(skip)
+    dialect = csv.Sniffer().sniff(f.read(1024), ",:;\t")
+    f.seek(skip)
+    reader = csv.DictReader(f, dialect=dialect)
+    rows = []
+    for row in reader:
+        rows.append(row)
+    f.close()
+    return rows
+
+def unique_keys(rows):
+    if not rows:
+        return []
+    ukeys = []
+    for k in rows[0].keys():
+        x = [r[k] for r in rows]
+        if len(x) == len(list(set(x))):
+            ukeys.append(k)
+    return ukeys
+
+@socketio.on('identification')
+def io_identification():
+    path = students_list_file()
+    if path:
+        ldir, lname = os.path.split(path)
+        rows = list_file_read(path)
+        ukeys = unique_keys(rows)
+    else:
+        lname = None
+        ukeys = []
+
+    lkey = get_option(request.sid, "liste_key")
+    if (not lkey) or (lkey not in ukeys):
+        lkey = None
+        for x in ('etud','etu','student','number','id','ID'):
+            if x in ukeys:
+                lkey = x
+
+    db = get_db()
+    codes = db.codes_list()
+    acode = get_option(request.sid, "assoc_code")
+    if not acode:
+        if len(codes) == 1:
+            acode = codes[0]
+        
+    emit("identification",
+         render_template("identification.html",
+                         filename=lname, ukeys=ukeys, lkey=lkey,
+                         codes=codes, acode=acode))
+    
         
 if __name__ == '__main__':
     socketio.run(app, debug=True)

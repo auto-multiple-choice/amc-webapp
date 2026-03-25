@@ -1,0 +1,9 @@
+{% if marks %}
+Mean: {{ mean | round(1) }}
+{% if full %}
+/ {{ full | round(1) }}
+{% endif %}
+({{ nmarks }} students)
+{% else %}
+No marks yet.
+{% endif %}

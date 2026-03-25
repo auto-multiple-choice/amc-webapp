@@ -1,0 +1,42 @@
+{% if filename %}
+<div>
+  Students: <span class="filename">{{ filename }}</span>
+</div>
+{% if ukeys %}
+<div>
+  Key in students file:
+  <select id="lkey">
+    {% for k in ukeys %}
+    <option value="{{ k }}"
+            {% if k==lkey %}selected{% endif %}
+            >{{ k }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% else %}
+<div>
+  No unique key in this students file!
+</div>
+{% endif %}
+{% if codes %}
+<div>
+  Code for identification:
+  <select id="acode">
+    {% for k in codes %}
+    <option value="{{ k }}"
+            {% if k==acode %}selected{% endif %}
+            >{{ k }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% else %}
+<div>
+  No code found.
+</div>
+{% endif %}
+{% else %}
+<div>
+  Please add a <span class="filename">students.csv</span>
+  file in your project directory.
+</div>
+{% endif %}
