@@ -2,7 +2,7 @@
 import re
 import subprocess
 
-from amc.basic import *
+from basic import *
 
 def command_str(command):
     return " ".join([ x if x else '""' for x in command ])

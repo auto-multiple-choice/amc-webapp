@@ -17,9 +17,9 @@ from urllib.parse import quote
 from unidecode import unidecode
 from lxml import etree
 
-from amc.db import Amcdb
-from amc.command import amc_command
-from amc.basic import *
+from db import Amcdb
+from command import amc_command
+from basic import *
 
 from flask import Flask, render_template, request, send_file
 from flask_socketio import SocketIO, emit

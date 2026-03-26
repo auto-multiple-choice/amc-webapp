@@ -2,8 +2,8 @@
 import datetime
 import sqlite3
 
-from amc.basic import *
-from amc.command import amc_command
+from basic import *
+from command import amc_command
 
 def dict_factory(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
