@@ -2,6 +2,7 @@
 import re
 import os
 from pathlib import Path
+import datetime
 import shutil
 import tempfile
 import sys
@@ -1118,7 +1119,46 @@ def io_associate(data):
     app.logger.info(f"Associated: [{student},{copy}] <-> \"{student_id}\" | {to_rm}")
     emit("update-association",
          [ student, copy, student_id, to_rm ])
-    
+
+@socketio.on('export-config')
+def io_export_config():
+    emit("export-config",
+         get_options(request.sid, "export_"))
+
+@socketio.on('set-config')
+def io_set_config(data):
+    change_option(request.sid, *data)
+
+@socketio.on('exported-files')
+def io_exported_files(t):
+    if not t:
+        t = int(datetime.datetime.now().timestamp())
+    rep = project_dir(request.sid) + "/exports"
+    files = [ (f,
+              f"/{request.sid}/fs/{get_var('project_name')}/exports/{f}",
+              os.path.getmtime(f"{rep}/{f}") > t)
+             for f in os.listdir(rep)
+             if os.path.isfile(f"{rep}/{f}") ]
+    emit("exported-files",
+         render_template("files.html", files=files))
+
+@socketio.on('do-export')
+def io_do_export():
+    t = int(datetime.datetime.now().timestamp())
+    emit("begin-command")
+    emit("t", "Exporting…")
+    module = get_option(request.sid, "export_module")
+    path = project_dir(request.sid) + "/exports/marks." + module.lower()
+    messages, variables = amc_command(
+        request.sid, "export",
+        "--module", module,
+        "--output", path,
+        "--export-ods-filter",
+        app=app
+    )
+    emit("end-command")
+    io_exported_files(t)
+    show_messages(messages)
         
 if __name__ == '__main__':
     socketio.run(app, debug=True)

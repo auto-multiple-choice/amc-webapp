@@ -85,6 +85,15 @@ def get_option(uid, name):
     options = read_options(uid)
     return first_or_none(options.xpath(f"/*/{name}/text()"))
 
+def get_options(uid, prefix):
+    options = read_options(uid)
+    o = {}
+    for x in options.xpath("/*/*[starts-with(name(),'" + prefix + "')]"):
+        o[x.tag] = x.text
+        if o[x.tag] is None:
+            o[x.tag] = ""
+    return o
+
 def main_source_file(uid):
     src = get_option(uid, "texsrc")
     if src:

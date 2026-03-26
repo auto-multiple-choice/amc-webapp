@@ -514,8 +514,12 @@ function print_to_files() {
     socket.emit("print-to-files", print_range());
 }
 
-socket.on("print-to-files", function(url) {
+function open_file(url) {
     window.location.href = url;
+}
+
+socket.on("print-to-files", function(url) {
+    open_file(url);
     doc_print_finished();
 });
 
@@ -744,6 +748,8 @@ function tab_grading() {
     show_tab("grading").then(() => {
         socket.emit("show-marks");
         socket.emit("identification");
+        socket.emit("export-config");
+        socket.emit("exported-files", null);
     });
 }
 
@@ -920,6 +926,58 @@ socket.on("update-association", function(data) {
         student_highlight(student_id);
     }
     first_not_associated();
+});
+
+function change_export_module(e) {
+    if(!e) e = document.getElementById("export_module");
+    change_config_value(e);
+    var module = e.value;
+    for(const m of ["ods", "CSV"]) {
+        var x = document.getElementById("export-" + m);
+        if(m == module) x.classList.remove("hidden");
+        else x.classList.add("hidden");
+    }
+}
+
+function change_config_value(e) {
+    var value;
+    if(e.type == "checkbox")
+        value = (e.checked ? "on" : "");
+    else if(e.type == "select-one")
+        value = e.value;
+    else {
+        console.log("Unknown type: " + e.type);
+        return;
+    }
+    socket.emit("set-config", [e.getAttribute("id"), value]);
+}
+
+socket.on("export-config", function(data) {
+    for(var k in data) {
+        var e = document.getElementById(k);
+        if(e) {
+            if(e.type == "checkbox")
+                e.checked = Boolean(data[k]);
+            else if(e.type == "select-one")
+                e.value = data[k];
+            else
+                console.log("Unknown type: " + e.type);
+            if(!e.getAttribute("onchange"))
+                e.setAttribute("onchange", "change_config_value(this);");
+        }
+    }
+    change_export_module();
+});
+
+function do_export() {
+    socket.emit("do-export");
+}
+
+socket.on("exported-files", function(html) {
+    var i = document.getElementById('exported-files');
+    if(i) {
+        i.innerHTML = html;
+    }
 });
 
 // ----------------------- MAIN

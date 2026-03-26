@@ -138,7 +138,7 @@ li.selectable.direct {
     cursor: pointer;
 }
 
-li.selectable:hover {
+li.selectable:hover, li.selectable.recent:hover {
     background: #9bdfa8;
 }
 
@@ -148,6 +148,10 @@ ul.neutral > li.selectable:hover {
 
 ul.danger > li.selectable:hover {
     background: #df9b9c;
+}
+
+li.selectable.recent {
+    background: #9bbedf;
 }
 
 .subbtn {

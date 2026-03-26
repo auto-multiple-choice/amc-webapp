@@ -21,6 +21,70 @@
       <div id="identification">
       </div>
     </div>
+    <div>
+      <div class="part-title">
+        Marks export
+      </div>
+      <div id="export-format">
+        <label for="export_module">Format:</label>
+        <select id="export_module" name="export_module"
+                onchange="change_export_module(this);">
+          <option value="ods">LibreOffice (ods)</option>
+          <option value="CSV">CSV</option>
+        </select>
+      </div>
+      <div id="export-main">
+        <input type="checkbox" id="export_include_abs" name="export_include_abs"/>
+        <label for="export_include_abs">Include absentees</label>
+      </div>
+      <div id="export-ods">
+        <div>
+          <label for="export_ods_stats">Stats table:</label>
+          <select id="export_ods_stats" name="export_ods_stats">
+            <option value="">None</option>
+            <option value="h">Horizontal flow</option>
+            <option value="v">Vertical flow</option>
+          </select>
+        </div>
+        <div>
+          <label for="export_ods_statsindic">Indicative stats table:</label>
+          <select id="export_ods_statsindic" name="export_ods_statsindic">
+            <option value="">None</option>
+            <option value="h">Horizontal flow</option>
+            <option value="v">Vertical flow</option>
+          </select>
+        </div>
+        <div>
+          <label for="export_ods_group">Groups score:</label>
+          <select id="export_ods_group" name="export_ods_group">
+            <option value="0">No</option>
+            <option value="1">Yes (value)</option>
+            <option value="2">Yes (percentage)</option>
+          </select>
+          <br/>
+          <label for="export_ods_groupsep">with scope separator:</label>
+          <select id="export_ods_groupsep" name="export_ods_groupsep">
+            <option value=":">':' (colon)</option>
+            <option value=".">'.' (dot)</option>
+          </select>
+        </div>
+      </div>
+      <div id="export-CSV">
+        <div>
+          <label for="export_csv_ticked">Ticked boxes:</label>
+          <select id="export_csv_ticked" name="export_csv_ticked">
+            <option value="">No</option>
+            <option value="01">Yes: 0;0;1;0</option>
+            <option value="AB">Yes: AB</option>
+          </select>
+        </div>
+      </div>
+      <div class="bandeau">
+        <span class="btn btn-ok" onclick="do_export();">Export</span>
+      </div>
+      <div id="exported-files" class="files">
+      </div>
+    </div>
   </div>
   <div id="association" class="hidden">
     <div id="assoc-sheets">
