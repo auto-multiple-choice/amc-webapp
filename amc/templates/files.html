@@ -1,4 +1,5 @@
 <div class="files">
+  {% if files %}
   <ul class="selectable">
     {% for f, url, recent in files %}
     <li class="file-name selectable short direct
@@ -9,6 +10,9 @@
     </li>
     {% endfor %}
   </ul>
+  {% else %}
+  No files yet.
+  {% endif %}
 </div>
 {% if zip_text %}
 <div class="bandeau">
