@@ -786,6 +786,142 @@ function association_auto() {
     socket.emit("association-auto");
 }
 
+function association_manual() {
+    document.getElementById("grading").classList.add("hidden");
+    document.getElementById("association").classList.remove("hidden");
+    socket.emit("assoc-sheets");
+    socket.emit("students-list");
+}
+
+function association_manual_done() {
+    document.getElementById("association").classList.add("hidden");
+    document.getElementById("grading").classList.remove("hidden");
+    socket.emit("identification");
+}
+
+function association_clear() {
+    if(confirm("Are you sure you want to delete all association data?")) {
+        socket.emit("association-clear");
+    }
+}
+
+socket.on("assoc-sheets", function(html) {
+    var e = document.getElementById("assoc-sheets");
+    if(e) {
+        e.innerHTML = html;
+    }
+    select_assoc_sheet(-1,-1);
+    first_not_associated();
+});
+
+socket.on("namefield", function(html) {
+    var e = document.getElementById("studentname");
+    if(e) {
+        e.innerHTML = html;
+    }
+});
+
+socket.on("students-list", function(html) {
+    var e = document.getElementById("students-list");
+    if(e) {
+        e.innerHTML = html;
+    }
+});
+
+var assoc_sheet = [-1,-1];
+
+function student_highlight(id) {
+    var e;
+    for(e of document.querySelectorAll("#students-list li.student-name")) {
+        e.classList.remove("highlight");
+    }
+    if(id != "None") {
+        e = document.querySelector(
+            `#students-list li.student-name[amc-id="${id}"]`
+        );
+        if(e)
+            e.classList.add("highlight");
+    }
+}
+
+function select_assoc_sheet(e, student, copy) {
+    if(student >= 0) {
+        socket.emit("select-assoc-sheet", [student, copy]);
+        var x;
+        for(x of document.querySelectorAll("#assoc-sheets tr"))
+            x.classList.remove("selected");
+        e.classList.add("selected");
+        var auto = e.getAttribute("amc-auto");
+        var manual = e.getAttribute("amc-manual");
+        student_highlight(manual == "None" ? auto : manual);
+    } else {
+        var e = document.getElementById("studentname");
+        if(e) {
+            e.innerHTML = "";
+        }
+        student_highlight("None");
+    }
+    assoc_sheet = [student, copy];
+}
+
+function first_not_associated() {
+    var e = document.querySelector('#assoc-sheets tr[amc-auto="None"][amc-manual="None"]');
+    if(e) {
+        select_assoc_sheet(e,
+                           parseInt(e.getAttribute("amc-student")),
+                           parseInt(e.getAttribute("amc-copy")));
+        e.scrollIntoView();
+    }
+}
+
+function select_student_name(e) {
+    var student_id = e.getAttribute("amc-id");
+    socket.emit("associate", [...assoc_sheet, student_id]);
+}
+
+function set_association_student(student_id, associated) {
+    var e = document.querySelector(
+        `li.student-name[amc-id="${student_id}"]`
+    );
+    if(e) {
+        if(associated)
+            e.classList.add("associated");
+        else
+            e.classList.remove("associated");
+    }
+}
+
+function set_association(student, copy, student_id) {
+    var e = document.querySelector(
+        `#assoc-sheets tbody tr[amc-student="${student}"][amc-copy="${copy}"]`
+    );
+    if(e) {
+        var auto = e.getAttribute("amc-auto");
+        var manual = e.getAttribute("amc-manual");
+        var old = (manual=="None" ? auto : manual);
+        set_association_student(old, false);
+        e.setAttribute("amc-manual", student_id);
+        set_association_student(student_id, true);
+    }
+}
+
+socket.on("update-association", function(data) {
+    var student = data[0];
+    var copy = data[1];
+    var student_id = data[2];
+    var to_rm = data[3];
+    
+    for(sc of to_rm) {
+        set_association(sc[0], sc[1], "");
+    }
+    set_association(student, copy, student_id);
+    if(student == assoc_sheet[0]
+       && copy == assoc_sheet[1]) {
+        student_highlight(student_id);
+    }
+    first_not_associated();
+});
+
 // ----------------------- MAIN
 
 document.addEventListener('DOMContentLoaded', function() {

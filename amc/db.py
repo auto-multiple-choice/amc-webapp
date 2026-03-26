@@ -212,4 +212,42 @@ class Amcdb:
         self.use_module("association")
         self.db.execute("DELETE FROM association.association_association")
         self.db.commit()
+
+    def get_assoc_sheets(self):
+        self.use_module("association")
+        self.use_module("capture")
+        return self.db.execute(
+            """SELECT p.student, p.copy, a.manual, a.auto
+            FROM capture.capture_page as p
+                 LEFT JOIN association.association_association as a
+            ON p.student=a.student AND p.copy=a.copy
+            GROUP BY p.student, p.copy""").fetchall()
+
+    def get_namefield_image(self, student, copy):
+        self.use_module("capture")
+        x = self.db.execute(
+            """SELECT image FROM capture.capture_zone
+            WHERE student=? AND copy=? AND type=?""",
+            (student, copy, 2)).fetchone()
+        if x:
+            return x[0]
+        else:
+            return None
         
+    def associate(self, student, copy, student_id):
+        self.use_module("association")
+        to_rm = list(self.db.execute(
+            """SELECT student, copy FROM association.association_association
+            WHERE (auto=? AND manual IS NULL) OR manual=?""",
+            (student_id, student_id)).fetchall())
+        for s,c in to_rm:
+            self.db.execute(
+                """UPDATE association.association_association
+                SET manual=? WHERE student=? AND copy=?""",
+                ("",s,c))
+        self.db.execute(
+            """INSERT OR REPLACE INTO association.association_association
+            (student, copy, manual) VALUES (?,?,?)""",
+            (student, copy, student_id))
+        self.db.commit()
+        return to_rm

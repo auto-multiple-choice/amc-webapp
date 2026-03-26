@@ -1,0 +1,7 @@
+{% if path %}
+<div class="namefield-ext">
+  <img src="{{path}}" class="namefield"/>
+</div>
+{% else %}
+<div class="sheetnum"><div>Sheet {{ student }}{% if copy %}:{{ copy }}{% endif %}</div></div>
+{% endif %}

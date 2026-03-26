@@ -12,6 +12,7 @@ import zipfile
 import tarfile
 import base64
 import csv
+from unidecode import unidecode
 from lxml import etree
 
 from amc.db import Amcdb
@@ -982,6 +983,38 @@ def unique_keys(rows):
             ukeys.append(k)
     return ukeys
 
+def first_of(l, *proposals):
+    unil = {}
+    for x in l:
+        unil[ unidecode(x.lower()) ] = x
+    for x in proposals:
+        if unil.get(x):
+            return unil[x]
+    return None
+
+def students_flat_list():
+    lkey = get_option(request.sid, "liste_key")
+    path = students_list_file()
+    rows = list_file_read(path)
+    if not rows:
+        return []
+
+    ks = list(rows[0].keys())
+    k_name = first_of(ks, "name", "prenom")
+    k_surname = first_of(ks, "surname", "nom")
+
+    flat = []
+    for r in rows:
+        n = []
+        if r.get(k_surname):
+            n.append(r[k_surname])
+        if r.get(k_name):
+            n.append(r[k_name])
+        flat.append( [r[lkey], " ".join(n), None] )
+
+    flat.sort(key=lambda x: x[1])
+    return flat
+
 @socketio.on('change-lkey')
 def io_change_lkey(data):
     lkey, force = data
@@ -1031,6 +1064,12 @@ def io_identification():
                          codes=codes, acode=acode,
                          n_id=n_id, n_students=n_students))
 
+@socketio.on('association-clear')
+def io_association_clear():
+    db = get_db()
+    db.clear_associations()
+    io_identification()
+    
 @socketio.on('association-auto')
 def io_association_auto():
     messages, variables = amc_command(
@@ -1039,6 +1078,47 @@ def io_association_auto():
     )
     show_messages(messages)
     io_identification()
+
+@socketio.on('assoc-sheets')
+def io_assoc_sheets():
+    db = get_db()
+    sheets = db.get_assoc_sheets()
+    emit("assoc-sheets",
+         render_template("assoc_sheets.html", sheets=sheets))
+
+    students = students_flat_list()
+    back = {}
+    for i in range(len(students)):
+        back[students[i][0]] = i
+    for s in sheets:
+        eff = s[3] if s[3] is not None else s[2]
+        i = back.get(eff)
+        if i is not None:
+            students[i][2] = True
+    emit("students-list",
+         render_template("students_list.html", students=students))
+
+@socketio.on('select-assoc-sheet')
+def io_select_assoc_sheet(data):
+    student, copy = data
+    db = get_db()
+    path = db.get_namefield_image(student, copy)
+    if path:
+        path = f"/{request.sid}/fs/{get_var('project_name')}/cr/{path}"
+    emit("namefield",
+         render_template("namefield.html",
+                         student=student, copy=copy,
+                         path=path))
+
+@socketio.on('associate')
+def io_associate(data):
+    student, copy, student_id = data
+    db = get_db()
+    to_rm = db.associate(student, copy, student_id)
+    app.logger.info(f"Associated: [{student},{copy}] <-> \"{student_id}\" | {to_rm}")
+    emit("update-association",
+         [ student, copy, student_id, to_rm ])
+    
         
 if __name__ == '__main__':
     socketio.run(app, debug=True)

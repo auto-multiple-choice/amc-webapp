@@ -82,6 +82,10 @@ h1 {
     background: #ffac29;
 }
 
+.btn-danger {
+    background: #ff7e83;
+}
+
 .btn-fixed {
     position: fixed;
     top: 5px;
@@ -215,6 +219,7 @@ ul.danger > li.selectable:hover {
 
 #tab {
     flex-grow: 1;
+    min-width: 0;
 }
 
 .bandeau {
@@ -241,7 +246,7 @@ ul.danger > li.selectable:hover {
     flex-direction: column;
 }
 
-#code.hidden, #document.hidden, #print.hidden {
+#code.hidden, #document.hidden, #print.hidden, #association.hidden, #grading.hidden {
     display: none;
 }
 
@@ -622,4 +627,102 @@ tr[amc-manual="0"] .manual-tag {
 
 #grading > div {
     width: 20em;
+}
+
+#association {
+    display: flex;
+    flex-direction: row;
+}
+
+#assoc-sheets {
+    height: 100%;
+    flex-grow: 0;
+    flex-shrink: 0;
+    overflow-y: auto;
+}
+
+#assoc-choice {
+    flex-basis: 0;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+#assoc-sheets tr {
+    cursor: default;
+    padding: 2px;
+    text-align: center;
+}
+#assoc-sheets tbody tr {
+    background: #84c8e0;
+}
+#assoc-sheets tbody tr[amc-manual="None"] {
+    background: #9bdfa8;
+}
+#assoc-sheets tbody tr[amc-manual="None"][amc-auto="None"] {
+    background: white;
+}
+#assoc-sheets tbody tr[amc-manual=""] {
+    background: white;
+}
+
+#assoc-sheets td {
+    width: 9em;
+}
+
+#assoc-sheets tr.selected td::before{
+    content: "▶";
+}
+#assoc-sheets tr.selected td::after{
+    content: "◀";
+}
+
+img.namefield {
+    height: 100%;
+}
+
+div.sheetnum {
+    height: 25ex;
+    padding-left: 1ex;
+    padding-right: 1ex;
+    background: #ddd;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+div.sheetnum div {
+    font-size: 15cqh;
+}
+
+#studentname, #assoc-choice, #association {
+    min-width: 0;
+}
+
+.namefield-ext {
+    height: 12rem;
+    overflow-x: auto;
+    overflow-y: clip;
+}
+
+#studentname {
+    display: flex;
+    flex-direction: column;
+    height: 12rem;
+}
+
+#students-list {
+    overflow-y: auto;
+}
+
+#students-list li.student-name {
+    background: #9bbedf;;
+}
+#students-list li.student-name.highlight,
+#students-list li.student-name.associated.highlight
+{
+    background: #9bdfa8;
+}
+#students-list li.student-name.associated {
+    background: #eee;
 }
