@@ -16,6 +16,7 @@ import csv
 from urllib.parse import quote
 from unidecode import unidecode
 from lxml import etree
+import threading
 
 from db import Amcdb
 from command import amc_command
@@ -41,7 +42,16 @@ app.logger.info(f"Temp dir: {temp_dir}")
 def get_db(modules=(), uid=None):
     if uid is None:
         uid = request.sid
-    return Amcdb(project_dir(uid), modules)
+    db = get_thread_var("db", app.logger)
+    if not db:
+        app.logger.warning(f"Create DB for thread {threading.get_ident()} ({uid})")
+        app.logger.debug(
+            f"Active threads: " +
+            ", ".join([str(x.ident)
+                       for x in threading.enumerate()]))
+        db = Amcdb(project_dir(uid), modules)
+        set_thread_var("db", db)
+    return db
 
 @app.route('/')
 def index():

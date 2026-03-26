@@ -25,10 +25,12 @@ class Amcdb:
 
     def layout_npages(self):
         self.use_module("layout")
+        self.db.row_factory = None
         return self.db.execute("SELECT count(*) FROM layout.layout_page").fetchone()[0]
 
     def layout_page_add(self, student, page, delta):
         self.use_module("layout")
+        self.db.row_factory = None
         while delta < 0:
             if student==1 and page==1:
                 s = self.db.execute("SELECT student,page FROM layout.layout_page ORDER BY student DESC, page DESC LIMIT ?", (-delta,)).fetchall()
@@ -52,6 +54,7 @@ class Amcdb:
         
     def student_range(self):
         self.use_module("layout")
+        self.db.row_factory = None
         return self.db.execute("SELECT min(student), max(student) FROM layout.layout_page").fetchone()
 
     def capture_pages(self, threshold=None, threshold_up=None):
@@ -68,10 +71,12 @@ class Amcdb:
 
     def page_t_manual(self, student, page, copy):
         self.use_module("capture")
+        self.db.row_factory = None
         return self.db.execute("SELECT timestamp_manual FROM capture.capture_page WHERE student=? AND page=? AND copy=?", (student, page, copy)).fetchone()[0]
 
     def get_zoneid(self, student, page, copy, question, answer):
         self.use_module("capture")
+        self.db.row_factory = None
         self.db.execute(
             """INSERT OR IGNORE INTO capture.capture_zone
             (student, page, copy, type, id_a, id_b) VALUES (?,?,?,?,?,?)""",
@@ -148,6 +153,7 @@ class Amcdb:
     def add_student(self, student, photocopy):
         self.use_module("layout")
         self.use_module("capture")
+        self.db.row_factory = None
         pages = [ x[0] for x in self.db.execute(
             """SELECT page FROM layout.layout_box
             WHERE role=1 AND student=? GROUP BY page""",
@@ -184,12 +190,14 @@ class Amcdb:
 
     def codes_list(self):
         self.use_module("scoring")
+        self.db.row_factory = None
         codes = self.db.execute(
             "SELECT DISTINCT code FROM scoring.scoring_code").fetchall()
         return [ x[0] for x in codes ]
 
     def get_marks(self):
         self.use_module("scoring")
+        self.db.row_factory = None
         marks = self.db.execute(
             "SELECT mark FROM scoring.scoring_mark").fetchall()
         maxis = self.db.execute(
@@ -198,11 +206,13 @@ class Amcdb:
 
     def n_graded_students(self):
         self.use_module("scoring")
+        self.db.row_factory = None
         x = self.db.execute("SELECT count(*) FROM scoring.scoring_mark").fetchone()
         return x[0]
         
     def n_identifications(self):
         self.use_module("association")
+        self.db.row_factory = None
         x = self.db.execute("""
         SELECT count(*) FROM association.association_association
         WHERE manual IS NOT NULL OR auto IS NOT NULL""").fetchone()
@@ -216,6 +226,7 @@ class Amcdb:
     def get_assoc_sheets(self):
         self.use_module("association")
         self.use_module("capture")
+        self.db.row_factory = None
         return self.db.execute(
             """SELECT p.student, p.copy, a.manual, a.auto
             FROM capture.capture_page as p
@@ -225,6 +236,7 @@ class Amcdb:
 
     def get_namefield_image(self, student, copy):
         self.use_module("capture")
+        self.db.row_factory = None
         x = self.db.execute(
             """SELECT image FROM capture.capture_zone
             WHERE student=? AND copy=? AND type=?""",
@@ -236,6 +248,7 @@ class Amcdb:
         
     def associate(self, student, copy, student_id):
         self.use_module("association")
+        self.db.row_factory = None
         to_rm = list(self.db.execute(
             """SELECT student, copy FROM association.association_association
             WHERE (auto=? AND manual IS NULL) OR manual=?""",
