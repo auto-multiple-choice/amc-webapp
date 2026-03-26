@@ -1194,13 +1194,23 @@ def io_annotation_config():
              ["regroupement_type", "regroupement_compose",
               "add_corrected", "modele_regroupement"]))
 
+def unlink_indiv_annotated(uid):
+    rep = project_dir(uid) + "/cr/corrections/pdf"
+    for f in os.listdir(rep):
+        path = f"{rep}/{f}"
+        if os.path.isfile(path) and f != "all-students.pdf":
+            os.unlink(path)
+    
 @socketio.on("do-annotate")
 def io_do_annotate():
+    single = (get_option(request.sid, "regroupement_type") == "ALL")
+    if not single:
+        unlink_indiv_annotated(request.sid)
     t = int(datetime.datetime.now().timestamp())
     args = []
     emit("begin-command")
     emit("t", "Annotating…")
-    if get_option(request.sid, "regroupement_type") == "ALL":
+    if single:
         args += ["--single-output", "all-students.pdf"]
     messages, variables = amc_command(
         request.sid, "annotate",
