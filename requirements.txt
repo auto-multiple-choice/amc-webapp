@@ -4,3 +4,4 @@ lxml
 sqlite3
 pycups
 unidecode
+filelock

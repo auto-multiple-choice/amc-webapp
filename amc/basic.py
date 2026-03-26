@@ -1,6 +1,7 @@
 
 import os
 from lxml import etree
+from filelock import FileLock
 
 from flask import request
 from flask_socketio import emit
@@ -79,7 +80,9 @@ def change_option(uid, name, value):
         glob.append(opt)
     else:
         x.text = str(value)
-    options.write(of)
+    lock = FileLock(f"{of}.lock")
+    with lock:
+        options.write(of)
 
 def get_option(uid, name):
     options = read_options(uid)
