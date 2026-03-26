@@ -82,7 +82,32 @@
       <div class="bandeau">
         <span class="btn btn-ok" onclick="do_export();">Export</span>
       </div>
-      <div id="exported-files" class="files">
+      <div id="exported-files">
+      </div>
+    </div>
+    <div>
+      <div class="part-title">
+        Annotation
+      </div>
+      <div>
+        <select id="regroupement_type">
+          <option value="STUDENTS">One file per student</option>
+          <option value="ALL">One file for all students</option>
+        </select>
+        <br/>
+        <input type="checkbox" id="regroupement_compose" name="regroupement_compose"/>
+        <label for="regroupement_compose">Insert pages from the subject when needed</label>
+        <br/>
+        <input type="checkbox" id="add_corrected" name="add_corrected"/>
+        <label for="add_corrected">Append the corrected subject</label>
+        <br/>
+        <label for="modele_regroupement">Filename model:</label>
+        <input type="text" id="modele_regroupement" name="modele_regroupement"/>
+      </div>
+      <div class="bandeau">
+        <span class="btn btn-ok" onclick="do_annotate();">Annotate</span>
+      </div>
+      <div id="annotated-files">
       </div>
     </div>
   </div>

@@ -85,13 +85,19 @@ def get_option(uid, name):
     options = read_options(uid)
     return first_or_none(options.xpath(f"/*/{name}/text()"))
 
-def get_options(uid, prefix):
+def get_options(uid, prefix_or_list):
     options = read_options(uid)
     o = {}
-    for x in options.xpath("/*/*[starts-with(name(),'" + prefix + "')]"):
-        o[x.tag] = x.text
-        if o[x.tag] is None:
-            o[x.tag] = ""
+    if isinstance(prefix_or_list, str):
+        es = options.xpath("/*/*[starts-with(name(),'" + prefix_or_list + "')]")
+    else:
+        es = [ first_or_none(options.xpath(f"/*/{name}"))
+               for name in prefix_or_list ]
+    for x in es:
+        if x is not None:
+            o[x.tag] = x.text
+            if o[x.tag] is None:
+                o[x.tag] = ""
     return o
 
 def main_source_file(uid):

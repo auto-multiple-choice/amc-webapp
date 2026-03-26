@@ -750,6 +750,8 @@ function tab_grading() {
         socket.emit("identification");
         socket.emit("export-config");
         socket.emit("exported-files", null);
+        socket.emit("annotation-config");
+        socket.emit("annotated-files", null);
     });
 }
 
@@ -943,7 +945,7 @@ function change_config_value(e) {
     var value;
     if(e.type == "checkbox")
         value = (e.checked ? "on" : "");
-    else if(e.type == "select-one")
+    else if(e.type == "select-one" || e.type == "text")
         value = e.value;
     else {
         console.log("Unknown type: " + e.type);
@@ -952,21 +954,22 @@ function change_config_value(e) {
     socket.emit("set-config", [e.getAttribute("id"), value]);
 }
 
-socket.on("export-config", function(data) {
+socket.on("selected-config", function(data) {
     for(var k in data) {
         var e = document.getElementById(k);
         if(e) {
             if(e.type == "checkbox")
                 e.checked = Boolean(data[k]);
-            else if(e.type == "select-one")
+            else if(e.type == "select-one" || e.type == "text")
                 e.value = data[k];
             else
                 console.log("Unknown type: " + e.type);
             if(!e.getAttribute("onchange"))
                 e.setAttribute("onchange", "change_config_value(this);");
+
+            if(k=="export_module") change_export_module();
         }
     }
-    change_export_module();
 });
 
 function do_export() {
@@ -975,6 +978,17 @@ function do_export() {
 
 socket.on("exported-files", function(html) {
     var i = document.getElementById('exported-files');
+    if(i) {
+        i.innerHTML = html;
+    }
+});
+
+function do_annotate() {
+    socket.emit("do-annotate");
+}
+
+socket.on("annotated-files", function(html) {
+    var i = document.getElementById('annotated-files');
     if(i) {
         i.innerHTML = html;
     }

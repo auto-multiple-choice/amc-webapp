@@ -67,7 +67,9 @@ def fs_file(uid, path):
             return send_file(path,
                              as_attachment=attach)
         elif os.path.isdir(path):
-            return send_dir_as_zip(path)
+            return send_dir_as_zip(path,
+                                   filename=request.args.get('filename'),
+                                   exclude=request.args.get('exclude'))
         else:
             return { "error": "Unknown path type" }
 
@@ -751,7 +753,9 @@ def io_print_to_files(data):
         emit("print-to-files",
              f"/{request.sid}/printed/{get_var('project_name')}/printed.zip")
 
-def send_dir_as_zip(path, name=None, recursive=True):
+def send_dir_as_zip(path, name=None, recursive=True,
+                    filename=None, exclude=None):
+    exclude_files = set(exclude.split(",")) if exclude else set()
     if name is None:
         name = re.sub(r'.*/', "", path) + ".zip"
     data = io.BytesIO()
@@ -760,16 +764,18 @@ def send_dir_as_zip(path, name=None, recursive=True):
             for root, dirs, files in os.walk(path):
                 subroot = root.replace(path, ".", 1)
                 for f in files:
-                    z.write(f"{root}/{f}", arcname=f"{subroot}/{f}")
+                    if f not in exclude_files:
+                        z.write(f"{root}/{f}", arcname=f"{subroot}/{f}")
         else:
             for f_name in os.listdir(path):
-                z.write(f"{path}/{f_name}", arcname=f_name)
+                if f_name not in exclude_files:
+                    z.write(f"{path}/{f_name}", arcname=f_name)
     data.seek(0)
     return send_file(
         data,
         mimetype='application/zip',
         as_attachment=True,
-        download_name=name
+        download_name=(filename or name)
     )
         
 @app.route("/<sid>/printed/<project>/printed.zip")
@@ -1122,25 +1128,40 @@ def io_associate(data):
 
 @socketio.on('export-config')
 def io_export_config():
-    emit("export-config",
+    emit("selected-config",
          get_options(request.sid, "export_"))
 
 @socketio.on('set-config')
 def io_set_config(data):
     change_option(request.sid, *data)
 
-@socketio.on('exported-files')
-def io_exported_files(t):
+def send_dir_list(t, subdir, signal,
+                  zip_text="Download all",
+                  filename=None,
+                  exclude=None):
     if not t:
         t = int(datetime.datetime.now().timestamp())
-    rep = project_dir(request.sid) + "/exports"
+    rep = project_dir(request.sid) + "/" + subdir
+    fsdir = f"/{request.sid}/fs/{get_var('project_name')}/{subdir}"
     files = [ (f,
-              f"/{request.sid}/fs/{get_var('project_name')}/exports/{f}",
+              f"{fsdir}/{f}",
               os.path.getmtime(f"{rep}/{f}") > t)
              for f in os.listdir(rep)
              if os.path.isfile(f"{rep}/{f}") ]
-    emit("exported-files",
-         render_template("files.html", files=files))
+    files.sort()
+    args = []
+    if filename: args.append(f"filename={filename}")
+    if exclude: args.append(f"exclude={exclude}")
+    emit(signal,
+         render_template("files.html", files=files, fsdir=fsdir,
+                         args="&".join(args),
+                         zip_text=zip_text))
+
+@socketio.on('exported-files')
+def io_exported_files(t):
+    project = get_var("project_name")
+    send_dir_list(t, "exports", "exported-files",
+                  filename=f"{project}-exported.zip")
 
 @socketio.on('do-export')
 def io_do_export():
@@ -1160,5 +1181,40 @@ def io_do_export():
     io_exported_files(t)
     show_messages(messages)
         
+@socketio.on('annotation-config')
+def io_annotation_config():
+    emit("selected-config",
+         get_options(
+             request.sid,
+             ["regroupement_type", "regroupement_compose",
+              "add_corrected", "modele_regroupement"]))
+
+@socketio.on("do-annotate")
+def io_do_annotate():
+    t = int(datetime.datetime.now().timestamp())
+    args = []
+    emit("begin-command")
+    emit("t", "Annotating…")
+    if get_option(request.sid, "regroupement_type") == "ALL":
+        args += ["--single-output", "all-students.pdf"]
+    messages, variables = amc_command(
+        request.sid, "annotate",
+        *args,
+        "--progression-id", "ANNOT",
+        "--progression", "1",
+        app=app
+    )
+    emit("end-command")
+    io_annotated_files(t)
+    show_messages(messages)
+
+@socketio.on('annotated-files')
+def io_annotated_files(t):
+    project = get_var("project_name")
+    send_dir_list(t, "cr/corrections/pdf", "annotated-files",
+                  zip_text="Download all individual files",
+                  filename=f"{project}-annotated.zip",
+                  exclude="all-students.pdf")
+
 if __name__ == '__main__':
     socketio.run(app, debug=True)

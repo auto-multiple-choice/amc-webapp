@@ -291,8 +291,19 @@ li.selectable.recent {
     font-family: monospace;
 }
 
+.files {
+    padding: 4px;
+    border: #aaa dashed 2px;
+    margin-top: 4px;
+}
+
 .dirname {
     font-weight: bold;
+}
+
+.files {
+    max-height: 20rem;
+    overflow-y: auto;
 }
 
 #code-code-a {
