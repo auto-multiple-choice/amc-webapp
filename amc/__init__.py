@@ -957,10 +957,15 @@ def students_list_file(uid=None):
         path = path.replace('%PROJETS/', projects_dir(uid) + "/", 1)
         path = path.replace('%PROJET/', pdir + "/", 1)
     else:
+        filename = None
         for x in ('students.csv', 'students.txt',
                   'etudiants.csv', 'etudiants.txt'):
             if os.path.isfile(f"{pdir}/{x}"):
-                path = f"{pdir}/{x}"
+                filename = x
+        if filename:
+            change_option(uid, "listeetudiants", "%PROJET/" + filename)
+            path = f"{pdir}/{filename}"
+                          
     return path
 
 def list_file_read(path):
