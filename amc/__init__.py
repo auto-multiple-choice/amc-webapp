@@ -13,6 +13,7 @@ import zipfile
 import tarfile
 import base64
 import csv
+from urllib.parse import quote
 from unidecode import unidecode
 from lxml import etree
 
@@ -1149,7 +1150,7 @@ def send_dir_list(t, subdir, signal,
     rep = project_dir(request.sid) + "/" + subdir
     fsdir = f"/{request.sid}/fs/{get_var('project_name')}/{subdir}"
     files = [ (f,
-              f"{fsdir}/{f}",
+              f"{fsdir}/{quote(f)}",
               os.path.getmtime(f"{rep}/{f}") > t)
              for f in os.listdir(rep)
              if os.path.isfile(f"{rep}/{f}") ]
