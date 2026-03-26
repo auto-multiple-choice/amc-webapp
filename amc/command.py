@@ -4,6 +4,9 @@ import subprocess
 
 from amc.basic import *
 
+def command_str(command):
+    return " ".join([ x if x else '""' for x in command ])
+
 def amc_command(uid, *args,
                 messages=None, variables=None,
                 app=None):
@@ -11,6 +14,8 @@ def amc_command(uid, *args,
                 *args ]
     if uid:
         command += ["--project-dir", project_dir(uid)]
+    if app:
+        app.logger.info("c-cmd> " + command_str(command))
     process = subprocess.Popen(command,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,
