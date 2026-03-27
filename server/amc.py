@@ -815,7 +815,7 @@ def send_dir_as_zip(path, name=None, recursive=True,
 @app.route("/<sid>/printed/<project>/printed.zip")
 def build_printed_zip(sid, project):
     rep = f"{temp_dir}/{sid}/printed/{project}"
-    send_dir_as_zip(rep, name="printed.zip", recursive=False)
+    return send_dir_as_zip(rep, name="printed.zip", recursive=False)
 
 @socketio.on('scans-mode-change')
 def io_scans_mode_change(m):
