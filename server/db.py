@@ -52,6 +52,11 @@ class Amcdb:
         self.db.row_factory = None
         return self.db.execute("SELECT count(*) FROM capture.capture_page").fetchone()[0]
 
+    def layout_nassociations(self):
+        self.use_module("layout")
+        self.db.row_factory = None
+        return self.db.execute("SELECT count(*) FROM layout.layout_association").fetchone()[0]
+
     def print_timestamp(self):
         return self.get_variable("layout", "print_timestamp")
 

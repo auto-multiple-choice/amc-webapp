@@ -1009,6 +1009,15 @@ def students_list_file(uid=None):
                   'etudiants.csv', 'etudiants.txt'):
             if os.path.isfile(f"{pdir}/{x}"):
                 filename = x
+
+        if not filename:
+            db = get_db(uid)
+            if db.layout_nassociations():
+                cand = [ f for f in os.listdir(pdir)
+                         if f.lower().endswith(".csv") ]
+                if len(cand) == 1:
+                    filename = cand[0]
+                
         if filename:
             change_option(uid, "listeetudiants", "%PROJET/" + filename)
             path = f"{pdir}/{filename}"
