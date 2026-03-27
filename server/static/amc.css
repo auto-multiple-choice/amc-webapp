@@ -56,6 +56,10 @@ h1 {
     cursor: pointer;
 }
 
+.menubtn.current {
+    background: #00a5bf;
+}
+
 .btn {
     padding: 2px;
     border-radius: 5px;
@@ -215,6 +219,7 @@ li.selectable.recent {
     writing-mode: vertical-lr;
     margin-top: 10px;
     margin-left: 4px;
+    cursor: pointer;
 }
 
 .project-change-name {

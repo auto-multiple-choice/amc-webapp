@@ -28,6 +28,11 @@ class Amcdb:
         self.db.row_factory = None
         return self.db.execute("SELECT count(*) FROM layout.layout_page").fetchone()[0]
 
+    def capture_npages(self):
+        self.use_module("capture")
+        self.db.row_factory = None
+        return self.db.execute("SELECT count(*) FROM capture.capture_page").fetchone()[0]
+
     def layout_page_add(self, student, page, delta):
         self.use_module("layout")
         self.db.row_factory = None

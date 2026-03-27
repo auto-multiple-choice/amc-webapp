@@ -2,6 +2,7 @@ var socket = io();
 
 var project_name = null;
 var editor = null;
+var current_tab = null;
 
 function show_tab(tab_name) {
     return fetch('/static/tab_' + tab_name + '.html')
@@ -13,11 +14,35 @@ function show_tab(tab_name) {
         })
         .then(html => {
             document.getElementById('tab').innerHTML = html;
+            set_current_tab(tab_name);
         })
         .catch(error => {
             console.error('There has been a problem with your fetch operation:', error);
         });
 }
+
+function set_current_tab(tab_name) {
+    current_tab = tab_name;
+    for(var e of document.getElementsByClassName("menubtn")) {
+        var name = e.id.substring(5);
+        if(name == current_tab) e.classList.add("current");
+        else e.classList.remove("current");
+        if(name == "main") {
+            if(tab_name == "main") e.classList.remove("hidden");
+            else e.classList.add("hidden");
+        }
+    }
+}
+
+function adapt_menu(data) {
+    for(var e of document.getElementsByClassName("menubtn")) {
+        var name = e.id.substring(5);
+        if(data[name] || name == current_tab) e.classList.remove("hidden");
+        else e.classList.add("hidden");
+    }
+}
+
+socket.on("menu", adapt_menu);
 
 function connection_status(s) {
     var cs = document.getElementById('connection-status');
@@ -997,9 +1022,12 @@ socket.on("annotated-files", function(html) {
 // ----------------------- MAIN
 
 document.addEventListener('DOMContentLoaded', function() {
-    tab_main();
     project_name = localStorage.getItem("project-name");
-    if(project_name)
+    if(project_name) {
         project_open(project_name);
+    } else {
+        tab_main();
+        adapt_menu({"main": true});
+    }
 });
 

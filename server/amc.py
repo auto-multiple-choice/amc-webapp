@@ -103,6 +103,21 @@ def io_project_name(name):
     if name:
         amc_command(request.sid, "db", "upgrade", app=app)
         emit("ncopies", str(ncopies(request.sid)))
+    adapt_menu()
+
+def adapt_menu(uid=None):
+    project = get_var("project_name", uid=uid)
+    if project:
+        menus = { "source": True }
+        db = get_db()
+        if db.layout_npages():
+            menus["scans"] = True
+            if db.capture_npages():
+                menus["grading"] = True
+    else:
+        menus = { "main": True }
+        
+    emit("menu", menus)
 
 def copy_files_progress(src_folder, dst_folder):
     nfiles = 0
@@ -494,7 +509,7 @@ def file_upload(uid, dest):
         socketio.emit("end-command", to=uid)
         lock_scans_mode()
         show_messages(messages)
-        #io_scans_report()
+        adapt_menu()
         return { "ok": True }
     else:
         socketio.emit("end-command", to=uid)
@@ -628,6 +643,7 @@ def log_messages(messages):
 def clear_data(steps):
     app.logger.info(f"Clear data: {steps}")
     amc_command(request.sid, "db", "clear", steps, app=app)
+    adapt_menu()
 
 @socketio.on("doc-update")
 def io_doc_update(t):
@@ -668,7 +684,7 @@ def io_doc_update(t):
 
     emit("end-command")
     show_messages(messages)
-        
+    adapt_menu()
     io_doc_type(t)
 
 @app.route("/<sid>/layout/<student>/<page>/<filename>")
@@ -916,6 +932,7 @@ def io_add_student(student):
         io_scans_report()
         emit("scans-page-select", [student, first_page, copy])
         io_scans_page_select([student, first_page, copy])
+        adapt_menu()
 
 @socketio.on('show-marks')
 def io_show_marks():
