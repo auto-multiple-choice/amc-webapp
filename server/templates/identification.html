@@ -30,7 +30,7 @@
     {% for k in codes %}
     <option value="{{ k }}"
             {% if k==acode %}selected{% endif %}
-            >{{ k }}</option>
+            >{% if k=="<preassoc>" %}pre-association{% else %}{{ k }}{% endif %}</option>
     {% endfor %}
   </select>
 </div>

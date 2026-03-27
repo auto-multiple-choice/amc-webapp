@@ -1203,6 +1203,7 @@ def send_dir_list(t, subdir, signal,
                   zip_text="Download all",
                   filename=None,
                   exclude=None):
+    computed = bool(t)
     if not t:
         t = int(datetime.datetime.now().timestamp())
     rep = project_dir(request.sid) + "/" + subdir
@@ -1216,10 +1217,10 @@ def send_dir_list(t, subdir, signal,
     args = []
     if filename: args.append(f"filename={filename}")
     if exclude: args.append(f"exclude={exclude}")
-    emit(signal,
+    emit(signal, [ computed,
          render_template("files.html", files=files, fsdir=fsdir,
                          args="&".join(args),
-                         zip_text=zip_text))
+                         zip_text=zip_text)])
 
 @socketio.on('exported-files')
 def io_exported_files(t):

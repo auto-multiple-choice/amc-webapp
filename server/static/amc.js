@@ -1006,14 +1006,35 @@ socket.on("selected-config", function(data) {
     }
 });
 
+function flash_files(e) {
+    setTimeout(()=>{
+        var x = e.getElementsByClassName("files");
+        if(x) {
+            var panel = x[0];
+            var color = "#f5f542";
+            var y = panel.getElementsByClassName("recent");
+            if(!y) color="#f55e42";
+            var orig_color = panel.style.backgroundColor;
+            panel.style.transition = "none";
+            panel.style.backgroundColor = color;
+            panel.style.transition = "background-color 1.5s linear";
+            setTimeout(()=>{ panel.style.backgroundColor = orig_color; },
+                       1500);
+        } else {
+            console.log("Flash files not found…");
+        }
+    });
+}
+
 function do_export() {
     socket.emit("do-export");
 }
 
-socket.on("exported-files", function(html) {
+socket.on("exported-files", function(data) {
     var i = document.getElementById('exported-files');
     if(i) {
-        i.innerHTML = html;
+        i.innerHTML = data[1];
+        if(data[0]) flash_files(i);
     }
 });
 
@@ -1021,10 +1042,11 @@ function do_annotate() {
     socket.emit("do-annotate");
 }
 
-socket.on("annotated-files", function(html) {
+socket.on("annotated-files", function(data) {
     var i = document.getElementById('annotated-files');
     if(i) {
-        i.innerHTML = html;
+        i.innerHTML = data[1];
+        if(data[0]) flash_files(i);
     }
 });
 

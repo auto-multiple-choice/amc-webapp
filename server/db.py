@@ -235,7 +235,10 @@ class Amcdb:
         self.db.row_factory = None
         codes = self.db.execute(
             "SELECT DISTINCT code FROM scoring.scoring_code").fetchall()
-        return [ x[0] for x in codes ]
+        codes = [ x[0] for x in codes ]
+        if self.layout_nassociations():
+            codes.append('<preassoc>')
+        return codes
 
     def get_marks(self):
         self.use_module("scoring")
