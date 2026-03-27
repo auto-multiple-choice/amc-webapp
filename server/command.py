@@ -22,7 +22,10 @@ def amc_command(uid, *args,
                                text=True)
     prop = 0
     if messages is None:
-        messages = { "ERR":[], "INFO":[], "WARN":[] }
+        messages = {}
+    for k in ("ERR", "INFO", "WARN"):
+        if not messages.get(k):
+            messages[k] = []
     if variables is None:
         variables = {}
     while True:
