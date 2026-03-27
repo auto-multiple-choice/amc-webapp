@@ -1060,5 +1060,6 @@ document.addEventListener('DOMContentLoaded', function() {
         tab_main();
         adapt_menu({"main": true});
     }
+    connection_status(socket.connected ? "online" : "offline");
 });
 
