@@ -94,7 +94,17 @@ class Amcdb:
         if threshold_up is not None and threshold_up<1:
             sensitivity_values.append(f"min(ABS({prop}-{threshold_up})/{1-threshold_up})")
         sensitivity = "10 * ( 1 - min(" + ",".join(sensitivity_values) + "))"
-        return self.db.execute(f"SELECT p.student,p.page,p.copy,p.timestamp_manual,p.mse,{sensitivity} as sensitivity FROM capture.capture_page as p LEFT JOIN capture.capture_zone as z ON p.student=z.student and p.page=z.page and p.copy=z.copy and z.type=4 GROUP BY p.student,p.page,p.copy ORDER BY p.student,p.copy,p.page").fetchall()
+        return self.db.execute(
+            f"""SELECT p.student,p.page,p.copy,p.timestamp_manual,p.mse,
+              CASE WHEN z.total<0 THEN null
+                   ELSE {sensitivity}
+              END as sensitivity
+            FROM capture.capture_page as p
+                 LEFT JOIN capture.capture_zone as z
+            ON p.student=z.student and p.page=z.page and p.copy=z.copy
+               and z.type=4
+            GROUP BY p.student,p.page,p.copy
+            ORDER BY p.student,p.copy,p.page""").fetchall()
 
     def page_t_manual(self, student, page, copy):
         self.use_module("capture")

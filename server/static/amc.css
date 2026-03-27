@@ -7,6 +7,14 @@ html, body {
     margin: 0px;
 }
 
+:root {
+    --level0: #44ce1b;
+    --level1: #bbdb44;
+    --level2: #f7e379;
+    --level3: #f2a134;
+    --level4: #e51f1f;
+}
+
 p {
     margin-top: 4px;
     margin-bottom: 4px;
@@ -548,6 +556,10 @@ input.one-way:checked ~ div {
 
 tr[amc-manual="0"] .manual-tag {
     display: none;
+}
+
+#scans-pages tbody td {
+    text-align: center;
 }
 
 .lock-header thead { 

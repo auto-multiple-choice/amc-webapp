@@ -841,9 +841,23 @@ def lock_scans_mode(uid=None):
     socketio.emit("lock-photocopy", to=uid)
     return m
 
+def discretize(value, thresholds):
+    if value is None:
+        return None
+    l = 0
+    for i in range(len(thresholds)):
+        if value >= thresholds[i]:
+            l = i + 1
+    return l
+
 def scans_report(threshold, threshold_up):
     db = get_db()
     pages = db.capture_pages(threshold, threshold_up)
+    for p in pages:
+        p["sens-level"] = discretize(p.get("sensitivity"),
+                                     [ 6, 8, 9, 9.5 ])
+        p["mse-level"] = discretize(p.get("mse"),
+                                    [ 4, 6, 10, 15 ])
     app.logger.info(f"Scans report: {len(pages)} pages")
     if pages:
         emit("lock-photocopy")
