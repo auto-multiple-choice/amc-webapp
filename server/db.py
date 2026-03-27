@@ -23,6 +23,25 @@ class Amcdb:
                             (f"{self.project_dir}/data/{module}.sqlite",))
             self.modules.add(module)
 
+    def get_variable(self, module, name):
+        self.use_module(module)
+        self.db.row_factory = None
+        x = self.db.execute(
+            f"SELECT value FROM {module}.{module}_variables WHERE name=?",
+            (name,)).fetchone()
+        if x:
+            return x[0]
+        else:
+            return None
+
+    def set_variable(self, module, name, value):
+        self.use_module(module)
+        self.db.row_factory = None
+        self.db.execute(
+            f"UPDATE {module}.{module}_variables SET value=? WHERE name=?",
+            (value,name))
+        self.db.commit()
+        
     def layout_npages(self):
         self.use_module("layout")
         self.db.row_factory = None
@@ -32,6 +51,9 @@ class Amcdb:
         self.use_module("capture")
         self.db.row_factory = None
         return self.db.execute("SELECT count(*) FROM capture.capture_page").fetchone()[0]
+
+    def print_timestamp(self):
+        return self.get_variable("layout", "print_timestamp")
 
     def layout_page_add(self, student, page, delta):
         self.use_module("layout")

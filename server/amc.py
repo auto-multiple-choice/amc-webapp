@@ -600,25 +600,32 @@ def io_doc_type(t):
         db = get_db(modules=("layout",))
         if db.layout_npages() > 0 :
             emit("document-content",
-                 [False, render_template("document_calage.html")])
+                 [False, False, render_template("document_calage.html")])
             layout_set_page(1, 1)
         else:
             emit("document-content",
-                 [False, render_template("document_missing.html")])
+                 [False, False, render_template("document_missing.html")])
 
     else:
         doc = "/DOC-" + t + ".pdf"
         filename = project_dir(request.sid) + doc
 
         if os.path.isfile(filename):
-            can_print = (t == "sujet")
+            can_print = False
+            danger = False
+            if t == "sujet":
+                can_print = True
+                db = get_db()
+                if db.capture_npages() or db.print_timestamp():
+                    danger = True
+                
             url = "/" + request.sid + "/fs/" + get_var("project_name") + doc
             emit("document-content",
-                 [can_print, render_template("document_content.html",
-                                             url=url)])
+                 [can_print, danger, render_template("document_content.html",
+                                                     url=url)])
         else:
             emit("document-content",
-                 [False, render_template("document_missing.html")])
+                 [False, False, render_template("document_missing.html")])
 
 def select_messages(messages):
     if len(messages) > 10:

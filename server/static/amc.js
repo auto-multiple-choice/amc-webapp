@@ -428,10 +428,13 @@ socket.on("document-content", function(data) {
         if(document.getElementById('doc-type').value)
             du.classList.remove('disabled');
         else du.classList.add('disabled');
+
+        if(data[1]) du.classList.add('danger');
+        else du.classList.remove('danger');
     }
     var view = document.getElementById('document-view');
     if(view) {
-        view.innerHTML = data[1];
+        view.innerHTML = data[2];
     }
 });
 
@@ -443,7 +446,11 @@ function change_doc_type() {
     socket.emit("doc-type", t);
 }
 
-function doc_update() {
+function doc_update(e) {
+    if(e.classList.contains("danger")) {
+        if(!confirm("Warning! Rebuilding the subject will remove all the project data. To allow the use of an already printed question, cancel!"))
+            return;
+    }
     socket.emit("doc-update",
                 document.getElementById('doc-type').value);
 }

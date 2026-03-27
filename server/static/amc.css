@@ -93,7 +93,7 @@ img.menu {
     background: #ffac29;
 }
 
-.btn-danger {
+.btn-danger, .btn-ok.danger {
     background: #ff7e83;
 }
 
