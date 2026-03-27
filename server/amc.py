@@ -908,8 +908,6 @@ def io_scans_page_select(data):
                          svg=svg,
                          student=student, page=page, copy=copy))
 
-    emit("update-ticked-zooms")
-
 def scans_page_zooms(student, page, copy, uid=None):
     if uid is None:
         uid = request.sid

@@ -628,11 +628,13 @@ function update_all_zooms_ticked() {
         var i = x.getAttribute("id").split("_");
         update_zoom_ticked(i[1], i[2]);
     }
-    var z;
-    z = document.getElementById('zooms-0');
-    z.scrollTo(0, z.scrollHeight);
-    z = document.getElementById('zooms-1');
-    z.scrollTo(0, 0);
+    setTimeout(() => {
+        var z;
+        z = document.getElementById('zooms-0');
+        z.scrollTo(0, z.scrollHeight);
+        z = document.getElementById('zooms-1');
+        z.scrollTo(0, 0);
+    });
 }
 
 function allow_manual_revert(ok) {
@@ -656,6 +658,8 @@ socket.on("scans-manual", function(html) {
 
         var s = document.getElementsByClassName("selected pagerow")[0];
         allow_manual_revert(s.getAttribute("amc-manual") == "1");
+
+        update_all_zooms_ticked();
     }
 });
 
@@ -668,8 +672,6 @@ function revert_manual() {
           v.getAttribute("amc-copy") ]
     );
 }
-
-socket.on("update-ticked-zooms", update_all_zooms_ticked);
 
 socket.on("scans-zooms", function(html) {
     var z0 = document.getElementById('zooms-0');
