@@ -1162,7 +1162,10 @@ def io_associate(data):
 @socketio.on('export-config')
 def io_export_config():
     emit("selected-config",
-         get_options(request.sid, "export_"))
+         get_options(request.sid,
+                     ["format_export", "export_include_abs", "export_ods_stats",
+                      "export_ods_statsindic", "export_ods_group", "export_ods_groupsep",
+                      "export_csv_ticked"]))
 
 @socketio.on('set-config')
 def io_set_config(data):
@@ -1201,7 +1204,7 @@ def io_do_export():
     t = int(datetime.datetime.now().timestamp())
     emit("begin-command")
     emit("t", "Exporting…")
-    module = get_option(request.sid, "export_module")
+    module = get_option(request.sid, "format_export")
     path = project_dir(request.sid) + "/exports/marks." + module.lower()
     messages, variables = amc_command(
         request.sid, "export",

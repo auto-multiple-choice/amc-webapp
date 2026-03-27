@@ -956,7 +956,7 @@ socket.on("update-association", function(data) {
 });
 
 function change_export_module(e) {
-    if(!e) e = document.getElementById("export_module");
+    if(!e) e = document.getElementById("format_export");
     change_config_value(e);
     var module = e.value;
     for(const m of ["ods", "CSV"]) {
@@ -992,7 +992,7 @@ socket.on("selected-config", function(data) {
             if(!e.getAttribute("onchange"))
                 e.setAttribute("onchange", "change_config_value(this);");
 
-            if(k=="export_module") change_export_module();
+            if(k=="format_export") change_export_module();
         }
     }
 });
