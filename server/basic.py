@@ -4,7 +4,7 @@ from lxml import etree
 from filelock import FileLock
 import threading
 
-from flask import request
+from flask import request, current_app
 from flask_socketio import emit
 
 users = {}
@@ -30,7 +30,9 @@ def get_var(name):
 def emit_progress(*data):
     sid = get_var("sid")
     if sid:
-        emit(*data, to=sid)
+        current_app.socketio.emit(*data, to=sid)
+    else:
+        current_app.logger.error(f"Can't find socket ID to send signal! session={request.cookies.get('amcsession')}")
 
 def clean_thread_vars(v, logger):
     ts = set(x.ident for x in threading.enumerate())

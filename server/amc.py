@@ -33,7 +33,7 @@ app = Flask(__name__)
 app.config.from_mapping(
     SECRET_KEY='dev',
 )
-socketio = SocketIO(app)
+socketio = SocketIO(app, logger=True, engineio_logger=True)
 app.socketio = socketio
 
 temp_dir = tempfile.mkdtemp(prefix="amcapp")
@@ -99,7 +99,7 @@ def projects_list():
              if is_project_dir(pdir + "/" + path) ])
 
 @app.route('/projects_list.html')
-def io_projects_list():
+def u_projects_list():
     projects = projects_list()
     return render_template("projects_list.html", projects=projects)
 
@@ -155,7 +155,7 @@ def io_project_clone(name):
     emit_progress("begin-command")
     n, ntotal = copy_files_progress(source, dest)
     emit_progress("end-command")
-    io_projects_list()
+    emit("u-projects-list")
     if n==ntotal:
         emit("dialog",
              render_template(
@@ -175,7 +175,7 @@ def io_project_clone(name):
 def io_project_clone(name):
     rep = project_dir(p=name)
     shutil.rmtree(rep)
-    io_projects_list()
+    emit("u-projects-list")
 
 @socketio.on('project-rename')
 def io_project_rename(data):
@@ -184,7 +184,7 @@ def io_project_rename(data):
 
     if new == old:
         app.logger.info(f"Project {old} not renamed")
-        io_projects_list()
+        emit("u-projects-list")
         return
 
     src = project_dir(p=old)
@@ -199,7 +199,7 @@ def io_project_rename(data):
     else:
         app.logger.info(f'Project "{old}" renamed to "{new}"')
         os.rename(src, dst)
-        io_projects_list()
+        emit("u-projects-list")
 
 def template_group_info(g):
     f = f"{TEMPLATES_DIR}/{g}/directory.xml"
@@ -559,18 +559,19 @@ def file_level(base, main_source, f):
     else:
         return 1
     
-@socketio.on("files-list")
-def io_files_list(all_files):
+@app.route('/files_list.html')
+def u_files_list():
+    all_files = request.args.get("all")
     base = project_dir()
     main_source = main_source_file()
     files = [ (file_level(base, main_source, f), f)
               for f in os.listdir(base) ]
     if not all_files:
         files = [ x for x in files if x[0]<=0 ]
-    emit("files-list",
-         render_template("files_list.html",
-                         files=sorted(files),
-                         base_url=f"/fs/{get_var('project_name')}"))
+    return render_template(
+        "files_list.html",
+        files=sorted(files),
+        base_url=f"/fs/{get_var('project_name')}")
 
 @socketio.on("project-delete-file")
 def io_project_delete_file(data):
@@ -591,7 +592,7 @@ def io_project_delete_file(data):
 def io_doc_type(t):
     if not t:
         emit("document-content",
-             [False, render_template("document_choose.html")])
+             [False, False, render_template("document_choose.html")])
 
     if t=="calage":
         db = get_db(modules=("layout",))
@@ -654,7 +655,7 @@ def io_doc_update(t):
     if not t:
         return { "error": "Document type missing" }
     app.logger.info(f"Doc update: {t} for {get_var('project_name')}")
-    emit("begin-command")
+    emit_progress("begin-command")
 
     if t == "sujet":
         emit_progress("t", "Clear all project data…")
@@ -714,7 +715,7 @@ def io_layout_add(data):
     student, page = db.layout_page_add(student, page, delta)
     layout_set_page(student, page)
 
-@socketio.on("print-dialog")
+@app.route("/print_dialog.html")
 def io_print_dialog():
     db = get_db()
     student_min, student_max = db.student_range()
@@ -726,10 +727,9 @@ def io_print_dialog():
             "id": i,
             "name": f"{i} ({ps[i].get('printer-info','?')})",
         })              
-    emit("print-dialog",
-         render_template('print_dialog.html',
-                         printers=printers,
-                         student_min=student_min, student_max=student_max))
+    return render_template('print_dialog.html',
+                           printers=printers,
+                           student_min=student_min, student_max=student_max)
 
 @socketio.on("print-to-printer")
 def io_print_to_printer(data):
@@ -854,41 +854,45 @@ def scans_report(threshold, threshold_up):
                                     [ 4, 6, 10, 15 ])
     app.logger.info(f"Scans report: {len(pages)} pages")
     if pages:
-        emit("lock-photocopy")
+        emit_progress("lock-photocopy")
     else:
-        emit("unlock-photocopy")
-    emit("scans-report",
-         render_template('scans_report.html',
-                         pages=pages))
+        emit_progress("unlock-photocopy")
+    return render_template('scans_report.html',
+                           pages=pages)
 
-@socketio.on('scans-report')
-def io_scans_report():
+@app.route('/scans_report.html')
+def u_scans_report():
     threshold = float(get_option("seuil"))
     threshold_up = float(get_option("seuil_up"))
-    emit("thresholds", [threshold, threshold_up])
-    scans_report(threshold, threshold_up)
+    emit_progress("thresholds", [threshold, threshold_up])
+    return scans_report(threshold, threshold_up)
 
-@socketio.on('set-thresholds')
-def io_set_thresholds(data):
-    change_option("seuil", data[0])
-    change_option("seuil_up", data[1])
-    scans_report(float(data[0]), float(data[1]))
+@app.route('/set_thresholds.html', methods=['POST'])
+def x_set_thresholds():
+    seuil = float(request.json.get('seuil'))
+    seuil_up = float(request.json.get('seuil_up'))
+    change_option("seuil", seuil)
+    change_option("seuil_up", seuil_up)
+    return scans_report(seuil, seuil_up)
 
 @app.route("/manual/<student>/<page>/<copy>/<filename>")
 def get_manual_file(student, page, copy, filename):
     return send_file(f"{temp_dir}/{get_session()}/{student}/{page}/{copy}/{filename}")
     
-@socketio.on('scans-page-select')
-def io_scans_page_select(data):
-    student, page, copy = data
+@app.route('/scans_page_select.html', methods=['POST'])
+def x_scans_page_select():
+    student = request.json.get('student')
+    page = request.json.get('page')
+    copy = request.json.get('copy')
     rep = f"{temp_dir}/{get_session()}/{student}/{page}/{copy}"
     Path(rep).mkdir(parents=True, exist_ok=True)
-    messages, variables = amc_command("db", "layout-image",
-                                      f"{student}/{page}:{copy}",
-                                      "--scan",
-                                      "--dest-file", f"{rep}/manual",
-                                      "--url-prefix", f"/manual/{student}/{page}/{copy}/",
-                                      app=app)
+    messages, variables = amc_command(
+        "db", "layout-image",
+        f"{student}/{page}:{copy}",
+        "--scan",
+        "--dest-file", f"{rep}/manual",
+        "--url-prefix", f"/manual/{student}/{page}/{copy}/",
+        app=app)
     log_messages(messages)
     url = f"/manual/{student}/{page}/{copy}/manual.svg"
 
@@ -897,18 +901,17 @@ def io_scans_page_select(data):
     
     scans_page_zooms(student, page, copy)
 
-    emit("scans-manual",
-         render_template("manual_view.html",
-                         svg=svg,
-                         student=student, page=page, copy=copy))
+    return render_template("manual_view.html",
+                           svg=svg,
+                           student=student, page=page, copy=copy)
 
+@app.route("/zooms/<student>/<page>/<copy>")
 def scans_page_zooms(student, page, copy):
     db = get_db()
     zooms = sorted(db.page_zooms(student, page, copy), key=lambda z: z['prop'])
     for z in zooms:
         z["image"] = "data:image/png;base64," + base64.b64encode(z["imagedata"]).decode("utf-8")
-    emit("scans-zooms",
-         render_template("zooms.html", zooms=zooms))
+    return render_template("zooms.html", zooms=zooms);
 
 @socketio.on('set-manual')
 def io_set_manual(data):
@@ -940,13 +943,11 @@ def io_add_student(student):
     db = get_db()
     first_page, copy = db.add_student(student, m)
     if first_page:
-        io_scans_report()
         emit("scans-page-select", [student, first_page, copy])
-        io_scans_page_select([student, first_page, copy])
         adapt_menu()
 
-@socketio.on('show-marks')
-def io_show_marks():
+@app.route('/show_marks.html')
+def x_show_marks():
     db = get_db()
     marks, maxis = db.get_marks()
     full = float(get_option("note_max"))
@@ -959,16 +960,15 @@ def io_show_marks():
         mean = sum(marks)/len(marks)
     else:
         mean = None
-    emit("show-marks",
-         render_template("show_marks.html",
-                         marks=marks, nmarks=len(marks),
-                         mean=mean, full=full))
+    return render_template("show_marks.html",
+                           marks=marks, nmarks=len(marks),
+                           mean=mean, full=full)
 
 @socketio.on('do-mark')
 def io_do_mark(update):
     messages = {}
     variables = {}
-    emit("begin-command")
+    emit_progress("begin-command")
     if update:
         amc_command(
             "prepare",
@@ -984,8 +984,8 @@ def io_do_mark(update):
     )
     emit_progress("end-command")
     show_messages(messages)
-    io_show_marks()
-    io_identification()
+    emit_progress("update-marks")
+    emit_progress("update-identification")
 
 def students_list_file():
     path = get_option("listeetudiants")
@@ -1080,14 +1080,14 @@ def io_change_lkey(data):
     if force:
         db = get_db()
         db.clear_associations()
-        io_identification()
+        emit_progress("update-identification")
 
 @socketio.on('change-acode')
 def io_change_lkey(acode):
     change_option("assoc_code", acode)
 
-@socketio.on('identification')
-def io_identification():
+@app.route('/identification.html')
+def x_identification():
     path = students_list_file()
     if path:
         ldir, lname = os.path.split(path)
@@ -1116,17 +1116,17 @@ def io_identification():
             acode = codes[0]
             change_option("assoc_code", acode)
         
-    emit("identification",
-         render_template("identification.html",
-                         filename=lname, ukeys=ukeys, lkey=lkey,
-                         codes=codes, acode=acode,
-                         n_id=n_id, n_students=n_students))
+    return render_template(
+        "identification.html",
+        filename=lname, ukeys=ukeys, lkey=lkey,
+        codes=codes, acode=acode,
+        n_id=n_id, n_students=n_students)
 
 @socketio.on('association-clear')
 def io_association_clear():
     db = get_db()
     db.clear_associations()
-    io_identification()
+    emit_progress("update-identification")
     
 @socketio.on('association-auto')
 def io_association_auto():
@@ -1135,15 +1135,18 @@ def io_association_auto():
             app=app
     )
     show_messages(messages)
-    io_identification()
+    emit_progress("update-identification")
 
-@socketio.on('assoc-sheets')
-def io_assoc_sheets():
+@app.route("/assoc_sheets.html")
+def x_assoc_sheets():
     db = get_db()
     sheets = db.get_assoc_sheets()
-    emit("assoc-sheets",
-         render_template("assoc_sheets.html", sheets=sheets))
+    return render_template("assoc_sheets.html", sheets=sheets)
 
+@app.route("/students_list.html")
+def x_students_list():
+    db = get_db()
+    sheets = db.get_assoc_sheets()
     students = students_flat_list()
     back = {}
     for i in range(len(students)):
@@ -1153,20 +1156,17 @@ def io_assoc_sheets():
         i = back.get(eff)
         if i is not None:
             students[i][2] = True
-    emit("students-list",
-         render_template("students_list.html", students=students))
+    return render_template("students_list.html", students=students)
 
-@socketio.on('select-assoc-sheet')
-def io_select_assoc_sheet(data):
-    student, copy = data
+@app.route('/namefield/<student>/<copy>')
+def x_namefield(student, copy):
     db = get_db()
     path = db.get_namefield_image(student, copy)
     if path:
         path = f"/fs/{get_var('project_name')}/cr/{path}"
-    emit("namefield",
-         render_template("namefield.html",
-                         student=student, copy=copy,
-                         path=path))
+    return render_template("namefield.html",
+                           student=student, copy=copy,
+                           path=path)
 
 @socketio.on('associate')
 def io_associate(data):
@@ -1188,11 +1188,10 @@ def io_export_config():
 def io_set_config(data):
     change_option(*data)
 
-def send_dir_list(t, subdir, signal,
+def send_dir_list(t, subdir,
                   zip_text="Download all",
                   filename=None,
                   exclude=None):
-    computed = bool(t)
     if not t:
         t = int(datetime.datetime.now().timestamp())
     rep = project_dir() + "/" + subdir
@@ -1206,16 +1205,16 @@ def send_dir_list(t, subdir, signal,
     args = []
     if filename: args.append(f"filename={filename}")
     if exclude: args.append(f"exclude={exclude}")
-    emit(signal, [ computed,
-         render_template("files.html", files=files, fsdir=fsdir,
-                         args="&".join(args),
-                         zip_text=zip_text)])
+    return render_template("files.html", files=files, fsdir=fsdir,
+                           args="&".join(args),
+                           zip_text=zip_text)
 
-@socketio.on('exported-files')
-def io_exported_files(t):
+@app.route("/exported_files.html", methods=['POST'])
+def x_exported_files():
+    t = request.json.get('t')
     project = get_var("project_name")
-    send_dir_list(t, "exports", "exported-files",
-                  filename=f"{project}-exported.zip")
+    return send_dir_list(t, "exports",
+                         filename=f"{project}-exported.zip")
 
 @socketio.on('do-export')
 def io_do_export():
@@ -1232,7 +1231,7 @@ def io_do_export():
         app=app
     )
     emit_progress("end-command")
-    io_exported_files(t)
+    emit_progress("update-exported-files", t)
     show_messages(messages)
         
 @socketio.on('annotation-config')
@@ -1268,16 +1267,17 @@ def io_do_annotate():
         app=app
     )
     emit_progress("end-command")
-    io_annotated_files(t)
+    emit_progress("update-annotated-files", t)
     show_messages(messages)
 
-@socketio.on('annotated-files')
-def io_annotated_files(t):
+@app.route('/annotated_files.html', methods=['POST'])
+def x_annotated_files():
+    t = request.json.get('t')
     project = get_var("project_name")
-    send_dir_list(t, "cr/corrections/pdf", "annotated-files",
-                  zip_text="Download all individual files",
-                  filename=f"{project}-annotated.zip",
-                  exclude="all-students.pdf")
+    return send_dir_list(t, "cr/corrections/pdf",
+                         zip_text="Download all individual files",
+                         filename=f"{project}-annotated.zip",
+                         exclude="all-students.pdf")
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)

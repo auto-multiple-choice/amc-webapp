@@ -13,11 +13,16 @@ function fetch_to_dom(id, url, opts) {
             return response.text();
         })
         .then(html => {
-            var e = document.getElementById(id);
-            if(e) {
-                e.innerHTML = html;
+            if(!( id instanceof Array )) {
+                id = [ id ];
             }
-            else console.error(`Element ${id} not found!`);
+            for(i of id) {
+                var e = document.getElementById(i);
+                if(e) {
+                    e.innerHTML = html;
+                }
+                else console.error(`Element ${id} not found!`);
+            }
         })
         .catch(error => {
             console.error(`Fetch ${url} faild: ${error}`);
@@ -148,9 +153,14 @@ function select_project(name) {
     }
 }
 
+function u_projects_list() {
+    fetch_to_dom('projects-list', "/projects_list.html", {});
+}
+socket.on("u-projects-list", u_projects_list);
+
 function tab_main() {
     show_tab("main").then(() => {
-        fetch_to_dom('projects-list', "/projects_list.html", {});
+        u_projects_list();
         fetch_to_dom('project-new' , "/project_new.html", {});
     });
 }
@@ -320,13 +330,6 @@ socket.on("source-saved", function() {
     source_modified(false);
 });
 
-socket.on("files-list", function(html) {
-    var list = document.getElementById('files-list-list');
-    if(list) {
-        list.innerHTML = html;
-    }
-});
-
 function select_file(f) {
     var cn = document.getElementById('source-name');
     if(cn) {
@@ -337,7 +340,8 @@ function select_file(f) {
 
 function all_files_change() {
     var all_files = document.getElementById("all-files").checked;
-    socket.emit("files-list", all_files);
+    fetch_to_dom("files-list-list",
+                 "/files_list.html" + (all_files ? "?all=1" : ""), {});
 }
 
 function source_other() {
@@ -510,12 +514,8 @@ socket.on("layout-set-page", function(data) {
 function doc_print() {
     document.getElementById('code').classList.add("hidden");
     document.getElementById('print').classList.remove("hidden");
-    socket.emit("print-dialog");
+    fetch_to_dom("print", "/print_dialog.html", {});
 }
-
-socket.on("print-dialog", function(data) {
-    document.getElementById('print').innerHTML = data;
-});
 
 function doc_print_finished() {
     document.getElementById('code').classList.remove("hidden");
@@ -583,20 +583,26 @@ socket.on("thresholds", function(data) {
 function threshold_change() {
     var threshold = document.getElementById("threshold").value;
     var threshold_up = document.getElementById("threshold-up").value;
-    socket.emit("set-thresholds", [ threshold, threshold_up ]);
+    fetch_to_dom("scans-report", "/set_thresholds.html",
+                 { method: "POST",
+                   headers: {
+                       'Content-Type': 'application/json'
+                   },
+                   body: JSON.stringify({
+                       seuil: threshold, seuil_up: threshold_up })
+                 });
 }
 
-socket.on("scans-report", function(html) {
-    var report = document.getElementById('scans-report');
-    if(report) {
-        report.innerHTML = html;
-    }
-});
+function u_scans_report() {
+    return fetch_to_dom("scans-report", "/scans_report.html", {});
+}
+
+socket.on("scans-report", u_scans_report);
 
 function tab_scans() {
     show_tab("scans").then(() => {
         socket.emit("scans-mode");
-        socket.emit("scans-report");
+        u_scans_report();
     });
 }
 
@@ -647,18 +653,6 @@ function allow_manual_revert(ok) {
 socket.on("allow-revert", ()=> allow_manual_revert(true));
 socket.on("disallow-revert", ()=> allow_manual_revert(false));
 
-socket.on("scans-manual", function(html) {
-    var manual = document.getElementById('manual');
-    if(manual) {
-        manual.innerHTML = html;
-
-        var s = document.getElementsByClassName("selected pagerow")[0];
-        allow_manual_revert(s.getAttribute("amc-manual") == "1");
-
-        update_all_zooms_ticked();
-    }
-});
-
 function revert_manual() {
     var v = document.getElementById('manual-view');
     socket.emit(
@@ -668,17 +662,6 @@ function revert_manual() {
           v.getAttribute("amc-copy") ]
     );
 }
-
-socket.on("scans-zooms", function(html) {
-    var z0 = document.getElementById('zooms-0');
-    if(z0) {
-        z0.innerHTML = html;
-    }
-    var z1 = document.getElementById('zooms-1');
-    if(z1) {
-        z1.innerHTML = html;
-    }
-});
 
 function highlight_selected_page(e, student, page, copy) {
     if(e == null) {
@@ -692,11 +675,31 @@ function highlight_selected_page(e, student, page, copy) {
 
 function scans_page_select(e, student, page, copy) {
     highlight_selected_page(e, student, page, copy);
-    socket.emit("scans-page-select", [student,page,copy]);
+    fetch_to_dom("manual", "/scans_page_select.html",
+                 { method: "POST",
+                   headers: {
+                       'Content-Type': 'application/json'
+                   },
+                   body: JSON.stringify({
+                       student: student, page: page, copy: copy })
+                 })
+        .then(() => {
+            var s = document.getElementsByClassName("selected pagerow")[0];
+            allow_manual_revert(s.getAttribute("amc-manual") == "1");
+        })
+        .then(() => {
+            fetch_to_dom(["zooms-0", "zooms-1"],
+                         `/zooms/${student}/${page}/${copy}`,
+                         {})
+                .then(update_all_zooms_ticked);
+        });
 }
 
 socket.on("scans-page-select", function(data) {
-    highlight_selected_page(null, ...data);
+    u_scans_report()
+        .then(() => {
+            scans_page_select(null, ...data);
+        });
 });
 
 socket.on("tick-box", function(data) {
@@ -774,35 +777,46 @@ function add_student() {
 
 // ----------------------- GRADING
 
+function u_marks() {
+    fetch_to_dom("marks-report", "/show_marks.html", {});
+}
+socket.on("update-marks", u_marks);
+
+function u_identification() {
+    fetch_to_dom("identification", "/identification.html", {});
+}
+socket.on("update-identification", u_identification);
+
+function u_exported_files(t) {
+    fetch_to_dom("exported-files", "/exported_files.html",
+                 {
+                     method: "POST",
+                     headers: {
+                         'Content-Type': 'application/json'
+                     },
+                     body: JSON.stringify({ t: t})
+                 })
+        .then( () => {
+            if(t) flash_files(document.getElementById("exported-files"));
+        });
+}
+socket.on("update-exported-files", u_exported_files);
+
 function tab_grading() {
     show_tab("grading").then(() => {
-        socket.emit("show-marks");
-        socket.emit("identification");
+        u_marks();
+        u_identification();
         socket.emit("export-config");
-        socket.emit("exported-files", null);
+        u_exported_files(null);
         socket.emit("annotation-config");
-        socket.emit("annotated-files", null);
+        u_annotated_files(null);
     });
 }
-
-socket.on("identification", function(html) {
-    var i = document.getElementById('identification');
-    if(i) {
-        i.innerHTML = html;
-    }
-});
 
 function do_mark() {
     var u = document.getElementById('extract-scale').checked;
     socket.emit("do-mark", u);
 }
-
-socket.on("show-marks", function(html) {
-    var i = document.getElementById('marks-report');
-    if(i) {
-        i.innerHTML = html;
-    }
-});
 
 function change_lkey(e, fixed) {
     if(fixed) {
@@ -827,8 +841,12 @@ function association_auto() {
 function association_manual() {
     document.getElementById("grading").classList.add("hidden");
     document.getElementById("association").classList.remove("hidden");
-    socket.emit("assoc-sheets");
-    socket.emit("students-list");
+    fetch_to_dom("assoc-sheets", "/assoc_sheets.html", {})
+        .then(() => {
+            select_assoc_sheet(-1,-1);
+            first_not_associated();
+        });
+    fetch_to_dom("students-list", "/students_list.html", {})
 }
 
 function association_manual_done() {
@@ -842,29 +860,6 @@ function association_clear() {
         socket.emit("association-clear");
     }
 }
-
-socket.on("assoc-sheets", function(html) {
-    var e = document.getElementById("assoc-sheets");
-    if(e) {
-        e.innerHTML = html;
-    }
-    select_assoc_sheet(-1,-1);
-    first_not_associated();
-});
-
-socket.on("namefield", function(html) {
-    var e = document.getElementById("studentname");
-    if(e) {
-        e.innerHTML = html;
-    }
-});
-
-socket.on("students-list", function(html) {
-    var e = document.getElementById("students-list");
-    if(e) {
-        e.innerHTML = html;
-    }
-});
 
 var assoc_sheet = [-1,-1];
 
@@ -884,14 +879,16 @@ function student_highlight(id) {
 
 function select_assoc_sheet(e, student, copy) {
     if(student >= 0) {
-        socket.emit("select-assoc-sheet", [student, copy]);
-        var x;
-        for(x of document.querySelectorAll("#assoc-sheets tr"))
-            x.classList.remove("selected");
-        e.classList.add("selected");
-        var auto = e.getAttribute("amc-auto");
-        var manual = e.getAttribute("amc-manual");
-        student_highlight(manual == "None" ? auto : manual);
+        fetch_to_dom("studentname", `/namefield/${student}/${copy}`, {})
+            .then(() => {
+                var x;
+                for(x of document.querySelectorAll("#assoc-sheets tr"))
+                    x.classList.remove("selected");
+                e.classList.add("selected");
+                var auto = e.getAttribute("amc-auto");
+                var manual = e.getAttribute("amc-manual");
+                student_highlight(manual == "None" ? auto : manual);
+            });
     } else {
         var e = document.getElementById("studentname");
         if(e) {
@@ -1026,29 +1023,29 @@ function do_export() {
     socket.emit("do-export");
 }
 
-socket.on("exported-files", function(data) {
-    var i = document.getElementById('exported-files');
-    if(i) {
-        i.innerHTML = data[1];
-        if(data[0]) flash_files(i);
-    }
-});
-
 function do_annotate() {
     socket.emit("do-annotate");
 }
 
-socket.on("annotated-files", function(data) {
-    var i = document.getElementById('annotated-files');
-    if(i) {
-        i.innerHTML = data[1];
-        if(data[0]) flash_files(i);
-    }
-});
+function u_annotated_files(t) {
+    fetch_to_dom("annotated-files", "/annotated_files.html",
+                 {
+                     method: "POST",
+                     headers: {
+                         'Content-Type': 'application/json'
+                     },
+                     body: JSON.stringify({ t: t})
+                 })
+        .then( () => {
+            if(t) flash_files(document.getElementById("annotated-files"));
+        });
+}
+socket.on("update-annotated-files", u_annotated_files);
 
 // ----------------------- MAIN
 
 document.addEventListener('DOMContentLoaded', function() {
+    connection_status(socket.connected ? "online" : "offline");
     project_name = localStorage.getItem("project-name");
     if(project_name) {
         project_open(project_name);
@@ -1056,6 +1053,5 @@ document.addEventListener('DOMContentLoaded', function() {
         tab_main();
         adapt_menu({"main": true});
     }
-    connection_status(socket.connected ? "online" : "offline");
 });
 
