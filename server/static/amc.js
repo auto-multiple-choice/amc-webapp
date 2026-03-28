@@ -67,7 +67,7 @@ function connection_status(s) {
     }
 }
 
-var projects_action = null;
+var projects_action = "project-open";
 
 function select_action(e) {
     projects_action = e.id;
