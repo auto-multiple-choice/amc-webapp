@@ -6,3 +6,4 @@ pycups
 unidecode
 filelock
 uuid
+gevent

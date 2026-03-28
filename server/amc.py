@@ -1,4 +1,7 @@
 
+from gevent import monkey
+monkey.patch_all()
+
 import re
 import os
 from pathlib import Path
@@ -33,7 +36,7 @@ app = Flask(__name__)
 app.config.from_mapping(
     SECRET_KEY='dev',
 )
-socketio = SocketIO(app, logger=True, engineio_logger=True)
+socketio = SocketIO(app, logger=True, async_mode='gevent')
 app.socketio = socketio
 
 temp_dir = tempfile.mkdtemp(prefix="amcapp")
