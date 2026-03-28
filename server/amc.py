@@ -13,6 +13,7 @@ import zipfile
 import tarfile
 import base64
 import csv
+import uuid
 from urllib.parse import quote
 from unidecode import unidecode
 from lxml import etree
@@ -22,7 +23,7 @@ from db import Amcdb
 from command import amc_command
 from basic import *
 
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, make_response
 from flask_socketio import SocketIO, emit
 
 TEMPLATES_DIR="/usr/share/auto-multiple-choice/models"
@@ -39,30 +40,35 @@ temp_dir = tempfile.mkdtemp(prefix="amcapp")
 
 app.logger.info(f"Temp dir: {temp_dir}")
 
-def get_db(modules=(), uid=None):
-    if uid is None:
-        uid = request.sid
+def get_db(modules=()):
     db = get_thread_var("db", app.logger)
     if not db:
-        app.logger.warning(f"Create DB for thread {threading.get_ident()} ({uid})")
+        app.logger.warning(f"Create DB for thread {threading.get_ident()} ({get_session()})")
         app.logger.debug(
             f"Active threads: " +
             ", ".join([str(x.ident)
                        for x in threading.enumerate()]))
-        db = Amcdb(project_dir(uid), modules)
+        db = Amcdb(project_dir(), modules)
         set_thread_var("db", db)
     return db
 
+@socketio.on('sid')
+def io_id(sid):
+    set_var("sid", sid)
+
 @app.route('/')
 def index():
-    return render_template('index.html')
+    resp = make_response(render_template('index.html'))
+    if not request.cookies.get('amcsession'):
+        session = str(uuid.uuid4())
+        app.logger.info(f"New session: {session}")
+        resp.set_cookie('amcsession', session)
+    return resp
 
-@app.route('/<uid>/fs/<path:path>', methods=['GET', 'POST'])
-def fs_file(uid, path):
-    if uid not in users:
-        return { "error": "wrong user id" }
+@app.route('/fs/<path:path>', methods=['GET', 'POST'])
+def fs_file(path):
     path = path.replace("..", "")
-    path = projects_dir(uid) + "/" + path
+    path = projects_dir() + "/" + path
     if request.method == 'POST':
         app.logger.info(f"Uploaded file: {path}")
         if 'file' not in request.files:
@@ -87,26 +93,26 @@ def fs_file(uid, path):
 def is_project_dir(path):
     return os.path.isdir(path) and os.path.isfile(path + "/options.xml")
 
-def projects_list(projects_dir):
-    return sorted([ path for path in os.listdir(projects_dir)
-             if is_project_dir(projects_dir + "/" + path) ])
+def projects_list():
+    pdir = projects_dir()
+    return sorted([ path for path in os.listdir(pdir)
+             if is_project_dir(pdir + "/" + path) ])
 
-@socketio.on('projects-list')
+@app.route('/projects_list.html')
 def io_projects_list():
-    projects = projects_list(projects_dir(request.sid))
-    emit("projects-list",
-         render_template("projects_list.html", projects=projects))
+    projects = projects_list()
+    return render_template("projects_list.html", projects=projects)
 
 @socketio.on('project-name')
 def io_project_name(name):
     set_project(name)
     if name:
-        amc_command(request.sid, "db", "upgrade", app=app)
-        emit("ncopies", str(ncopies(request.sid)))
+        amc_command("db", "upgrade", app=app)
+        emit("ncopies", str(ncopies()))
     adapt_menu()
 
-def adapt_menu(uid=None):
-    project = get_var("project_name", uid=uid)
+def adapt_menu():
+    project = get_var("project_name")
     if project:
         menus = { "source": True }
         db = get_db()
@@ -123,7 +129,7 @@ def copy_files_progress(src_folder, dst_folder):
     nfiles = 0
     for root, dirs, files in os.walk(src_folder):
         nfiles += len(files)
-    emit("p", 0)
+    emit_progress("p", 0)
     os.mkdir(dst_folder)
     n = 0
     for root, dirs, files in os.walk(src_folder):
@@ -137,18 +143,18 @@ def copy_files_progress(src_folder, dst_folder):
                 n += 1
             except:
                 pass
-            emit("p", n/nfiles)
+            emit_progress("p", n/nfiles)
     return n, nfiles
 
 @socketio.on('project-clone')
 def io_project_clone(name):
-    clone_name = project_clone_name(request.sid, name)
-    source = project_dir(request.sid, p=name)
-    dest = project_dir(request.sid, p=clone_name)
-    emit("t", "Cloning project…")
-    emit("begin-command")
+    clone_name = project_clone_name(name)
+    source = project_dir(p=name)
+    dest = project_dir(p=clone_name)
+    emit_progress("t", "Cloning project…")
+    emit_progress("begin-command")
     n, ntotal = copy_files_progress(source, dest)
-    emit("end-command")
+    emit_progress("end-command")
     io_projects_list()
     if n==ntotal:
         emit("dialog",
@@ -167,7 +173,7 @@ def io_project_clone(name):
 
 @socketio.on('project-delete')
 def io_project_clone(name):
-    rep = project_dir(request.sid, p=name)
+    rep = project_dir(p=name)
     shutil.rmtree(rep)
     io_projects_list()
 
@@ -181,8 +187,8 @@ def io_project_rename(data):
         io_projects_list()
         return
 
-    src = project_dir(request.sid, p=old)
-    dst = project_dir(request.sid, p=new)
+    src = project_dir(p=old)
+    dst = project_dir(p=new)
     if(os.path.exists(dst)):
         emit("dialog",
              render_template(
@@ -246,13 +252,12 @@ for g in sorted(os.listdir(TEMPLATES_DIR)):
 
 app.logger.info(f"Templates: {len(templates)}, from {len(template_groups)} groups")
                     
-@socketio.on('project-new')
+@app.route('/project_new.html')
 def io_project_new():
-    emit("project-new",
-         render_template(
-             "project_new.html",
-             groups=template_groups, templates=templates
-         ))
+    return render_template(
+        "project_new.html",
+        groups=template_groups, templates=templates
+    )
 
 def create_project_dirs(rep):
     for d in ("", "/data", "/exports", "/scans", "/anonymous",
@@ -261,10 +266,8 @@ def create_project_dirs(rep):
         if not os.path.exists(rep + d):
             os.mkdir(rep + d)
 
-def check_unused_name(name, uid=None, warn=True):
-    if uid is None:
-        uid = request.sid
-    rep = project_dir(uid, p=name)
+def check_unused_name(name, warn=True):
+    rep = project_dir(p=name)
     if os.path.exists(rep):
         if warn:
             emit("dialog",
@@ -308,11 +311,10 @@ def io_create_project_empty(data):
         create_options_file(rep, f, filt=stype)
         emit("project-open", name)
 
-def info_remove_root(m, root, uid=None):
-    if uid:
-        n = add_var("files_n", 1, uid=uid)
-        total = get_var("files_total", uid=uid)
-        socketio.emit("p", n/total, to=uid)
+def info_remove_root(m, root):
+    n = add_var("files_n", 1)
+    total = get_var("files_total")
+    emit_progress("p", n/total)
     if m.type in (tarfile.SYMTYPE, tarfile.CHRTYPE, tarfile.BLKTYPE,
                   tarfile.FIFOTYPE, tarfile.GNUTYPE_LONGLINK):
         return None
@@ -326,9 +328,8 @@ def info_remove_root(m, root, uid=None):
     else:
         return None
         
-def tar_extract_options_siblings(tarf, dest, uid=None):
-    if uid:
-        socketio.emit("t", "Looking for the options file…", to=uid)
+def tar_extract_options_siblings(tarf, dest):
+    emit_progress("t", "Looking for the options file…")
     root = None
     total = 0
     for m in tarf.getmembers():
@@ -338,24 +339,22 @@ def tar_extract_options_siblings(tarf, dest, uid=None):
         if o:
             root = o[1]
             app.logger.debug("found root: " + root)
-    set_var("files_total", total, uid=uid)
-    set_var("files_n", 0, uid=uid)
+    set_var("files_total", total)
+    set_var("files_n", 0)
     if root:
-        if uid:
-            socketio.emit("t", "Extracting…", to=uid)
-            socketio.emit("p", 0, to=uid)
+        emit_progress("t", "Extracting…")
+        emit_progress("p", 0)
         if not os.path.exists(dest):
             os.mkdir(dest)
         tarf.extractall(
-            dest, filter=lambda m,p: info_remove_root(m, root, uid=uid))
+            dest, filter=lambda m,p: info_remove_root(m, root))
         return True
     else:
         app.logger.error(f"Can't find options.xml in archive")
         return False
 
-def zip_extract_options_siblings(zipf, dest, uid=None):
-    if uid:
-        socketio.emit("t", "Looking for the options file…", to=uid)
+def zip_extract_options_siblings(zipf, dest):
+    emit_progress("t", "Looking for the options file…")
     root = None
     total = 0
     for m in zipf.infolist():
@@ -366,9 +365,8 @@ def zip_extract_options_siblings(zipf, dest, uid=None):
             root = o[1]
             app.logger.debug("found root: " + root)
     if root:
-        if uid:
-            socketio.emit("t", "Extracting…", to=uid)
-            socketio.emit("p", 0, to=uid)
+        emit_progress("t", "Extracting…")
+        emit_progress("p", 0)
         if not os.path.exists(dest):
             os.mkdir(dest)
         n = 0
@@ -378,8 +376,7 @@ def zip_extract_options_siblings(zipf, dest, uid=None):
                 m.filename = m.filename.replace(root, "", 1)
                 if m.filename != "":
                     zipf.extract(m, dest)
-            if uid:
-                socketio.emit("p", n/total, to=uid)
+            emit_progress("p", n/total)
         return True
     else:
         return False
@@ -423,31 +420,31 @@ def io_create_project_template(data):
         create_project_dirs(rep)
         emit("project-open", name)
 
-def create_from_source_file(uid, rep, f, fn):
+def create_from_source_file(rep, f, fn):
     create_project_dirs(rep)
     f.save(f"{rep}/{fn}")
     create_options_file(rep, fn)
-    socketio.emit("end-command", to=uid)
+    emit_progress("end-command")
     return { "ok": True }
 
-def create_from_archive(uid, rep, f):
-    socketio.emit("t", "Saving archive…", to=uid)
+def create_from_archive(rep, f):
+    emit_progress("t", "Saving archive…")
     handle, fn = tempfile.mkstemp()
     f.save(fn)
     ok = False
     if zipfile.is_zipfile(fn):
         zipf = zipfile.ZipFile(fn)
-        ok = zip_extract_options_siblings(zipf, rep, uid=uid)
+        ok = zip_extract_options_siblings(zipf, rep)
     elif tarfile.is_tarfile(fn):
         tarf = tarfile.open(fn)
-        ok = tar_extract_options_siblings(tarf, rep, uid=uid)
+        ok = tar_extract_options_siblings(tarf, rep)
     else:
         app.logger.error("Archive type unknown")
-    socketio.emit("end-command", to=uid)
+    emit_progress("end-command")
     return { "ok": ok }
 
-@app.route('/<uid>/upload/<dest>', methods=['POST'])
-def file_upload(uid, dest):
+@app.route('/upload/<dest>', methods=['POST'])
+def file_upload(dest):
     if 'file' not in request.files:
         return { 'error': 'File missing' }
     f = request.files['file']
@@ -459,22 +456,22 @@ def file_upload(uid, dest):
         return { 'error': 'Empty file' }
     if dest=="create":
         name = request.form['name']
-        rep = check_unused_name(name, uid=uid, warn=False)
+        rep = check_unused_name(name, warn=False)
         if rep:
-            socketio.emit("p", 0, to=uid)
+            emit_progress("p", 0)
             if re.match(r'.*\.(tgz|tar\.gz|tar|zip)', fn, re.IGNORECASE):
-                return create_from_archive(uid, rep, f)
+                return create_from_archive(rep, f)
             elif re.match(r'.*\.(tex|latex|txt)', fn, re.IGNORECASE):
-                return create_from_source_file(uid, rep, f, fn)
+                return create_from_source_file(rep, f, fn)
             else:
-                socketio.emit("end-command", to=uid)
+                emit_progress("end-command")
                 return { "error": f"File {fn} can't be used to create a project" }
         else:
-            socketio.emit("end-command", to=uid)
+            emit_progress("end-command")
             return { "error": f"Can't create project {name}: already used" }
     elif dest=="project":
-        rep = project_dir(uid);
-        socketio.emit("end-command", to=uid);
+        rep = project_dir();
+        emit_progress("end-command");
         if rep:
             f.save(f"{rep}/{fn}");
             return { "ok": True }
@@ -482,52 +479,52 @@ def file_upload(uid, dest):
             return { "error": f"Project unknown" }
     elif dest=="scans":
         project_name = request.form['project_name']
-        rep = f"{temp_dir}/{uid}/scans"
+        rep = f"{temp_dir}/{get_session()}/scans"
         Path(rep).mkdir(parents=True, exist_ok=True)
         n, path = tempfile.mkstemp(suffix="." + ext, dir=rep)
         f.save(path)
         n, list_path = tempfile.mkstemp(prefix="list-", dir=rep)
         with open(list_path, "w") as f:
             print(path, file=f)
-        socketio.emit("begin-command", to=uid)
-        socketio.emit("t", "Extracting scans images…", to=uid)
+        emit_progress("begin-command")
+        emit_progress("t", "Extracting scans images…")
         messages, variables = amc_command(
-            uid, "getimages",
+            "getimages",
             "--list", list_path,
-            "--copy-to", project_dir(uid) + "/scans",
+            "--copy-to", project_dir() + "/scans",
             "--progression-id", "GETI", app=app
         )
-        socketio.emit("t", "Automatic data capture…", to=uid)
+        emit_progress("t", "Automatic data capture…")
         amc_command(
-            uid, "analyse",
+            "analyse",
             "--liste-fichiers", list_path,
             "--unlink-on-global-error",
             "--progression-id", "SCAN",
             "--progression", "1",
             messages=messages, variables=variables, app=app
         )
-        socketio.emit("end-command", to=uid)
+        emit_progress("end-command")
         lock_scans_mode()
         show_messages(messages)
         adapt_menu()
         return { "ok": True }
     else:
-        socketio.emit("end-command", to=uid)
+        emit_progress("end-command")
         return { "error": f"Unknown upload dest: {dest}" }
 
     
 @socketio.on('ncopies')
 def io_ncopies(n):
     n = int(n)
-    change_option(request.sid, "nombre_copies", n)
+    change_option("nombre_copies", n)
 
 @socketio.on('source-code')
 def io_source_code(filename):
     if not filename:
-        filename = main_source_file(request.sid)
+        filename = main_source_file()
     if not filename:
-        filename = default_source_file(request.sid)
-        change_option(request.sid, "texsrc", filename)
+        filename = default_source_file()
+        change_option("texsrc", filename)
     emit("source-name", filename)
 
     mode = "plain_text"
@@ -538,7 +535,7 @@ def io_source_code(filename):
     elif re.match(r'.*\.(csv)$', filename, re.IGNORECASE):
         mode = "csv"
 
-    fn = project_dir(request.sid) + "/" + filename
+    fn = project_dir() + "/" + filename
     filecontent = ""
     if os.path.exists(fn):
         with open(fn, "r") as f:
@@ -547,7 +544,7 @@ def io_source_code(filename):
 
 @socketio.on('source-save')
 def io_source_save(filename, code):
-    with open(project_dir(request.sid) + "/" + filename, "w") as f:
+    with open(project_dir() + "/" + filename, "w") as f:
         f.write(code)
     emit("source-saved");
 
@@ -564,8 +561,8 @@ def file_level(base, main_source, f):
     
 @socketio.on("files-list")
 def io_files_list(all_files):
-    base = project_dir(request.sid)
-    main_source = main_source_file(request.sid)
+    base = project_dir()
+    main_source = main_source_file()
     files = [ (file_level(base, main_source, f), f)
               for f in os.listdir(base) ]
     if not all_files:
@@ -573,13 +570,13 @@ def io_files_list(all_files):
     emit("files-list",
          render_template("files_list.html",
                          files=sorted(files),
-                         base_url=f"/{request.sid}/fs/{get_var('project_name')}"))
+                         base_url=f"/fs/{get_var('project_name')}"))
 
 @socketio.on("project-delete-file")
 def io_project_delete_file(data):
     filename, all_files = data
     filename = filename.replace("/", "")
-    base = project_dir(request.sid)
+    base = project_dir()
     if base:
         try:
             os.unlink(f"{base}/{filename}")
@@ -608,7 +605,7 @@ def io_doc_type(t):
 
     else:
         doc = "/DOC-" + t + ".pdf"
-        filename = project_dir(request.sid) + doc
+        filename = project_dir() + doc
 
         if os.path.isfile(filename):
             can_print = False
@@ -619,7 +616,7 @@ def io_doc_type(t):
                 if db.capture_npages() or db.print_timestamp():
                     danger = True
                 
-            url = "/" + request.sid + "/fs/" + get_var("project_name") + doc
+            url = "/fs/" + get_var("project_name") + doc
             emit("document-content",
                  [can_print, danger, render_template("document_content.html",
                                                      url=url)])
@@ -649,7 +646,7 @@ def log_messages(messages):
 
 def clear_data(steps):
     app.logger.info(f"Clear data: {steps}")
-    amc_command(request.sid, "db", "clear", steps, app=app)
+    amc_command("db", "clear", steps, app=app)
     adapt_menu()
 
 @socketio.on("doc-update")
@@ -660,7 +657,7 @@ def io_doc_update(t):
     emit("begin-command")
 
     if t == "sujet":
-        emit("t", "Clear all project data…")
+        emit_progress("t", "Clear all project data…")
         clear_data("mep:")
 
     mode = {
@@ -674,40 +671,39 @@ def io_doc_update(t):
         app.logger.error(f"Unknown mode: {t}")
         return
 
-    messages, variables = amc_command(request.sid,
-                                      "prepare",
+    messages, variables = amc_command("prepare",
                                       "--mode", mode,
                                       "--progression-id", "MAJ", app=app)
     app.logger.info(f"Variables: {variables}")
 
     e = len(messages["ERR"])
     if t == "sujet" and e == 0:
-        emit("t", "Detecting layouts…")
-        amc_command(request.sid,
-                    "meptex",
+        emit_progress("t", "Detecting layouts…")
+        amc_command("meptex",
                     "--progression-id", "MEP",
                     "--progression", "1",
                     messages=messages, variables=variables, app=app)
 
-    emit("end-command")
+    emit_progress("end-command")
     show_messages(messages)
     adapt_menu()
     io_doc_type(t)
 
-@app.route("/<sid>/layout/<student>/<page>/<filename>")
-def get_layout_file(sid, student, page, filename):
-    return send_file(f"{temp_dir}/{sid}/{student}/{page}/{filename}")
+@app.route("/layout/<student>/<page>/<filename>")
+def get_layout_file(student, page, filename):
+    return send_file(f"{temp_dir}/{get_session()}/{student}/{page}/{filename}")
     
 def layout_set_page(student, page):
-    rep = f"{temp_dir}/{request.sid}/{student}/{page}"
+    rep = f"{temp_dir}/{get_session()}/{student}/{page}"
     Path(rep).mkdir(parents=True, exist_ok=True)
-    messages, variables = amc_command(request.sid, "db", "layout-image",
-                                      f"{student}/{page}",
-                                      "--dest-file", f"{rep}/layout",
-                                      "--css-url", "/static/svg.css",
-                                      app=app)
+    messages, variables = amc_command(
+        "db", "layout-image",
+        f"{student}/{page}",
+        "--dest-file", f"{rep}/layout",
+        "--css-url", "/static/svg.css",
+        app=app)
     log_messages(messages)
-    url = f"/{request.sid}/layout/{student}/{page}/layout.svg"
+    url = f"/layout/{student}/{page}/layout.svg"
     emit("layout-set-page", [f"{student}/{page}", url])
 
 @socketio.on("layout-add")
@@ -738,10 +734,10 @@ def io_print_dialog():
 @socketio.on("print-to-printer")
 def io_print_to_printer(data):
     student1, student2, printer = data
-    emit("begin-command")
-    emit("t", f"Printing subject to {printer}…")
+    emit_progress("begin-command")
+    emit_progress("t", f"Printing subject to {printer}…")
     messages, variables = amc_command(
-        request.sid, "imprime",
+        "imprime",
         "--methode", "cups",
         "--imprimante", printer,
         "--student-min", student1,
@@ -749,7 +745,7 @@ def io_print_to_printer(data):
         app=app
     )
     log_messages(messages)
-    emit("end-command")
+    emit_progress("end-command")
     n = show_messages(messages)
     emit("print-done")
     if n==0:
@@ -763,14 +759,14 @@ def io_print_to_printer(data):
 def io_print_to_files(data):
     student1, student2 = data
     app.logger.info(f"Printing <{get_var('project_name')}> to files: {student1}--{student2}")
-    rep = f"{temp_dir}/{request.sid}/printed/{get_var('project_name')}"
+    rep = f"{temp_dir}/{get_session()}/printed/{get_var('project_name')}"
     Path(rep).mkdir(parents=True, exist_ok=True)
     for f in os.listdir(rep):
         os.remove(f"{rep}/{f}")
-    emit("begin-command")
-    emit("t", f"Printing subject to files…")
+    emit_progress("begin-command")
+    emit_progress("t", f"Printing subject to files…")
     messages, variables = amc_command(
-        request.sid, "imprime",
+        "imprime",
         "--methode", "file",
         "--student-min", student1,
         "--student-max", student2,
@@ -780,12 +776,12 @@ def io_print_to_files(data):
         app=app
     )
     log_messages(messages)
-    emit("end-command")
+    emit_progress("end-command")
     n = show_messages(messages)
     if n==0:
         emit("print-done")
         emit("print-to-files",
-             f"/{request.sid}/printed/{get_var('project_name')}/printed.zip")
+             f"/printed/{get_var('project_name')}/printed.zip")
 
 def send_dir_as_zip(path, name=None, recursive=True,
                     filename=None, exclude=None):
@@ -812,33 +808,31 @@ def send_dir_as_zip(path, name=None, recursive=True,
         download_name=(filename or name)
     )
         
-@app.route("/<sid>/printed/<project>/printed.zip")
+@app.route("/printed/<project>/printed.zip")
 def build_printed_zip(sid, project):
-    rep = f"{temp_dir}/{sid}/printed/{project}"
+    rep = f"{temp_dir}/{get_session()}/printed/{project}"
     return send_dir_as_zip(rep, name="printed.zip", recursive=False)
 
 @socketio.on('scans-mode-change')
 def io_scans_mode_change(m):
-    change_option(request.sid, "auto_capture_mode", m)
+    change_option("auto_capture_mode", m)
 
 @socketio.on('scans-mode')
 def io_scans_mode():
-    m = get_option(request.sid, "auto_capture_mode")
+    m = get_option("auto_capture_mode")
     if m is not None:
         emit("scans-mode", m)
     else:
         app.logger.warning("Options: auto_capture_mode not found")
         emit("scans-mode", -1)
 
-def lock_scans_mode(uid=None):
-    if uid is None:
-        uid = request.sid
-    m = int(get_option(uid, "auto_capture_mode"))
+def lock_scans_mode():
+    m = int(get_option("auto_capture_mode"))
     if m is None or m < 0:
         m = 0
         emit("scans-mode", m)
-        change_option(request.sid, "auto_capture_mode", m)
-    socketio.emit("lock-photocopy", to=uid)
+        change_option("auto_capture_mode", m)
+    emit_progress("lock-photocopy")
     return m
 
 def discretize(value, thresholds):
@@ -869,34 +863,34 @@ def scans_report(threshold, threshold_up):
 
 @socketio.on('scans-report')
 def io_scans_report():
-    threshold = float(get_option(request.sid, "seuil"))
-    threshold_up = float(get_option(request.sid, "seuil_up"))
+    threshold = float(get_option("seuil"))
+    threshold_up = float(get_option("seuil_up"))
     emit("thresholds", [threshold, threshold_up])
     scans_report(threshold, threshold_up)
 
 @socketio.on('set-thresholds')
 def io_set_thresholds(data):
-    change_option(request.sid, "seuil", data[0])
-    change_option(request.sid, "seuil_up", data[1])
+    change_option("seuil", data[0])
+    change_option("seuil_up", data[1])
     scans_report(float(data[0]), float(data[1]))
 
-@app.route("/<sid>/manual/<student>/<page>/<copy>/<filename>")
-def get_manual_file(sid, student, page, copy, filename):
-    return send_file(f"{temp_dir}/{sid}/{student}/{page}/{copy}/{filename}")
+@app.route("/manual/<student>/<page>/<copy>/<filename>")
+def get_manual_file(student, page, copy, filename):
+    return send_file(f"{temp_dir}/{get_session()}/{student}/{page}/{copy}/{filename}")
     
 @socketio.on('scans-page-select')
 def io_scans_page_select(data):
     student, page, copy = data
-    rep = f"{temp_dir}/{request.sid}/{student}/{page}/{copy}"
+    rep = f"{temp_dir}/{get_session()}/{student}/{page}/{copy}"
     Path(rep).mkdir(parents=True, exist_ok=True)
-    messages, variables = amc_command(request.sid, "db", "layout-image",
+    messages, variables = amc_command("db", "layout-image",
                                       f"{student}/{page}:{copy}",
                                       "--scan",
                                       "--dest-file", f"{rep}/manual",
-                                      "--url-prefix", f"/{request.sid}/manual/{student}/{page}/{copy}/",
+                                      "--url-prefix", f"/manual/{student}/{page}/{copy}/",
                                       app=app)
     log_messages(messages)
-    url = f"/{request.sid}/manual/{student}/{page}/{copy}/manual.svg"
+    url = f"/manual/{student}/{page}/{copy}/manual.svg"
 
     with open(rep + "/manual.svg", "r") as svgf:
         svg = svgf.read()
@@ -908,10 +902,8 @@ def io_scans_page_select(data):
                          svg=svg,
                          student=student, page=page, copy=copy))
 
-def scans_page_zooms(student, page, copy, uid=None):
-    if uid is None:
-        uid = request.sid
-    db = get_db(uid=uid)
+def scans_page_zooms(student, page, copy):
+    db = get_db()
     zooms = sorted(db.page_zooms(student, page, copy), key=lambda z: z['prop'])
     for z in zooms:
         z["image"] = "data:image/png;base64," + base64.b64encode(z["imagedata"]).decode("utf-8")
@@ -923,14 +915,14 @@ def io_set_manual(data):
     student, page, copy, question, answer, ticked = data
     db = get_db()
     db.set_manual(student, page, copy, question, answer, ticked,
-                  uid=request.sid, app=app)
+                  app=app)
     emit("tick-box", [question, answer, ticked])
 
 @socketio.on('revert-manual')
 def io_revert_manual(data):
     student, page, copy = data
-    threshold = float(get_option(request.sid, "seuil"))
-    threshold_up = float(get_option(request.sid, "seuil_up"))
+    threshold = float(get_option("seuil"))
+    threshold_up = float(get_option("seuil_up"))
     db = get_db()
     boxes = db.get_boxes_status(student, page, copy,
                                 threshold, threshold_up)
@@ -957,7 +949,7 @@ def io_add_student(student):
 def io_show_marks():
     db = get_db()
     marks, maxis = db.get_marks()
-    full = float(get_option(request.sid, "note_max"))
+    full = float(get_option("note_max"))
     if full == 0:
         if len(maxis) == 1:
             full = maxis[0]
@@ -979,29 +971,27 @@ def io_do_mark(update):
     emit("begin-command")
     if update:
         amc_command(
-            request.sid, "prepare",
+            "prepare",
             "--mode", "b",
             "--progression-id", "MAJ", "--progression", "1",
             messages=messages, variables=variables, app=app
         )
     amc_command(
-        request.sid, "note",
+        "note",
         "--progression-id", "GRD",
         "--progression", "1",
         messages=messages, variables=variables, app=app
     )
-    emit("end-command")
+    emit_progress("end-command")
     show_messages(messages)
     io_show_marks()
     io_identification()
 
-def students_list_file(uid=None):
-    if uid is None:
-        uid = request.sid
-    path = get_option(uid, "listeetudiants")
-    pdir = project_dir(uid)
+def students_list_file():
+    path = get_option("listeetudiants")
+    pdir = project_dir()
     if path:
-        path = path.replace('%PROJETS/', projects_dir(uid) + "/", 1)
+        path = path.replace('%PROJETS/', projects_dir() + "/", 1)
         path = path.replace('%PROJET/', pdir + "/", 1)
     else:
         filename = None
@@ -1011,7 +1001,7 @@ def students_list_file(uid=None):
                 filename = x
 
         if not filename:
-            db = get_db(uid)
+            db = get_db()
             if db.layout_nassociations():
                 cand = [ f for f in os.listdir(pdir)
                          if f.lower().endswith(".csv") ]
@@ -1019,7 +1009,7 @@ def students_list_file(uid=None):
                     filename = cand[0]
                 
         if filename:
-            change_option(uid, "listeetudiants", "%PROJET/" + filename)
+            change_option("listeetudiants", "%PROJET/" + filename)
             path = f"{pdir}/{filename}"
                           
     return path
@@ -1061,7 +1051,7 @@ def first_of(l, *proposals):
     return None
 
 def students_flat_list():
-    lkey = get_option(request.sid, "liste_key")
+    lkey = get_option("liste_key")
     path = students_list_file()
     rows = list_file_read(path)
     if not rows:
@@ -1086,7 +1076,7 @@ def students_flat_list():
 @socketio.on('change-lkey')
 def io_change_lkey(data):
     lkey, force = data
-    change_option(request.sid, "liste_key", lkey)
+    change_option("liste_key", lkey)
     if force:
         db = get_db()
         db.clear_associations()
@@ -1094,7 +1084,7 @@ def io_change_lkey(data):
 
 @socketio.on('change-acode')
 def io_change_lkey(acode):
-    change_option(request.sid, "assoc_code", acode)
+    change_option("assoc_code", acode)
 
 @socketio.on('identification')
 def io_identification():
@@ -1107,24 +1097,24 @@ def io_identification():
         lname = None
         ukeys = []
 
-    lkey = get_option(request.sid, "liste_key")
+    lkey = get_option("liste_key")
     if (not lkey) or (lkey not in ukeys):
         lkey = None
         for x in ('etud','etu','student','number','id','ID'):
             if x in ukeys:
                 lkey = x
         if lkey:
-            change_option(request.sid, "liste_key", lkey)
+            change_option("liste_key", lkey)
 
     db = get_db()
     codes = db.codes_list()
     n_id = db.n_identifications()
     n_students = db.n_graded_students()
-    acode = get_option(request.sid, "assoc_code")
+    acode = get_option("assoc_code")
     if not acode:
         if len(codes) == 1:
             acode = codes[0]
-            change_option(request.sid, "assoc_code", acode)
+            change_option("assoc_code", acode)
         
     emit("identification",
          render_template("identification.html",
@@ -1141,7 +1131,7 @@ def io_association_clear():
 @socketio.on('association-auto')
 def io_association_auto():
     messages, variables = amc_command(
-            request.sid, "association-auto",
+            "association-auto",
             app=app
     )
     show_messages(messages)
@@ -1172,7 +1162,7 @@ def io_select_assoc_sheet(data):
     db = get_db()
     path = db.get_namefield_image(student, copy)
     if path:
-        path = f"/{request.sid}/fs/{get_var('project_name')}/cr/{path}"
+        path = f"/fs/{get_var('project_name')}/cr/{path}"
     emit("namefield",
          render_template("namefield.html",
                          student=student, copy=copy,
@@ -1190,14 +1180,13 @@ def io_associate(data):
 @socketio.on('export-config')
 def io_export_config():
     emit("selected-config",
-         get_options(request.sid,
-                     ["format_export", "export_include_abs", "export_ods_stats",
+         get_options(["format_export", "export_include_abs", "export_ods_stats",
                       "export_ods_statsindic", "export_ods_group", "export_ods_groupsep",
                       "export_csv_ticked"]))
 
 @socketio.on('set-config')
 def io_set_config(data):
-    change_option(request.sid, *data)
+    change_option(*data)
 
 def send_dir_list(t, subdir, signal,
                   zip_text="Download all",
@@ -1206,8 +1195,8 @@ def send_dir_list(t, subdir, signal,
     computed = bool(t)
     if not t:
         t = int(datetime.datetime.now().timestamp())
-    rep = project_dir(request.sid) + "/" + subdir
-    fsdir = f"/{request.sid}/fs/{get_var('project_name')}/{subdir}"
+    rep = project_dir() + "/" + subdir
+    fsdir = f"/fs/{get_var('project_name')}/{subdir}"
     files = [ (f,
               f"{fsdir}/{quote(f)}",
               os.path.getmtime(f"{rep}/{f}") > t)
@@ -1231,18 +1220,18 @@ def io_exported_files(t):
 @socketio.on('do-export')
 def io_do_export():
     t = int(datetime.datetime.now().timestamp())
-    emit("begin-command")
-    emit("t", "Exporting…")
-    module = get_option(request.sid, "format_export")
-    path = project_dir(request.sid) + "/exports/marks." + module.lower()
+    emit_progress("begin-command")
+    emit_progress("t", "Exporting…")
+    module = get_option("format_export")
+    path = project_dir() + "/exports/marks." + module.lower()
     messages, variables = amc_command(
-        request.sid, "export",
+        "export",
         "--module", module,
         "--output", path,
         "--export-ods-filter",
         app=app
     )
-    emit("end-command")
+    emit_progress("end-command")
     io_exported_files(t)
     show_messages(messages)
         
@@ -1250,12 +1239,11 @@ def io_do_export():
 def io_annotation_config():
     emit("selected-config",
          get_options(
-             request.sid,
              ["regroupement_type", "regroupement_compose",
               "add_corrected", "modele_regroupement"]))
 
-def unlink_indiv_annotated(uid):
-    rep = project_dir(uid) + "/cr/corrections/pdf"
+def unlink_indiv_annotated():
+    rep = project_dir() + "/cr/corrections/pdf"
     for f in os.listdir(rep):
         path = f"{rep}/{f}"
         if os.path.isfile(path) and f != "all-students.pdf":
@@ -1263,23 +1251,23 @@ def unlink_indiv_annotated(uid):
     
 @socketio.on("do-annotate")
 def io_do_annotate():
-    single = (get_option(request.sid, "regroupement_type") == "ALL")
+    single = (get_option("regroupement_type") == "ALL")
     if not single:
-        unlink_indiv_annotated(request.sid)
+        unlink_indiv_annotated()
     t = int(datetime.datetime.now().timestamp())
     args = []
-    emit("begin-command")
-    emit("t", "Annotating…")
+    emit_progress("begin-command")
+    emit_progress("t", "Annotating…")
     if single:
         args += ["--single-output", "all-students.pdf"]
     messages, variables = amc_command(
-        request.sid, "annotate",
+        "annotate",
         *args,
         "--progression-id", "ANNOT",
         "--progression", "1",
         app=app
     )
-    emit("end-command")
+    emit_progress("end-command")
     io_annotated_files(t)
     show_messages(messages)
 

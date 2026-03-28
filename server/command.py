@@ -7,13 +7,12 @@ from basic import *
 def command_str(command):
     return " ".join([ x if x else '""' for x in command ])
 
-def amc_command(uid, *args,
+def amc_command(*args,
                 messages=None, variables=None,
                 app=None):
     command = [ "/usr/bin/auto-multiple-choice",
                 *args ]
-    if uid:
-        command += ["--project-dir", project_dir(uid)]
+    command += ["--project-dir", project_dir()]
     if app:
         app.logger.info("c-cmd> " + command_str(command))
     process = subprocess.Popen(command,
@@ -44,14 +43,14 @@ def amc_command(uid, *args,
                 prop=0
             if prop > 1:
                 prop = 1
-            app.socketio.emit("p", prop, to=uid)
+            emit_progress("p", prop)
         avance = re.match(r'===<(.*)>=T\((.*)\)$', line)
         if avance:
             aid = avance[1]
             text = avance[2]
             prop = 0
-            app.socketio.emit("t", text, to=uid)
-            app.socketio.emit("p", prop, to=uid)
+            emit_progress("t", text)
+            emit_progress("p", prop)
         m = re.match(r'^(ERR|INFO|WARN)[:>]\s*(.*)', line)
         if m:
             messages[m[1]].append(m[2])

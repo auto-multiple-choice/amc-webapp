@@ -4,21 +4,29 @@ var project_name = null;
 var editor = null;
 var current_tab = null;
 
-function show_tab(tab_name) {
-    return fetch('/static/tab_' + tab_name + '.html')
+function fetch_to_dom(id, url, opts) {
+    if(!opts) opts={};
+    return fetch(url, opts)
         .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
+            if(!response.ok)
+                throw new Error(`Request failed to ${url}`);
             return response.text();
         })
         .then(html => {
-            document.getElementById('tab').innerHTML = html;
-            set_current_tab(tab_name);
+            var e = document.getElementById(id);
+            if(e) {
+                e.innerHTML = html;
+            }
+            else console.error(`Element ${id} not found!`);
         })
         .catch(error => {
-            console.error('There has been a problem with your fetch operation:', error);
+            console.error(`Fetch ${url} faild: ${error}`);
         });
+}
+
+function show_tab(tab_name) {
+    return fetch_to_dom('tab', `/static/tab_${tab_name}.html`, {})
+        .then(()=> { set_current_tab(tab_name); });
 }
 
 function set_current_tab(tab_name) {
@@ -45,6 +53,9 @@ function adapt_menu(data) {
 socket.on("menu", adapt_menu);
 
 function connection_status(s) {
+    if(s == "online") {
+        socket.emit("sid", socket.id); 
+    }
     var cs = document.getElementById('connection-status');
     if(cs) {
         for(x of ["online", "offline"]) {
@@ -137,25 +148,10 @@ function select_project(name) {
     }
 }
 
-socket.on("projects-list", function(html) {
-    var list = document.getElementById('projects-list');
-    if(list) {
-        projects_action = "project-open"
-        list.innerHTML = html;
-    }
-});
-
-socket.on("project-new", function(html) {
-    var part = document.getElementById('project-new');
-    if(part) {
-        part.innerHTML = html;
-    }
-});
-
 function tab_main() {
     show_tab("main").then(() => {
-        socket.emit("projects-list");
-        socket.emit("project-new");
+        fetch_to_dom('projects-list', "/projects_list.html", {});
+        fetch_to_dom('project-new' , "/project_new.html", {});
     });
 }
 

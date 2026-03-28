@@ -5,6 +5,8 @@ import sqlite3
 from basic import *
 from command import amc_command
 
+from flask_socketio import emit
+
 def dict_factory(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
@@ -131,17 +133,16 @@ class Amcdb:
               (student, page, copy, 4, question, answer)).fetchone()[0]
 
     def set_manual(self, student, page, copy, question, answer, ticked,
-                   uid=None, app=None):
+                   app=None):
         self.use_module("capture")
         if self.page_t_manual(student, page, copy)==0:
             messages, variables = amc_command(
-                uid, "db", "force-manual",
+                "db", "force-manual",
                 f"{student}/{page}:{copy}",
             )
             if messages["ERR"]:
                 return
-            if app:
-                app.socketio.emit("allow-revert", to=uid)
+            emit("allow-revert")
         zoneid = self.get_zoneid(student, page, copy, question, answer)
         self.db.execute("UPDATE capture.capture_zone SET manual=? WHERE zoneid=?",
                         ((1 if ticked else 0), zoneid))

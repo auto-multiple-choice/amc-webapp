@@ -9,19 +9,28 @@ from flask_socketio import emit
 
 users = {}
 
-def set_var(name, value, uid=None):
-    if uid is None:
-        uid = request.sid
+def get_session():
+    session = request.cookies.get('amcsession')
+    if not session:
+        raise RuntimeError("No session")
+    return session
+
+def set_var(name, value):
+    uid = get_session()
     if not users.get(uid):
         users[uid] = {}
     users[uid][name] = value
 
-def get_var(name, uid=None):
-    if uid is None:
-        uid = request.sid
+def get_var(name):
+    uid = get_session()
     if not users.get(uid):
         users[uid] = {}
     return users[uid].get(name)
+
+def emit_progress(*data):
+    sid = get_var("sid")
+    if sid:
+        emit(*data, to=sid)
 
 def clean_thread_vars(v, logger):
     ts = set(x.ident for x in threading.enumerate())
@@ -49,9 +58,8 @@ def set_thread_var(name, value):
         set_var(name, v)
     v[threading.get_ident()] = value
 
-def add_var(name, delta, uid=None):
-    if uid is None:
-        uid = request.sid
+def add_var(name, delta):
+    uid = get_session()
     if not users.get(uid):
         users[uid] = {}
     if not users[uid].get(name):
@@ -63,19 +71,19 @@ def set_project(name):
     set_var("project_name", name)
     set_thread_var("db", None)
 
-def projects_dir(uid):
+def projects_dir():
     return os.path.expanduser('~') + "/Projets-QCM"
 
-def project_dir(uid, p=None):
+def project_dir(p=None):
     if not p:
-        p = get_var("project_name", uid=uid)
+        p = get_var("project_name")
     if p:
-        return projects_dir(uid) + "/" + p
+        return projects_dir() + "/" + p
     else:
         return None
 
-def project_clone_name(uid, name):
-    d = projects_dir(uid)
+def project_clone_name(name):
+    d = projects_dir()
     i = 0
     while i<1000:
         i += 1
@@ -84,8 +92,8 @@ def project_clone_name(uid, name):
             return(nn)
     return None
 
-def read_options(uid):
-    d = project_dir(uid)
+def read_options():
+    d = project_dir()
     of = d + "/" + "options.xml"
     options = etree.parse(of)
     return options
@@ -96,8 +104,8 @@ def first_or_none(l):
     else:
         return None
 
-def change_option(uid, name, value):
-    d = project_dir(uid)
+def change_option(name, value):
+    d = project_dir()
     of = d + "/" + "options.xml"
     options = etree.parse(of)
     x = first_or_none(options.xpath("/*/" + name))
@@ -112,12 +120,12 @@ def change_option(uid, name, value):
     with lock:
         options.write(of)
 
-def get_option(uid, name):
-    options = read_options(uid)
+def get_option(name):
+    options = read_options()
     return first_or_none(options.xpath(f"/*/{name}/text()"))
 
-def get_options(uid, prefix_or_list):
-    options = read_options(uid)
+def get_options(prefix_or_list):
+    options = read_options()
     o = {}
     if isinstance(prefix_or_list, str):
         es = options.xpath("/*/*[starts-with(name(),'" + prefix_or_list + "')]")
@@ -131,20 +139,20 @@ def get_options(uid, prefix_or_list):
                 o[x.tag] = ""
     return o
 
-def main_source_file(uid):
-    src = get_option(uid, "texsrc")
+def main_source_file():
+    src = get_option("texsrc")
     if src:
         return src.replace("%PROJET/", "")
     else:
         return None
 
-def default_source_file(uid):
-    filt = get_option(uid, "filter")
+def default_source_file():
+    filt = get_option("filter")
     if filt == "plain":
         return "source.txt"
     else:
         return "source.tex"
 
-def ncopies(uid):
-    return get_option(uid, "nombre_copies")
+def ncopies():
+    return get_option("nombre_copies")
     
