@@ -122,6 +122,13 @@ def change_option(name, value):
     with lock:
         options.write(of)
 
+def options_dict():
+    options = read_options()
+    d = {}
+    for e in options.xpath("/*/*"):
+        d[e.tag] = e.text
+    return e
+
 def get_option(name):
     options = read_options()
     return first_or_none(options.xpath(f"/*/{name}/text()"))

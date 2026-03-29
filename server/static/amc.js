@@ -165,6 +165,13 @@ function tab_main() {
     });
 }
 
+function tab_config() {
+    show_tab("config")
+        .then(() => {
+            socket.emit("project-config");
+        });
+}
+
 function template_group_select(gid) {
     var tlist = document.getElementById('template-list');
     for (t of tlist.children) {
@@ -993,6 +1000,8 @@ function change_config_value(e) {
         value = (e.checked ? "on" : "");
     else if(e.type == "select-one" || e.type == "text")
         value = e.value;
+    else if(e.type == "textarea")
+        value = e.textContent;
     else {
         console.log("Unknown type: " + e.type);
         return;
@@ -1006,8 +1015,12 @@ socket.on("selected-config", function(data) {
         if(e) {
             if(e.type == "checkbox")
                 e.checked = Boolean(data[k]);
-            else if(e.type == "select-one" || e.type == "text")
+            else if(e.type == "select-one"
+                    || e.type == "text"
+                    || e.type == "number")
                 e.value = data[k];
+            else if(e.type == "textarea")
+                e.textContent = data[k];
             else
                 console.log("Unknown type: " + e.type);
             if(!e.getAttribute("onchange"))

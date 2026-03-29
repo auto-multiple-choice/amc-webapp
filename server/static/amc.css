@@ -684,6 +684,16 @@ tr[amc-manual="0"] .manual-tag {
     width: 20em;
 }
 
+#project-config {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+}
+
+#project-config > div {
+    width: 25em;
+}
+
 #association {
     display: flex;
     flex-direction: row;

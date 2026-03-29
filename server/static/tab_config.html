@@ -1,0 +1,61 @@
+<div id="tab-config">
+  <div id="project-config">
+    
+    <div>
+      <div class="part-title">
+        External commands
+      </div>
+      <div>
+        <label for="moteur_latex_b">LaTeX engine:</label>
+        <input id="moteur_latex_b" name="moteur_latex_b"
+               type="text" size="25"/>
+      </div>
+    </div>
+
+    <div>
+      <div class="part-title">
+        Global mark rules
+      </div>
+      <div>
+        <label for="note_null">Minimal mark:</label>
+        <input id="note_null" name="note_null"
+               type="number" size="3"/>
+        <br/>
+        <label for="note_max">Maximal mark:</label>
+        <input id="note_max" name="note_max"
+               type="number" size="3" min="0"/>
+        <br/>
+        <label for="note_grain">Grain:</label>
+        <input id="note_grain" name="note_grain"
+               type="number" size="3" min="0"/>
+        <br/>
+        <label for="note_arrondi">Rounding type:</label>
+        <select id="note_arrondi" name="note_arrondi">
+          <option value="normal">rounding</option>
+          <option value="inf">floor</option>
+          <option value="sup">ceiling</option>
+        </select>
+      </div>
+    </div>
+
+    <div>
+      <div class="part-title">
+        Papers annotation
+      </div>
+      <div>
+        <label for="annote_position">Question marks position:</label><br/>
+        <select id="annote_position" name="annote_position">
+          <option value="none">None (do not write anything)</option>
+          <option value="marge">In one margin</option>
+          <option value="marges">In the margins</option>
+          <option value="case">Near boxes</option>
+          <option value="zones">Where defined in the source</option>
+        </select>
+        <br/>
+        <label for="verdict">Header text:</label><br/>
+        <textarea id="verdict" name="verdict" cols="40" rows="3"/>
+      </div>
+    </div>
+    
+  </div>
+</div>

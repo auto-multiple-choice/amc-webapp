@@ -119,7 +119,7 @@ def io_project_name(name):
 def adapt_menu():
     project = get_var("project_name")
     if project:
-        menus = { "source": True }
+        menus = { "source": True, "config": True }
         db = get_db()
         if db.layout_npages():
             menus["scans"] = True
@@ -563,7 +563,17 @@ def file_level(base, main_source, f):
         return 0
     else:
         return 1
-    
+
+@socketio.on('project-config')
+def io_project_config():
+    emit("selected-config",
+         get_options(
+             ["moteur_latex_b",
+              "note_null", "note_max", "note_grain", "note_arrondi",
+              "verdict", "annote_position",
+             ]
+         ))
+
 @app.route('/files_list.html')
 def u_files_list():
     all_files = request.args.get("all")
