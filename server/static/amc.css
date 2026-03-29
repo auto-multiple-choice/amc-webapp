@@ -275,6 +275,19 @@ li.selectable.recent {
     display: none;
 }
 
+#document-missing {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+#document-missing > div {
+    padding: 10px;
+    margin: 10px;
+    border: #df9b9c dotted 2px;
+}
+
 #print {
     padding: 10px;
     border: #002ebf solid 3px;
