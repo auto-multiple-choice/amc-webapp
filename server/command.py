@@ -10,16 +10,6 @@ def command_str(command):
 def amc_command(*args,
                 messages=None, variables=None,
                 app=None):
-    command = [ "/usr/bin/auto-multiple-choice",
-                *args ]
-    command += ["--project-dir", project_dir()]
-    if app:
-        app.logger.info("c-cmd> " + command_str(command))
-    process = subprocess.Popen(command,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT,
-                               text=True)
-    prop = 0
     if messages is None:
         messages = {}
     for k in ("ERR", "INFO", "WARN"):
@@ -27,6 +17,25 @@ def amc_command(*args,
             messages[k] = []
     if variables is None:
         variables = {}
+
+    command = [ "/usr/bin/auto-multiple-choice",
+                *args ]
+    command += ["--project-dir", project_dir()]
+    if app:
+        app.logger.info("c-cmd> " + command_str(command))
+
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True)
+    except Exception as e:
+        messages['ERR'].append(f"Execution error: {str(e)}")
+        return messages, variables
+    
+    prop = 0
+
     while True:
         line = process.stdout.readline()
         if not line:
@@ -63,6 +72,16 @@ def amc_command(*args,
         of = re.match(r'^(OK|FAILED)', line)
         if of:
             variables[of[1]] = int(variables.get(of[1], 0)) + 1
-            
+
+    try:
+        ret = process.wait(5)
+    except TimeoutExpired:
+        ret = None
+
+    if ret is None:
+        messages['ERR'].append("The process did not end properly.")
+    elif ret != 0:
+        messages['ERR'].append(f"The process return an error code: {ret}")
+    
     return messages, variables
 
