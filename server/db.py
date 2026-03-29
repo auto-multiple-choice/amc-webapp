@@ -62,6 +62,9 @@ class Amcdb:
     def print_timestamp(self):
         return self.get_variable("layout", "print_timestamp")
 
+    def clear_print_timestamp(self):
+        self.set_variable("layout", "print_timestamp", None)
+
     def layout_page_add(self, student, page, delta):
         self.use_module("layout")
         self.db.row_factory = None

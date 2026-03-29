@@ -682,6 +682,8 @@ def io_doc_update(t):
     if t == "sujet":
         emit_progress("t", "Clear all project data…")
         clear_data("mep:")
+        db = get_db()
+        db.clear_print_timestamp()
 
     mode = {
         "sujet": "s[]",
