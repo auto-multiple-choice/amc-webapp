@@ -111,6 +111,8 @@ def io_project_name(name):
     set_project(name)
     if name:
         amc_command("db", "upgrade", app=app)
+        db = get_db()
+        emit_progress("defects", db.defects_class())
         emit("ncopies", str(ncopies()))
     adapt_menu()
 
@@ -576,6 +578,13 @@ def u_files_list():
         files=sorted(files),
         base_url=f"/fs/{get_var('project_name')}")
 
+@app.route('/defects_list.html')
+def u_defects_list():
+    db = get_db()
+    return render_template(
+        "defects_list.html",
+        defects = db.defects())
+
 @socketio.on("project-delete-file")
 def io_project_delete_file(data):
     filename, all_files = data
@@ -684,9 +693,12 @@ def io_doc_update(t):
     if t == "sujet" and e == 0:
         emit_progress("t", "Detecting layouts…")
         amc_command("meptex",
+                    "--store-defects",
                     "--progression-id", "MEP",
                     "--progression", "1",
                     messages=messages, variables=variables, app=app)
+        db = get_db()
+        emit_progress("defects", db.defects_class())
 
     emit_progress("end-command")
     show_messages(messages)

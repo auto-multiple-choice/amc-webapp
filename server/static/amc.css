@@ -337,6 +337,21 @@ li.selectable.recent {
     height: 100%;
 }
 
+#defects-button {
+    cursor: default;
+}
+
+#defects-list {
+    flex-grow: 0;
+    padding: 10px;
+    margin: 10px;
+    border: #df9b9c dotted 2px;
+}
+
+#defects-list ul {
+    margin: 0px;
+}
+
 #document-view {
     flex-grow: 1;
 }

@@ -438,6 +438,25 @@ socket.on("document-content", function(data) {
     }
 });
 
+socket.on("defects", function(cl) {
+    var db = document.getElementById('defects-button');
+    if(cl) {
+        db.classList.remove("hidden");
+        fetch_to_dom("defects-list", "/defects_list.html", {});
+    } else {
+        db.classList.add("hidden");
+        document.getElementById('defects-list').classList.add("hidden");
+    }
+});
+
+function toggle_defects_view() {
+    var dv = document.getElementById('defects-list');
+    if(dv.classList.contains("hidden"))
+        dv.classList.remove("hidden");
+    else
+        dv.classList.add("hidden");
+}
+
 function change_doc_type() {
     var t = document.getElementById('doc-type').value;
     var upd = document.getElementById('doc-update');

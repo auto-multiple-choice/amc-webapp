@@ -310,3 +310,14 @@ class Amcdb:
             (student, copy, student_id))
         self.db.commit()
         return to_rm
+
+    def defects_class(self):
+        self.use_module("layout")
+        self.db.row_factory = None
+        return self.db.execute("SELECT max(class) FROM layout.layout_defects").fetchone()[0];
+
+    def defects(self):
+        self.use_module("layout")
+        self.db.row_factory = None
+        return self.db.execute("SELECT kind, class, h1, h2 FROM layout.layout_defects").fetchall();
+        
