@@ -1041,6 +1041,10 @@ def students_list_file():
     if path:
         path = path.replace('%PROJETS/', projects_dir() + "/", 1)
         path = path.replace('%PROJET/', pdir + "/", 1)
+
+        if not os.path.isfile(path):
+            path = None
+            change_option("listeetudiants", None)
     else:
         filename = None
         for x in ('students.csv', 'students.txt',
