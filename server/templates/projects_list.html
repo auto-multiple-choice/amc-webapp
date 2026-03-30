@@ -1,3 +1,4 @@
+{% if projects %}
 <div id="projects-action" class="bandeau">
   <div id="project-open" class="project-action ok selected" onclick="select_action(this);">Open</div>
   <div id="project-rename" class="project-action neutral" onclick="select_action(this);">Rename</div>
@@ -11,3 +12,4 @@
     {% endfor %}
   </ul>
 </div>
+{% endif %}
