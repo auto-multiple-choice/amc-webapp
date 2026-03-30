@@ -571,6 +571,9 @@ def io_project_config():
              ["moteur_latex_b",
               "note_null", "note_max", "note_grain", "note_arrondi",
               "verdict", "annote_position",
+              "global:bw_threshold",
+              "global:tolerance_marque_inf", "global:tolerance_marque_sup",
+              "global:try_three",
              ]
          ))
 

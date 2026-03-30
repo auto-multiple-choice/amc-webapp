@@ -2,6 +2,9 @@
   <div id="project-config">
     
     <div>
+      <div class="part-title project">
+        Project configuration
+      </div>
       <div class="part-title">
         External commands
       </div>
@@ -53,7 +56,32 @@
         </select>
         <br/>
         <label for="verdict">Header text:</label><br/>
-        <textarea id="verdict" name="verdict" cols="40" rows="3"/>
+        <textarea id="verdict" name="verdict" cols="40" rows="3"></textarea>
+      </div>
+    </div>
+
+    <div>
+      <div class="part-title global">
+        Global configuration
+      </div>
+      <div class="part-title">
+        Scanning
+      </div>
+      <div>
+        <label for="global:bw_threshold">Black&amp;white conversion threshold:</label>
+        <input id="global:bw_threshold" name="global:bw_threshold"
+               type="number" size="3" min="0" max="1"/>
+        <br/>
+        <label for="global:tolerance_marque_inf">Marks size max decrease:</label>
+        <input id="global:tolerance_marque_inf" name="global:tolerance_marque_inf"
+               type="number" size="3" min="0" max="1"/>
+        <br/>
+        <label for="global:tolerance_marque_sup">Marks size max increase:</label>
+        <input id="global:tolerance_marque_sup" name="global:tolerance_marque_sup"
+               type="number" size="3" min="0" max="1"/>
+        <br/>
+        <input type="checkbox" id="global:try_three" name="global:try_three"/>
+        <label for="global:try_three">Process scans with 3 corner marks</label>
       </div>
     </div>
     

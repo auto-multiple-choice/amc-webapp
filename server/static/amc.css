@@ -42,9 +42,19 @@ h1 {
 
 .part-title {
     font-weight: bold;
-    background: #eee;
+    background: #9bbedf;
     margin-top: 4px;
     margin-bottom: 4px;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.part-title.global {
+    background: #df9b9c;
+}
+
+.part-title.project {
+    background: #9bdfa8;
 }
 
 .offline {

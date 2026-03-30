@@ -74,6 +74,12 @@ def set_project(name):
     set_var("project_name", name)
     set_thread_var("db", None)
 
+def user_confdir():
+    if os.environ.get("AMC_USERHEADER"):
+        return projects_dir() + "/config"
+    else:
+        return os.path.expanduser('~') + "/.AMC.d"
+
 def projects_dir():
     pdir = os.environ.get("AMC_PROJECTSDIR",
                           os.path.expanduser('~') + "/MC-Projects")
@@ -101,22 +107,23 @@ def project_clone_name(name):
             return(nn)
     return None
 
-def read_options():
-    d = project_dir()
-    of = d + "/" + "options.xml"
-    options = etree.parse(of)
-    return options
-
 def first_or_none(l):
     if l:
         return l[0]
     else:
         return None
 
+def option_file_from_name(name):
+    if name.startswith("global:"):
+        name = name.replace("global:", "", 1)
+        options_file = user_confdir() + "/cf.default.xml"
+    else:
+        options_file = project_dir() + "/options.xml"
+    return options_file, name
+
 def change_option(name, value):
-    d = project_dir()
-    of = d + "/" + "options.xml"
-    options = etree.parse(of)
+    options_file, name = option_file_from_name(name)
+    options = etree.parse(options_file)
     x = first_or_none(options.xpath("/*/" + name))
     if x is None:
         glob = options.xpath("/*")[0]
@@ -125,34 +132,28 @@ def change_option(name, value):
         glob.append(opt)
     else:
         x.text = str(value)
-    lock = FileLock(f"{of}.lock")
+    lock = FileLock(options_file + ".lock")
     with lock:
-        options.write(of)
-
-def options_dict():
-    options = read_options()
-    d = {}
-    for e in options.xpath("/*/*"):
-        d[e.tag] = e.text
-    return e
+        options.write(options_file)
 
 def get_option(name):
-    options = read_options()
+    options_file, name = option_file_from_name(name)
+    options = etree.parse(options_file)
     return first_or_none(options.xpath(f"/*/{name}/text()"))
 
-def get_options(prefix_or_list):
-    options = read_options()
+def get_options(names_list):
     o = {}
-    if isinstance(prefix_or_list, str):
-        es = options.xpath("/*/*[starts-with(name(),'" + prefix_or_list + "')]")
-    else:
-        es = [ first_or_none(options.xpath(f"/*/{name}"))
-               for name in prefix_or_list ]
-    for x in es:
-        if x is not None:
-            o[x.tag] = x.text
-            if o[x.tag] is None:
-                o[x.tag] = ""
+    options = {}
+
+    for name in names_list:
+        options_file, short_name = option_file_from_name(name)
+        if not options.get(options_file):
+            options[options_file] = etree.parse(options_file)
+        e = first_or_none(
+            options[options_file].xpath(f"/*/{short_name}"))
+        if e is not None:
+            o[name] = "" if e.text is None else e.text
+
     return o
 
 def main_source_file():

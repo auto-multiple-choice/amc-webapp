@@ -10,6 +10,10 @@ def command_str(command):
 def amc_command(*args,
                 messages=None, variables=None,
                 app=None):
+
+    env = os.environ.copy()
+    env["AMC_USERCONFDIR"] = user_confdir()
+    
     if messages is None:
         messages = {}
     for k in ("ERR", "INFO", "WARN"):
@@ -29,7 +33,9 @@ def amc_command(*args,
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True)
+            text=True,
+            env=env,
+        )
     except Exception as e:
         messages['ERR'].append(f"Execution error: {str(e)}")
         return messages, variables
