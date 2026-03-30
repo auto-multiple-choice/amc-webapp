@@ -292,7 +292,7 @@ li.selectable.recent {
     justify-content: center;
 }
 
-#document-missing > div {
+.missing {
     padding: 10px;
     margin: 10px;
     border: #df9b9c dotted 2px;
