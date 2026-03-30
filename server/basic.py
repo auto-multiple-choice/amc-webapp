@@ -1,5 +1,6 @@
 
 import os
+from pathlib import Path
 from lxml import etree
 from filelock import FileLock
 import threading
@@ -74,7 +75,13 @@ def set_project(name):
     set_thread_var("db", None)
 
 def projects_dir():
-    return os.path.expanduser('~') + "/Projets-QCM"
+    pdir = os.environ.get("AMC_PROJECTSDIR",
+                          os.path.expanduser('~') + "/MC-Projects")
+    if k := os.environ.get("AMC_USERHEADER"):
+        if subdir := request.headers.get(k):
+            pdir += ("/" + subdir)
+    Path(pdir).mkdir(parents=True, exist_ok=True)
+    return pdir
 
 def project_dir(p=None):
     if not p:
