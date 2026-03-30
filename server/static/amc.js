@@ -163,6 +163,7 @@ function u_projects_list() {
 socket.on("u-projects-list", u_projects_list);
 
 function tab_main() {
+    projects_action = "project-open";
     show_tab("main").then(() => {
         u_projects_list();
         fetch_to_dom('project-new' , "/project_new.html", {});
