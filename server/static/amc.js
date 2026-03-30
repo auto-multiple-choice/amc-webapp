@@ -40,17 +40,13 @@ function set_current_tab(tab_name) {
         var name = e.id.substring(5);
         if(name == current_tab) e.classList.add("current");
         else e.classList.remove("current");
-        if(name == "main") {
-            if(tab_name == "main") e.classList.remove("hidden");
-            else e.classList.add("hidden");
-        }
     }
 }
 
 function adapt_menu(data) {
     for(var e of document.getElementsByClassName("menubtn")) {
         var name = e.id.substring(5);
-        if(data[name] || name == current_tab) e.classList.remove("hidden");
+        if(data[name]) e.classList.remove("hidden");
         else e.classList.add("hidden");
     }
 }
@@ -125,19 +121,27 @@ function project_do_rename(e) {
     socket.emit("project-rename", [e.getAttribute("oldname"), e.value]);
 }
 
-function project_open(name) {
-    project_name = name;
-    localStorage.setItem("project-name", name)
-    document.getElementById('project-name').innerHTML = name;
-    tab_source();
+function request_project(name, reload) {
+    socket.emit("request-project", [name, reload]);
 }
 
+function project_open(data) {
+    var name = data[0];
+    document.getElementById('project-name').innerHTML = name;
+    localStorage.setItem("project-name", name)
+    if(name != project_name || data[1]) {
+        project_name = name;
+        socket.emit('adapt-menu')
+        if(name) tab_source();
+        else tab_main();
+    }
+}
 socket.on("project-open", project_open );
 
 function select_project(name) {
     switch(projects_action) {
     case "project-open":
-        project_open(name);
+        request_project(name, true);
         break;
     case "project-rename":
         project_rename(name);
@@ -405,14 +409,14 @@ async function source_upload() {
 function tab_source() {
     editor = null;
     show_tab("source").then(() => {
-        socket.emit("project-name", project_name);
+        socket.emit("source-info");
         socket.emit("source-code", "");
     });
 }
 
 socket.on("connect", () => {
     connection_status("online");
-    socket.emit("project-name", project_name);
+    request_project(project_name, false);
 });
 
 socket.on("disconnect", () => {
@@ -1080,10 +1084,9 @@ document.addEventListener('DOMContentLoaded', function() {
     connection_status(socket.connected ? "online" : "offline");
     project_name = localStorage.getItem("project-name");
     if(project_name) {
-        project_open(project_name);
+        request_project(project_name, true);
     } else {
         tab_main();
-        adapt_menu({"main": true});
     }
 });
 

@@ -46,13 +46,17 @@ app.logger.info(f"Temp dir: {temp_dir}")
 def get_db(modules=()):
     db = get_thread_var("db", app.logger)
     if not db:
-        app.logger.warning(f"Create DB for thread {threading.get_ident()} ({get_session()})")
-        app.logger.debug(
-            f"Active threads: " +
-            ", ".join([str(x.ident)
-                       for x in threading.enumerate()]))
-        db = Amcdb(project_dir(), modules)
-        set_thread_var("db", db)
+        pdir = project_dir()
+        if pdir:
+            app.logger.warning(f"Create DB for thread {threading.get_ident()} ({get_session()})")
+            app.logger.debug(
+                f"Active threads: " +
+                ", ".join([str(x.ident)
+                           for x in threading.enumerate()]))
+            db = Amcdb(project_dir(), modules)
+            set_thread_var("db", db)
+        else:
+            db = None
     return db
 
 @socketio.on('sid')
@@ -93,33 +97,32 @@ def fs_file(path):
         else:
             return { "error": "Unknown path type" }
 
-def is_project_dir(path):
-    return os.path.isdir(path) and os.path.isfile(path + "/options.xml")
-
-def projects_list():
-    pdir = projects_dir()
-    return sorted([ path for path in os.listdir(pdir)
-             if is_project_dir(pdir + "/" + path) ])
-
 @app.route('/projects_list.html')
 def u_projects_list():
     projects = projects_list()
     return render_template("projects_list.html", projects=projects)
 
-@socketio.on('project-name')
-def io_project_name(name):
-    set_project(name)
-    if name:
+@socketio.on('request-project')
+def io_request_project(data):
+    name, to_reload = data
+    name, change = set_project(name)
+    if change and name:
         amc_command("db", "upgrade", app=app)
-        db = get_db()
+    emit("project-open", [name, to_reload])
+    io_adapt_menu()
+
+@socketio.on('source-info')
+def io_source_info():
+    db = get_db()
+    if db:
         emit_progress("defects", db.defects_class())
         emit("ncopies", str(ncopies()))
-    adapt_menu()
 
-def adapt_menu():
+@socketio.on('adapt-menu')
+def io_adapt_menu():
     project = get_var("project_name")
     if project:
-        menus = { "source": True, "config": True }
+        menus = { "main": True, "source": True, "config": True }
         db = get_db()
         if db.layout_npages():
             menus["scans"] = True
@@ -180,7 +183,11 @@ def io_project_clone(name):
 def io_project_clone(name):
     rep = project_dir(p=name)
     shutil.rmtree(rep)
-    emit("u-projects-list")
+    if get_var("project_name") == name:
+        set_project("")
+        emit("project-open", ["", False])
+    else:
+        emit("u-projects-list")
 
 @socketio.on('project-rename')
 def io_project_rename(data):
@@ -204,7 +211,12 @@ def io_project_rename(data):
     else:
         app.logger.info(f'Project "{old}" renamed to "{new}"')
         os.rename(src, dst)
-        emit("u-projects-list")
+
+        if old == get_var("project_name"):
+            new, _ = set_project(new)
+            emit("project-open", [new, True])
+        else:
+            emit("u-projects-list")
 
 def template_group_info(g):
     f = f"{TEMPLATES_DIR}/{g}/directory.xml"
@@ -314,7 +326,9 @@ def io_create_project_empty(data):
         with open(f"{rep}/{f}", "w") as source_file:
             source_file.write("\n")
         create_options_file(rep, f, filt=stype)
-        emit("project-open", name)
+        name, _ = set_project(name)
+        amc_command("db", "upgrade", app=app)
+        emit("project-open", [name, True])
 
 def info_remove_root(m, root):
     n = add_var("files_n", 1)
@@ -423,12 +437,15 @@ def io_create_project_template(data):
             if not project_install_from_dir(tpath, rep):
                 return
         create_project_dirs(rep)
-        emit("project-open", name)
+        name, _ = set_project(name)
+        amc_command("db", "upgrade", app=app)
+        emit("project-open", [name, True])
 
 def create_from_source_file(rep, f, fn):
     create_project_dirs(rep)
     f.save(f"{rep}/{fn}")
     create_options_file(rep, fn)
+    amc_command("db", "upgrade", app=app)
     emit_progress("end-command")
     return { "ok": True }
 
@@ -445,6 +462,7 @@ def create_from_archive(rep, f):
         ok = tar_extract_options_siblings(tarf, rep)
     else:
         app.logger.error("Archive type unknown")
+    amc_command("db", "upgrade", app=app)
     emit_progress("end-command")
     return { "ok": ok }
 
@@ -511,7 +529,7 @@ def file_upload(dest):
         emit_progress("end-command")
         lock_scans_mode()
         show_messages(messages)
-        adapt_menu()
+        io_adapt_menu()
         return { "ok": True }
     else:
         emit_progress("end-command")
@@ -673,7 +691,7 @@ def log_messages(messages):
 def clear_data(steps):
     app.logger.info(f"Clear data: {steps}")
     amc_command("db", "clear", steps, app=app)
-    adapt_menu()
+    io_adapt_menu()
 
 @socketio.on("doc-update")
 def io_doc_update(t):
@@ -717,7 +735,7 @@ def io_doc_update(t):
 
     emit_progress("end-command")
     show_messages(messages)
-    adapt_menu()
+    io_adapt_menu()
     io_doc_type(t)
 
 @app.route("/layout/<student>/<page>/<filename>")
@@ -974,7 +992,7 @@ def io_add_student(student):
     first_page, copy = db.add_student(student, m)
     if first_page:
         emit("scans-page-select", [student, first_page, copy])
-        adapt_menu()
+        io_adapt_menu()
 
 @app.route('/show_marks.html')
 def x_show_marks():

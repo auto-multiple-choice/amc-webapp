@@ -71,8 +71,13 @@ def add_var(name, delta):
     return users[uid][name]
 
 def set_project(name):
-    set_var("project_name", name)
-    set_thread_var("db", None)
+    old_project = get_var("project_name")
+    if not project_exists(name):
+        name = ""
+    if name != old_project:
+        set_var("project_name", name)
+        set_thread_var("db", None)
+    return name, old_project != name
 
 def user_confdir():
     if os.environ.get("AMC_USERHEADER"):
@@ -96,6 +101,21 @@ def project_dir(p=None):
         return projects_dir() + "/" + p
     else:
         return None
+
+def is_project_dir(path):
+    return os.path.isdir(path) and os.path.isfile(path + "/options.xml")
+
+def projects_list():
+    pdir = projects_dir()
+    return sorted([ path for path in os.listdir(pdir)
+             if is_project_dir(pdir + "/" + path) ])
+
+def project_exists(name):
+    if name:
+        pdir = project_dir(p=name)
+        return is_project_dir(pdir)
+    else:
+        return False
 
 def project_clone_name(name):
     d = projects_dir()
