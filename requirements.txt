@@ -1,7 +1,6 @@
 flask
 flask-socketio
 lxml
-sqlite3
 pycups
 unidecode
 filelock
