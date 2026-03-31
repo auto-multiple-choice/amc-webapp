@@ -236,10 +236,16 @@ def template_info(gid, tid, filename):
         if os.path.isfile(f"{filename}/description.xml"):
             desc = etree.parse(f"{filename}/description.xml")
     else:
-        t = tarfile.open(filename)
-        for m in t.getmembers():
-            if m.name.endswith("/description.xml"):
-                desc = etree.parse(t.extractfile(m))
+        try:
+            t = tarfile.open(filename)
+        except Exception as e:
+            t = None
+            app.logger.error(f"Can't open project file {filename}: " + str(e))
+
+        if t:
+            for m in t.getmembers():
+                if m.name.endswith("/description.xml"):
+                    desc = etree.parse(t.extractfile(m))
 
     if desc:
         for k in ("title", "text"):
@@ -624,8 +630,8 @@ def io_project_delete_file(data):
     if base:
         try:
             os.unlink(f"{base}/{filename}")
-        except e:
-            app.logger.error("Can't delete project file" + e)
+        except Exception as e:
+            app.logger.error("Can't delete project file: " + str(e))
             return
         io_files_list(all_files)
     else:
