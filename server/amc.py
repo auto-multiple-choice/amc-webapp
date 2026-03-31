@@ -773,8 +773,12 @@ def io_layout_add(data):
 def io_print_dialog():
     db = get_db()
     student_min, student_max = db.student_range()
-    conn = cups.Connection()
-    ps = conn.getPrinters()
+    ps = []
+    try:
+        conn = cups.Connection()
+        ps = conn.getPrinters()
+    except Exception as e:
+        app.logger.error(f"Cannot connect to CUPS ({os.environ.get('CUPS_SERVER')}): " + str(e))
     printers = []
     for i in sorted(list(ps)):
         printers.append({
