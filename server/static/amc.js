@@ -231,7 +231,7 @@ function upload_file_to_project_done() {
 function upload_file_to_project() {
     var f = document.getElementById('project-upload-file');
     if(f.files[0]) {
-        upload_file(`/${socket.id}/upload/project`,
+        upload_file("/upload/project",
                     f.files[0], "Uploading…", {},
                     upload_file_to_project_done
                    );
@@ -266,7 +266,7 @@ function do_create_project() {
     } else if(way == "file") {
         var f = document.getElementById('source-file');
         if(f.files[0]) {
-            upload_file(`/${socket.id}/upload/create`,
+            upload_file("/upload/create",
                         f.files[0], "Uploading…",
                         { "name": name },
                         function() { project_open(name); }
@@ -793,7 +793,7 @@ function upload_scans_done() {
 function upload_scans() {
     var f = document.getElementById('scans-upload');
     if(f.files[0]) {
-        upload_file(`/${socket.id}/upload/scans`,
+        upload_file("/upload/scans",
                     f.files[0], "Uploading…", { "project_name": project_name },
                     upload_scans_done
                    );
