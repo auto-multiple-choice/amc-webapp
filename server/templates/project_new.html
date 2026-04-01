@@ -8,8 +8,9 @@
   <input id="new-project-name" type="text"></input>
 </p>
 <div class="one-way">
-  <input class="one-way" type="radio" name="way" value="empty" checked="checked"/>
-  <span class="way-title">Empty project</span>
+  <input class="one-way" type="radio"
+         id="way-empty" name="way" value="empty" checked="checked"/>
+  <label for="way-empty" class="way-title">Empty project</label>
   <div>
     Start from an empty project source file, with format
     <select id="source-type" name="source-type">
@@ -19,8 +20,9 @@
   </div>
 </div>
 <div class="one-way">
-  <input class="one-way" type="radio" name="way" value="file"/>
-  <span class="way-title">Archive or source file</span>
+  <input class="one-way" type="radio"
+         id="way-file" name="way" value="file"/>
+  <label for="way-file" class="way-title">Archive or source file</label>
   <div>
     Use a source file you already wrote, or an archive (zip file) of
     another project.
@@ -29,8 +31,9 @@
 </div>
 {% if templates %}
 <div id="way-templates" class="one-way">
-  <input class="one-way" type="radio" name="way" value="template"/>
-  <span class="way-title">Template</span>
+  <input class="one-way" type="radio"
+         id="way-template" name="way" value="template"/>
+  <label for="way-template" class="way-title">Template</label>
   <div>
     <select id="template-group" name="template-group" onchange="template_group_select(this.value);">
       <option value="">all groups</option>

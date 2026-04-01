@@ -302,6 +302,7 @@ li.selectable.recent {
     padding: 10px;
     border: #002ebf solid 3px;
     flex-grow: 0;
+    min-width: 20em;
 }
 
 #code, #document {
