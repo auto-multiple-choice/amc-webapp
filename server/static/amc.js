@@ -269,7 +269,7 @@ function do_create_project() {
             upload_file("/upload/create",
                         f.files[0], "Uploading…",
                         { "name": name },
-                        function() { project_open(name); }
+                        function() { project_open([name, true]); }
                        )
         } else {
             alert("Please choose a file to send!");

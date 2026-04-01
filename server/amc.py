@@ -102,21 +102,23 @@ def u_projects_list():
     projects = projects_list()
     return render_template("projects_list.html", projects=projects)
 
-@socketio.on('request-project')
-def io_request_project(data):
-    name, to_reload = data
+def u_open_project(name, to_reload=True):
     name, change = set_project(name)
     if change and name:
         amc_command("db", "upgrade", app=app)
-    emit("project-open", [name, to_reload])
-    io_adapt_menu()
+    emit_progress("project-open", [name, to_reload])
+
+@socketio.on('request-project')
+def io_request_project(data):
+    name, to_reload = data
+    u_open_project(name, to_reload)
 
 @socketio.on('source-info')
 def io_source_info():
     db = get_db()
     if db:
         emit_progress("defects", db.defects_class())
-        emit("ncopies", str(ncopies()))
+        emit_progress("ncopies", str(ncopies()))
 
 @socketio.on('adapt-menu')
 def io_adapt_menu():
@@ -131,7 +133,7 @@ def io_adapt_menu():
     else:
         menus = { "main": True }
         
-    emit("menu", menus)
+    emit_progress("menu", menus)
 
 def copy_files_progress(src_folder, dst_folder):
     nfiles = 0
@@ -447,15 +449,15 @@ def io_create_project_template(data):
         amc_command("db", "upgrade", app=app)
         emit("project-open", [name, True])
 
-def create_from_source_file(rep, f, fn):
+def create_from_source_file(name, rep, f, fn):
     create_project_dirs(rep)
     f.save(f"{rep}/{fn}")
     create_options_file(rep, fn)
-    amc_command("db", "upgrade", app=app)
     emit_progress("end-command")
+    u_open_project(name)
     return { "ok": True }
 
-def create_from_archive(rep, f):
+def create_from_archive(name, rep, f):
     emit_progress("t", "Saving archive…")
     handle, fn = tempfile.mkstemp()
     f.save(fn)
@@ -468,8 +470,9 @@ def create_from_archive(rep, f):
         ok = tar_extract_options_siblings(tarf, rep)
     else:
         app.logger.error("Archive type unknown")
-    amc_command("db", "upgrade", app=app)
+    create_project_dirs(rep)
     emit_progress("end-command")
+    u_open_project(name)
     return { "ok": ok }
 
 @app.route('/upload/<dest>', methods=['POST'])
@@ -489,9 +492,9 @@ def file_upload(dest):
         if rep:
             emit_progress("p", 0)
             if re.match(r'.*\.(tgz|tar\.gz|tar|zip)', fn, re.IGNORECASE):
-                return create_from_archive(rep, f)
+                return create_from_archive(name, rep, f)
             elif re.match(r'.*\.(tex|latex|txt)', fn, re.IGNORECASE):
-                return create_from_source_file(rep, f, fn)
+                return create_from_source_file(name, rep, f, fn)
             else:
                 emit_progress("end-command")
                 return { "error": f"File {fn} can't be used to create a project" }
