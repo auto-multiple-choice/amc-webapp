@@ -640,29 +640,33 @@ def io_project_delete_file(data):
     else:
         app.logger.error("Can't delete project file: unknown project")
 
+@app.route('/document/<doc_type>', methods=['POST'])
+def u_document_type(doc_type):
+    url = request.json.get('url')
+    return render_template(f"document_{doc_type}.html",
+                           url=url)
+
 @socketio.on("doc-type")
 def io_doc_type(t):
     if not t:
         emit("document-content",
-             [False, False, render_template("document_choose.html")])
+             [False, False, "choose", None])
 
+    can_print = False
+    danger = False
+    url = None
+    template_name = "missing"
+        
     if t=="calage":
         db = get_db(modules=("layout",))
         if db.layout_npages() > 0 :
-            emit("document-content",
-                 [False, False, render_template("document_calage.html")])
-            layout_set_page(1, 1)
-        else:
-            emit("document-content",
-                 [False, False, render_template("document_missing.html")])
+            template_name = "calage"
 
     else:
         doc = "/DOC-" + t + ".pdf"
         filename = project_dir() + doc
 
         if os.path.isfile(filename):
-            can_print = False
-            danger = False
             if t == "sujet":
                 can_print = True
                 db = get_db()
@@ -670,12 +674,10 @@ def io_doc_type(t):
                     danger = True
                 
             url = "/fs/" + get_var("project_name") + doc
-            emit("document-content",
-                 [can_print, danger, render_template("document_content.html",
-                                                     url=url)])
-        else:
-            emit("document-content",
-                 [False, False, render_template("document_missing.html")])
+            template_name = "content"
+
+    emit("document-content", [can_print, danger,
+                              template_name, url])
 
 def select_messages(messages):
     if len(messages) > 10:
@@ -764,6 +766,10 @@ def layout_set_page(student, page):
     url = f"/layout/{student}/{page}/layout.svg"
     emit("layout-set-page", [f"{student}/{page}", url])
 
+@socketio.on("layout-init")
+def io_layout_init():
+    layout_set_page(1, 1)
+    
 @socketio.on("layout-add")
 def io_layout_add(data):
     db = get_db(modules=("layout",))
@@ -870,7 +876,7 @@ def send_dir_as_zip(path, name=None, recursive=True,
     )
         
 @app.route("/printed/<project>/printed.zip")
-def build_printed_zip(sid, project):
+def build_printed_zip(project):
     rep = f"{temp_dir}/{get_session()}/printed/{project}"
     return send_dir_as_zip(rep, name="printed.zip", recursive=False)
 

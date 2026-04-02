@@ -430,9 +430,14 @@ function change_ncopies() {
 }
 
 socket.on("document-content", function(data) {
+    var can_print = data[0];
+    var danger = data[1];
+    var type = data[2];
+    var url = data[3];
+    
     var pb = document.getElementById('doc-print-btn');
     if(pb) {
-        if(data[0]) pb.classList.remove("hidden");
+        if(can_print) pb.classList.remove("hidden");
         else pb.classList.add("hidden");
     }
     var du = document.getElementById('doc-update');
@@ -441,13 +446,22 @@ socket.on("document-content", function(data) {
             du.classList.remove('disabled');
         else du.classList.add('disabled');
 
-        if(data[1]) du.classList.add('danger');
+        if(danger) du.classList.add('danger');
         else du.classList.remove('danger');
     }
-    var view = document.getElementById('document-view');
-    if(view) {
-        view.innerHTML = data[2];
-    }
+    fetch_to_dom("document-view", `/document/${type}`,
+                 { method: 'POST',
+                   headers: {
+                       'Content-Type': 'application/json'
+                   },
+                   body: JSON.stringify({
+                       url: url })
+                 })
+        .then(() => {
+            if(type == "calage") {
+                socket.emit("layout-init");
+            }
+        });
 });
 
 socket.on("defects", function(cl) {
@@ -469,8 +483,8 @@ function toggle_defects_view() {
         dv.classList.add("hidden");
 }
 
-function change_doc_type() {
-    var t = document.getElementById('doc-type').value;
+function change_doc_type(e) {
+    var t = e.value;
     var upd = document.getElementById('doc-update');
     if(t == "calage") upd.classList.add("hidden");
     else upd.classList.remove("hidden");
