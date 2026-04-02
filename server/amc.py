@@ -536,6 +536,7 @@ def file_upload(dest):
             messages=messages, variables=variables, app=app
         )
         emit_progress("end-command")
+        emit_progress("scans-report")
         lock_scans_mode()
         show_messages(messages)
         io_adapt_menu()
@@ -897,7 +898,7 @@ def lock_scans_mode():
     m = int(get_option("auto_capture_mode"))
     if m is None or m < 0:
         m = 0
-        emit("scans-mode", m)
+        emit_progress("scans-mode", m)
         change_option("auto_capture_mode", m)
     emit_progress("lock-photocopy")
     return m
