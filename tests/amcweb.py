@@ -146,6 +146,18 @@ class AMCWeb():
         self.tab = "source"
 
         self.set_source_content(content)
+
+    def new_project_from_file(self, project_name, archive_path):
+        print(f"Create project {project_name} from {archive_path}…")
+        self.driver.find_element(By.ID,'new-project-name').send_keys(project_name)
+        self.driver.find_element(By.ID, 'way-file').click()
+        self.driver.find_element(By.ID, 'source-file').send_keys(os.path.abspath(archive_path))
+        self.driver.find_element(
+            By.XPATH,"//span[ contains (text(), 'Create new' ) ]").click()
+        sleep(2)
+
+        self.project_name = project_name
+        self.tab = "source"
         
     def goto_tab(self, tab_name, force=False):
         if self.tab == tab_name and not force:
@@ -291,12 +303,12 @@ class AMCWeb():
                     expected = v
                     if k != "Name":
                         expected = float(expected)
-                        computed = float(computed)
+                        computed = None if computed is None else float(computed) 
                     if expected == computed:
                         print(f"Right mark: for student {student}: {k} = {v}")
                     else:
                         errors.append(
-                            f"Wrong mark for student {student}: {k} = {computed} but should be {expected}")
+                            f"{v}\nWrong mark for student {student}: {k} = {computed} but should be {expected}")
                 del(marks[student])
         for k,v in marks.items():
             errors.append(f"Missing grades for {k}, should be {v}")
