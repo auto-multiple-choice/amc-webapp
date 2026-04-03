@@ -222,9 +222,6 @@ function upload_file(url, file,
 }
 
 function upload_file_to_project_done() {
-    var uf = document.getElementById('project-upload-file');
-    uf.classList.add("hidden");
-    uf.value = "";
     all_files_change();
 }
 
@@ -361,15 +358,10 @@ function source_other() {
     if(fl.classList.contains("hidden")) {
         fl.classList.remove("hidden");
         document.getElementById("all-files").checked = false;
-        document.getElementById("project-upload-file").classList.add("hidden");
         all_files_change();
     } else {
         fl.classList.add("hidden");
     }
-}
-
-function open_upload_file() {
-    document.getElementById("project-upload-file").classList.remove("hidden");
 }
 
 function source_revert() {
