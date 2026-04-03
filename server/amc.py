@@ -518,6 +518,7 @@ def file_upload(dest):
         n, list_path = tempfile.mkstemp(prefix="list-", dir=rep)
         with open(list_path, "w") as f:
             print(path, file=f)
+        lock_scans_mode()
         emit_progress("begin-command")
         emit_progress("t", "Extracting scans images…")
         messages, variables = amc_command(
@@ -530,14 +531,13 @@ def file_upload(dest):
         amc_command(
             "analyse",
             "--liste-fichiers", list_path,
-            "--unlink-on-global-error",
+            "--unlink-on-global-err",
             "--progression-id", "SCAN",
             "--progression", "1",
             messages=messages, variables=variables, app=app
         )
         emit_progress("end-command")
         emit_progress("scans-report")
-        lock_scans_mode()
         show_messages(messages)
         io_adapt_menu()
         return { "ok": True }
