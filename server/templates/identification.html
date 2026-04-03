@@ -46,11 +46,11 @@
   {{ n_id }} / {{ n_students }}
 </div>
 <div class="bandeau">
-  <span class="btn btn-danger" onclick="association_clear();">Clear</span>
+  <span id="do-association-clear" class="btn btn-danger" onclick="association_clear();">Clear</span>
   {% if ukeys and codes %}
-  <span class="btn btn-ok" onclick="association_auto();">Automatic</span>
+  <span id="do-association-auto" class="btn btn-ok" onclick="association_auto();">Automatic</span>
   {% endif %}
-  <span class="btn btn-ok" onclick="association_manual();">Manual</span>
+  <span id="do-association-manual" class="btn btn-ok" onclick="association_manual();">Manual</span>
 </div>
 {% else %}
 <div>
