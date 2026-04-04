@@ -77,6 +77,8 @@ ENV HOME=/amc-web/files
 ENV PATH=/venv/bin:${PATH}
 ENV AMC_TXT_DEFAULTFONT="Linux Libertine"
 
+VOLUME /amc-web/files
+
 EXPOSE 8080
 WORKDIR /amc-web/server
 CMD [ "gunicorn", "-k", "gevent", "-w", "1", "amc:app", "-b", "0.0.0.0:8080", "--preload" ]
