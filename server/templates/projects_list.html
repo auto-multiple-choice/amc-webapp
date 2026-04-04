@@ -1,9 +1,9 @@
 {% if projects %}
 <div id="projects-action" class="bandeau">
-  <div id="project-open" class="project-action ok selected" onclick="select_action(this);">Open</div>
-  <div id="project-rename" class="project-action neutral" onclick="select_action(this);">Rename</div>
-  <div id="project-clone" class="project-action neutral" onclick="select_action(this);">Clone</div>
-  <div id="project-delete" class="project-action danger" onclick="select_action(this);">Delete</div>
+  <div id="project-open" class="project-action ok selected" onclick="select_action(this);">{{ _('project.open') }}</div>
+  <div id="project-rename" class="project-action neutral" onclick="select_action(this);">{{ _('project.rename') }}</div>
+  <div id="project-clone" class="project-action neutral" onclick="select_action(this);">{{ _('project.clone') }}</div>
+  <div id="project-delete" class="project-action danger" onclick="select_action(this);">{{ _('project.delete') }}</div>
 </div>
 <div class="espace overy">
   <ul id="projects-ul" class="projects-list selectable">

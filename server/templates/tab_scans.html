@@ -3,49 +3,49 @@
     <div>
       <input type="checkbox" id="scans-photocopied"
              name="scans-photocopied" onchange="scans_mode_change();"/>
-      <label for="scans-photocopied">Photocopy mode</label>
+      <label for="scans-photocopied">{{ _('scans.photocopy') }}</label>
     </div>
     <div>
       <input type="file" id="scans-upload" name="file" class="hidden"
              onchange="upload_scans();"/>
-      <label class="btn btn-ok" for="scans-upload">Add scans…</label>
+      <label class="btn btn-ok" for="scans-upload">{{ _('scans.upload') }}</label>
     </div>
     <div id="scans-params">
       <div>
-        Darkness thresholds:
+        {{ _('scans.thresholds') }}
       </div>
       <div>
         <input type="number" id="threshold" name="threshold"
                min="0" max="1" step="0.01"
                onchange="threshold_change();">
-        <label for="threshold">lower</label>
+        <label for="threshold">{{ _('scans.thresholds.lower') }}</label>
       </div>
       <div>
         <input type="number" id="threshold-up" name="threshold-up"
                min="0" max="1" step="0.01"
                onchange="threshold_change();">
-        <label for="threshold">upper</label>
+        <label for="threshold">{{ _('scans.thresholds.upper') }}</label>
       </div>
     </div>
     <div id="add-student">
       <input type="text" id="add-student-n" name="add-student-n"
              size="4" placeholder="num"/>
-      <span class="btn btn-ok" onclick="add_student();">Add student</span>
+      <span class="btn btn-ok" onclick="add_student();">{{ _('scans.add') }}</span>
     </div>
     <div id="scans-report">
     </div>
   </div>
   <div id="zooms">
-    <div class="zooms-title zooms-0">Not ticked</div>
+    <div class="zooms-title zooms-0">{{ _('scans.ticked.no') }}</div>
     <div id="zooms-0">
     </div>
-    <div class="zooms-title zooms-1">Ticked</div>
+    <div class="zooms-title zooms-1">{{ _('scans.ticked.yes') }}</div>
     <div id="zooms-1">
     </div>
   </div>
   <div id="manual">
     <div class="missing">
-      Please select a page.
+      {{ _('scans.page.select') }}
     </div>
   </div>
 </div>

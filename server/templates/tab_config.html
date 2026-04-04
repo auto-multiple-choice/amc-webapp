@@ -3,13 +3,13 @@
     
     <div>
       <div class="part-title project">
-        Project configuration
+        {{ _('config.project') }}
       </div>
       <div class="part-title">
-        External commands
+        {{ _('config.external') }}
       </div>
       <div>
-        <label for="moteur_latex_b">LaTeX engine:</label>
+        <label for="moteur_latex_b">{{ _('config.latex_engine') }}</label>
         <input id="moteur_latex_b" name="moteur_latex_b"
                type="text" size="25"/>
       </div>
@@ -17,81 +17,81 @@
 
     <div>
       <div class="part-title">
-        Global mark rules
+        {{ _('config.grading') }}
       </div>
       <div>
-        <label for="note_null">Minimal mark:</label>
+        <label for="note_null">{{ _('config.mark.null') }}</label>
         <input id="note_null" name="note_null"
                type="number" size="3"/>
         <br/>
-        <label for="note_max">Maximal mark:</label>
+        <label for="note_max">{{ _('config.mark.max') }}</label>
         <input id="note_max" name="note_max"
                type="number" size="3" min="0"/>
         <br/>
-        <label for="note_grain">Grain:</label>
+        <label for="note_grain">{{ _('config.mark.grain') }}</label>
         <input id="note_grain" name="note_grain"
                type="number" size="3" min="0"/>
         <br/>
-        <label for="note_arrondi">Rounding type:</label>
+        <label for="note_arrondi">{{ _('config.mark.rounding') }}</label>
         <select id="note_arrondi" name="note_arrondi">
-          <option value="normal">rounding</option>
-          <option value="inf">floor</option>
-          <option value="sup">ceiling</option>
+          <option value="normal">{{ _('config.mark.round') }}</option>
+          <option value="inf">{{ _('config.mark.floor') }}</option>
+          <option value="sup">{{ _('config.mark.ceil') }}</option>
         </select>
       </div>
     </div>
 
     <div>
       <div class="part-title">
-        Papers annotation
+        {{ _('config.annotation') }}
       </div>
       <div>
-        <label for="annote_position">Question marks position:</label><br/>
+        <label for="annote_position">{{ _('config.annotation.pos') }}</label><br/>
         <select id="annote_position" name="annote_position">
-          <option value="none">None (do not write anything)</option>
-          <option value="marge">In one margin</option>
-          <option value="marges">In the margins</option>
-          <option value="case">Near boxes</option>
-          <option value="zones">Where defined in the source</option>
+          <option value="none">{{ _('config.annotation.pos.none') }}</option>
+          <option value="marge">{{ _('config.annotation.pos.margin') }}</option>
+          <option value="marges">{{ _('config.annotation.pos.margins') }}</option>
+          <option value="case">{{ _('config.annotation.pos.boxes') }}</option>
+          <option value="zones">{{ _('config.annotation.pos.source') }}</option>
         </select>
         <br/>
-        <label for="verdict">Header text:</label><br/>
+        <label for="verdict">{{ _('config.annotation.header') }}</label><br/>
         <textarea id="verdict" name="verdict" cols="40" rows="3"></textarea>
       </div>
     </div>
 
     <div>
       <div class="part-title global">
-        Global configuration
+        {{ _('config.global') }}
       </div>
       <div class="part-title">
-        Scanning
+        {{ _('config.scan') }}
       </div>
       <div>
-        <label for="global:bw_threshold">Black&amp;white conversion threshold:</label>
+        <label for="global:bw_threshold">{{ _('config.scan.bwthreshold') }}</label>
         <input id="global:bw_threshold" name="global:bw_threshold"
                type="number" size="3" min="0" max="1"/>
         <br/>
-        <label for="global:tolerance_marque_inf">Marks size max decrease:</label>
+        <label for="global:tolerance_marque_inf">{{ _('config.scan.msized') }}</label>
         <input id="global:tolerance_marque_inf" name="global:tolerance_marque_inf"
                type="number" size="3" min="0" max="1"/>
         <br/>
-        <label for="global:tolerance_marque_sup">Marks size max increase:</label>
+        <label for="global:tolerance_marque_sup">{{ _('config.scan.msizei') }}</label>
         <input id="global:tolerance_marque_sup" name="global:tolerance_marque_sup"
                type="number" size="3" min="0" max="1"/>
         <br/>
         <input type="checkbox" id="global:try_three" name="global:try_three"/>
-        <label for="global:try_three">Process scans with 3 corner marks</label>
+        <label for="global:try_three">{{ _('config.scan.3m') }}</label>
       </div>
     </div>
     
     <div>
       <div class="part-title">
-        Internationalisation
+        {{ _('config.i18n') }}
       </div>
       <div>
         <input type="checkbox" id="global:ascii_filenames" name="global:ascii_filenames"/>
-        <label for="global:ascii_filenames">Use only ASCII characters in filenames</label>
+        <label for="global:ascii_filenames">{{ _('config.i18n.ascii') }}</label>
       </div>
     </div>
     

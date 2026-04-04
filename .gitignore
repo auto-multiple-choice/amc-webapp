@@ -8,3 +8,5 @@ server/static/ace/unused
 
 venv
 dev.sh
+
+*.mo

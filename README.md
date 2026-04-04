@@ -6,7 +6,7 @@ This project allows to work with your [Auto Multiple Choice (AMC)](https://www.a
 ### Prerequisites
 - A working installation of a very recent version of AMC
 - python3
-- git
+- git, make
 
 ### Installation
 First clone this project:
@@ -18,6 +18,10 @@ Install the python dependencies in a virtual environment:
 python3 -m venv venv
 . venv/bin/activate
 pip3 install -r requirements.txt
+```
+Build the translations files:
+```sh
+make messages
 ```
 Run the server:
 ```sh

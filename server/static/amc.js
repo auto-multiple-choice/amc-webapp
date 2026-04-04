@@ -31,7 +31,7 @@ function fetch_to_dom(id, url, opts) {
 }
 
 function show_tab(tab_name) {
-    return fetch_to_dom('tab', `/static/tab_${tab_name}.html`, {})
+    return fetch_to_dom('tab', `/tab/${tab_name}`, {})
         .then(()=> { set_current_tab(tab_name); });
 }
 

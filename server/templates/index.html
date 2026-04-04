@@ -15,19 +15,19 @@
     <div id="menu">
       <span id="connection-status" class="offline centered">⬤</span>
       <div id="menu-main" class="menubtn" onclick="tab_main();"
-           title="Projects management"
+           title="{{ _('menu.main') }}"
            ><img src="/static/menu-amc.svg" class="menu"></div>
       <div id="menu-source" class="menubtn" onclick="tab_source();"
-           title="Source and working documents"
+           title="{{ _('menu.source') }}"
            ><img src="/static/menu-source.svg" class="menu"></div>
       <div id="menu-scans" class="menubtn" onclick="tab_scans();"
-           title="Data capture"
+           title="{{ _('menu.scans') }}"
            ><img src="/static/menu-scans.svg" class="menu"></div>
       <div id="menu-grading" class="menubtn" onclick="tab_grading();"
-           title="Grading and annotating"
+           title="{{ _('menu.grading') }}"
            ><img src="/static/menu-grading.svg" class="menu"></div>
       <div id="menu-config" class="menubtn" onclick="tab_config();"
-           title="Configuration"
+           title="{{ _('menu.config') }}"
            ><img src="/static/menu-config.svg" class="menu"></div>
       <div id="project-name" onclick="tab_main();"></div>
     </div>

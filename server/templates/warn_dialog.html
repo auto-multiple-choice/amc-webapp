@@ -1,6 +1,6 @@
 {% if err %}
 <div id="warn-err">
-  <p class="message-title">Errors</p>
+  <p class="message-title">{{ _('dialog.errors') }}</p>
   <p id="warn-err-text" class="message">
     {{ err | safe }}
   </p>
@@ -8,7 +8,7 @@
 {% endif %}
 {% if warn %}
 <div id="warn-warn">
-  <p class="message-title">Warnings</p>
+  <p class="message-title">{{ _('dialog.warnings') }}</p>
   <p id="warn-warn-text" class="message">
     {{ warn | safe }}
   </p>
@@ -22,5 +22,5 @@
 </div>
 {% endif %}
 <div class="bandeau adroite">
-  <span class="btn btn-neutral" onclick="warn_ok();">OK</span>
+  <span class="btn btn-neutral" onclick="warn_ok();">{{ _('dialog.ok') }}</span>
 </div>

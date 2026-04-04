@@ -28,6 +28,7 @@ from basic import *
 
 from flask import Flask, render_template, request, send_file, make_response
 from flask_socketio import SocketIO, emit
+from flask_babel import Babel, _
 
 TEMPLATES_DIR="/usr/share/auto-multiple-choice/models"
 
@@ -38,6 +39,11 @@ app.config.from_mapping(
 )
 socketio = SocketIO(app, logger=True, async_mode='gevent')
 app.socketio = socketio
+
+def get_locale():
+    return request.accept_languages.best_match(['fr', 'en'])
+
+babel = Babel(app, locale_selector=get_locale)
 
 temp_dir = tempfile.mkdtemp(prefix="amcapp")
 
@@ -71,6 +77,10 @@ def index():
         app.logger.info(f"New session: {session}")
         resp.set_cookie('amcsession', session)
     return resp
+
+@app.route('/tab/<tab_name>')
+def tab(tab_name):
+    return render_template(f"tab_{tab_name}.html")
 
 @app.route('/fs/<path:path>', methods=['GET', 'POST'])
 def fs_file(path):
@@ -161,7 +171,7 @@ def io_project_clone(name):
     clone_name = project_clone_name(name)
     source = project_dir(p=name)
     dest = project_dir(p=clone_name)
-    emit_progress("t", "Cloning project…")
+    emit_progress("t", _('t.cloning'))
     emit_progress("begin-command")
     n, ntotal = copy_files_progress(source, dest)
     emit_progress("end-command")
@@ -172,12 +182,12 @@ def io_project_clone(name):
                  "warn_dialog.html",
                  err = "",
                  warn = "",
-                 info = f"Project cloned to {clone_name}."))
+                 info = _('msg.cloned', name=clone_name)))
     else:
         emit("dialog",
              render_template(
                  "warn_dialog.html",
-                 err = f"Errors while cloning to {clone_name}: only {n} files copied out of {ntotal}.",
+                 err = _('msg.clone.err', name=clone_name, n=n, ntotal=ntotal),
                  warn = "",
                  info = ""))
 
@@ -207,7 +217,7 @@ def io_project_rename(data):
         emit("dialog",
              render_template(
                  "warn_dialog.html",
-                 err = f'Can\'t rename "{old}" to "{new}": "{new}" already exists.',
+                 err = _('msg.rename.exists', old=old, new=new),
                  warn = "",
                  info = ""))
     else:
@@ -215,7 +225,7 @@ def io_project_rename(data):
         os.rename(src, dst)
 
         if old == get_var("project_name"):
-            new, _ = set_project(new)
+            new, chg = set_project(new)
             emit("project-open", [new, True])
         else:
             emit("u-projects-list")
@@ -298,7 +308,7 @@ def check_unused_name(name, warn=True):
             emit("dialog",
                  render_template(
                      "warn_dialog.html",
-                     err = f"Can't create project \"{name}\": some file or directory already exists with this name.",
+                     err = _('msg.create.exists', name=name),
                      warn = "",
                      info = ""))
         return None
@@ -334,7 +344,7 @@ def io_create_project_empty(data):
         with open(f"{rep}/{f}", "w") as source_file:
             source_file.write("\n")
         create_options_file(rep, f, filt=stype)
-        name, _ = set_project(name)
+        name, chg = set_project(name)
         amc_command("db", "upgrade", app=app)
         emit("project-open", [name, True])
 
@@ -356,7 +366,7 @@ def info_remove_root(m, root):
         return None
         
 def tar_extract_options_siblings(tarf, dest):
-    emit_progress("t", "Looking for the options file…")
+    emit_progress("t", _('t.options'))
     root = None
     total = 0
     for m in tarf.getmembers():
@@ -369,7 +379,7 @@ def tar_extract_options_siblings(tarf, dest):
     set_var("files_total", total)
     set_var("files_n", 0)
     if root:
-        emit_progress("t", "Extracting…")
+        emit_progress("t", _('t.extract'))
         emit_progress("p", 0)
         if not os.path.exists(dest):
             os.mkdir(dest)
@@ -381,7 +391,7 @@ def tar_extract_options_siblings(tarf, dest):
         return False
 
 def zip_extract_options_siblings(zipf, dest):
-    emit_progress("t", "Looking for the options file…")
+    emit_progress("t", _('t.options'))
     root = None
     total = 0
     for m in zipf.infolist():
@@ -392,7 +402,7 @@ def zip_extract_options_siblings(zipf, dest):
             root = o[1]
             app.logger.debug("found root: " + root)
     if root:
-        emit_progress("t", "Extracting…")
+        emit_progress("t", _('t.extract'))
         emit_progress("p", 0)
         if not os.path.exists(dest):
             os.mkdir(dest)
@@ -445,7 +455,7 @@ def io_create_project_template(data):
             if not project_install_from_dir(tpath, rep):
                 return
         create_project_dirs(rep)
-        name, _ = set_project(name)
+        name, chg = set_project(name)
         amc_command("db", "upgrade", app=app)
         emit("project-open", [name, True])
 
@@ -458,7 +468,7 @@ def create_from_source_file(name, rep, f, fn):
     return { "ok": True }
 
 def create_from_archive(name, rep, f):
-    emit_progress("t", "Saving archive…")
+    emit_progress("t", _('t.archive.save'))
     handle, fn = tempfile.mkstemp()
     f.save(fn)
     ok = False
@@ -520,14 +530,14 @@ def file_upload(dest):
             print(path, file=f)
         lock_scans_mode()
         emit_progress("begin-command")
-        emit_progress("t", "Extracting scans images…")
+        emit_progress("t", _('t.scans.extract'))
         messages, variables = amc_command(
             "getimages",
             "--list", list_path,
             "--copy-to", project_dir() + "/scans",
             "--progression-id", "GETI", app=app
         )
-        emit_progress("t", "Automatic data capture…")
+        emit_progress("t", _('t.automatic'))
         amc_command(
             "analyse",
             "--liste-fichiers", list_path,
@@ -713,7 +723,7 @@ def io_doc_update(t):
     emit_progress("begin-command")
 
     if t == "sujet":
-        emit_progress("t", "Clear all project data…")
+        emit_progress("t", _('t.clear'))
         clear_data("mep:")
         db = get_db()
         db.clear_print_timestamp()
@@ -736,7 +746,7 @@ def io_doc_update(t):
 
     e = len(messages["ERR"])
     if t == "sujet" and e == 0:
-        emit_progress("t", "Detecting layouts…")
+        emit_progress("t", _('t.layouts'))
         amc_command("meptex",
                     "--store-defects",
                     "--progression-id", "MEP",
@@ -803,7 +813,7 @@ def io_print_dialog():
 def io_print_to_printer(data):
     student1, student2, printer = data
     emit_progress("begin-command")
-    emit_progress("t", f"Printing subject to {printer}…")
+    emit_progress("t", _('t.print_to', printer=printer))
     messages, variables = amc_command(
         "imprime",
         "--methode", "cups",
@@ -821,7 +831,7 @@ def io_print_to_printer(data):
              render_template(
                  "warn_dialog.html",
                  err = "", warn = "",
-                 info = "Printing done!"))
+                 info = _('msg.printing.done')))
 
 @socketio.on("print-to-files")
 def io_print_to_files(data):
@@ -832,7 +842,7 @@ def io_print_to_files(data):
     for f in os.listdir(rep):
         os.remove(f"{rep}/{f}")
     emit_progress("begin-command")
-    emit_progress("t", f"Printing subject to files…")
+    emit_progress("t", _('t.print.files'))
     messages, variables = amc_command(
         "imprime",
         "--methode", "file",
@@ -1261,7 +1271,7 @@ def io_set_config(data):
     change_option(*data)
 
 def send_dir_list(t, subdir,
-                  zip_text="Download all",
+                  zip_text="Download",
                   filename=None,
                   exclude=None):
     if not t:
@@ -1286,13 +1296,14 @@ def x_exported_files():
     t = request.json.get('t')
     project = get_var("project_name")
     return send_dir_list(t, "exports",
+                         zip_text=_('files.all'),
                          filename=f"{project}-exported.zip")
 
 @socketio.on('do-export')
 def io_do_export():
     t = int(datetime.datetime.now().timestamp())
     emit_progress("begin-command")
-    emit_progress("t", "Exporting…")
+    emit_progress("t", _('t.export'))
     module = get_option("format_export")
     path = project_dir() + "/exports/marks." + module.lower()
     messages, variables = amc_command(
@@ -1328,7 +1339,7 @@ def io_do_annotate():
     t = int(datetime.datetime.now().timestamp())
     args = []
     emit_progress("begin-command")
-    emit_progress("t", "Annotating…")
+    emit_progress("t", _('t.annotate'))
     if single:
         args += ["--single-output", "all-students.pdf"]
     messages, variables = amc_command(
@@ -1347,7 +1358,7 @@ def x_annotated_files():
     t = request.json.get('t')
     project = get_var("project_name")
     return send_dir_list(t, "cr/corrections/pdf",
-                         zip_text="Download all individual files",
+                         zip_text=_('files.indiv'),
                          filename=f"{project}-annotated.zip",
                          exclude="all-students.pdf")
 

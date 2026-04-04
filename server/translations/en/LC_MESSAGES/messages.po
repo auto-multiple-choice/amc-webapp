@@ -1,0 +1,590 @@
+# English translations for PROJECT.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the PROJECT project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-04-04 23:32+0200\n"
+"PO-Revision-Date: 2026-04-04 23:36+0200\n"
+"Last-Translator: \n"
+"Language-Team: en <LL@li.org>\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Generated-By: Babel 2.18.0\n"
+"X-Generator: Poedit 3.9\n"
+
+#: server/amc.py:174
+msgid "t.cloning"
+msgstr "Cloning project…"
+
+#: server/amc.py:185
+msgid "msg.cloned"
+msgstr "Project cloned to %(name)s."
+
+#: server/amc.py:190
+msgid "msg.clone.err"
+msgstr ""
+"Errors while cloning to %(name)s: only %(n)s files copied out of %"
+"(ntotal)s."
+
+#: server/amc.py:220
+msgid "msg.rename.exists"
+msgstr "Can't rename \"%(old)s\" to \"%(new)s\": \"%(new)s\" already exists."
+
+#: server/amc.py:311
+msgid "msg.create.exists"
+msgstr ""
+"Can't create project \"%(name)s\": some file or directory already exists "
+"with this name."
+
+#: server/amc.py:369 server/amc.py:394
+msgid "t.options"
+msgstr "Looking for the options file…"
+
+#: server/amc.py:382 server/amc.py:405
+msgid "t.extract"
+msgstr "Extracting…"
+
+#: server/amc.py:471
+msgid "t.archive.save"
+msgstr "Saving archive…"
+
+#: server/amc.py:533
+msgid "t.scans.extract"
+msgstr "Extracting scans images…"
+
+#: server/amc.py:540
+msgid "t.automatic"
+msgstr "Automatic data capture…"
+
+#: server/amc.py:726
+msgid "t.clear"
+msgstr "Clear project data…"
+
+#: server/amc.py:749
+msgid "t.layouts"
+msgstr "Detecting layouts…"
+
+#: server/amc.py:816
+msgid "t.print_to"
+msgstr "Printing subject to %(printer)s…"
+
+#: server/amc.py:834
+msgid "msg.printing.done"
+msgstr "Printing done!"
+
+#: server/amc.py:845
+msgid "t.print.files"
+msgstr "Printing subject to files…"
+
+#: server/amc.py:1299
+msgid "files.all"
+msgstr "Download all"
+
+#: server/amc.py:1306
+msgid "t.export"
+msgstr "Exporting…"
+
+#: server/amc.py:1342
+msgid "t.annotate"
+msgstr "Annotating…"
+
+#: server/amc.py:1361
+msgid "files.indiv"
+msgstr "Download all individual files"
+
+#: server/templates/document_missing.html:3
+msgid "document.missing"
+msgstr "This document is missing. Please update."
+
+#: server/templates/files.html:14
+msgid "files.none"
+msgstr "No files yet."
+
+#: server/templates/index.html:18
+msgid "menu.main"
+msgstr "Projects management"
+
+#: server/templates/index.html:21
+msgid "menu.source"
+msgstr "Source and working documents"
+
+#: server/templates/index.html:24
+msgid "menu.scans"
+msgstr "Data capture"
+
+#: server/templates/index.html:27
+msgid "menu.grading"
+msgstr "Grading and annotating"
+
+#: server/templates/index.html:30
+msgid "menu.config"
+msgstr "Configuration"
+
+#: server/templates/manual_view.html:5
+msgid "manual.revert"
+msgstr "Revert"
+
+#: server/templates/print_dialog.html:1
+msgid "print.title"
+msgstr "Print"
+
+#: server/templates/print_dialog.html:3
+msgid "print.desc"
+msgstr "First select the students copies to print:"
+
+#: server/templates/print_dialog.html:4
+msgid "print.from"
+msgstr "from"
+
+#: server/templates/print_dialog.html:6
+msgid "print.to"
+msgstr "to"
+
+#: server/templates/print_dialog.html:8
+msgid "print.choose"
+msgstr "Then choose a printing method, or"
+
+#: server/templates/print_dialog.html:9
+msgid "btn.cancel"
+msgstr "Cancel"
+
+#: server/templates/print_dialog.html:12
+msgid "print.print"
+msgstr "Send to printer"
+
+#: server/templates/print_dialog.html:22
+msgid "print.print.btn"
+msgstr "Print"
+
+#: server/templates/print_dialog.html:25
+msgid "print.files"
+msgstr "Download files"
+
+#: server/templates/print_dialog.html:27
+msgid "print.files.btn"
+msgstr "Download"
+
+#: server/templates/project_new.html:1
+msgid "newproject.title"
+msgstr "New project"
+
+#: server/templates/project_new.html:3
+msgid "newproject.intro"
+msgstr ""
+"Choose a name for your new AMC project, and one of the following ways to "
+"create it."
+
+#: server/templates/project_new.html:6
+msgid "newproject.name"
+msgstr "Project name:"
+
+#: server/templates/project_new.html:12
+msgid "newproject.empty"
+msgstr "Empty project"
+
+#: server/templates/project_new.html:14
+msgid "newproject.empty.desc"
+msgstr "Start from an empty project source file, with format"
+
+#: server/templates/project_new.html:24
+msgid "newproject.file"
+msgstr "Archive or source file"
+
+#: server/templates/project_new.html:26
+msgid "newproject.file.desc"
+msgstr ""
+"Use a source file you already wrote, or an archive (zip file) of another "
+"project."
+
+#: server/templates/project_new.html:34
+msgid "newproject.template"
+msgstr "Template"
+
+#: server/templates/project_new.html:37
+msgid "newproject.template.allgroups"
+msgstr "all groups"
+
+#: server/templates/project_new.html:59
+msgid "newproject.create"
+msgstr "Create new project"
+
+#: server/templates/projects_list.html:3
+msgid "project.open"
+msgstr "Open"
+
+#: server/templates/projects_list.html:4
+msgid "project.rename"
+msgstr "Rename"
+
+#: server/templates/projects_list.html:5
+msgid "project.clone"
+msgstr "Clone"
+
+#: server/templates/projects_list.html:6
+msgid "project.delete"
+msgstr "Delete"
+
+#: server/templates/scans_report.html:4
+msgid "scans.page"
+msgstr "page"
+
+#: server/templates/scans_report.html:5
+msgid "scans.mse"
+msgstr "MSE"
+
+#: server/templates/scans_report.html:6
+msgid "scans.sensitivity"
+msgstr "sens"
+
+#: server/templates/show_marks.html:2
+msgid "marks.mean"
+msgstr "Mean:"
+
+#: server/templates/show_marks.html:6
+msgid "num.student"
+msgid_plural "num.students"
+msgstr[0] "%(num)s student"
+msgstr[1] "%(num)s students"
+
+#: server/templates/show_marks.html:8
+msgid "marks.none"
+msgstr "No marks yet."
+
+#: server/templates/tab_config.html:6
+msgid "config.project"
+msgstr "Project configuration"
+
+#: server/templates/tab_config.html:9
+msgid "config.external"
+msgstr "External commands"
+
+#: server/templates/tab_config.html:12
+msgid "config.latex_engine"
+msgstr "LaTeX engine:"
+
+#: server/templates/tab_config.html:20
+msgid "config.grading"
+msgstr "Global mark rules"
+
+#: server/templates/tab_config.html:23
+msgid "config.mark.null"
+msgstr "config.mark.null"
+
+#: server/templates/tab_config.html:27
+msgid "config.mark.max"
+msgstr "Maximal mark:"
+
+#: server/templates/tab_config.html:31
+msgid "config.mark.grain"
+msgstr "Grain:"
+
+#: server/templates/tab_config.html:35
+msgid "config.mark.rounding"
+msgstr "Rounding type:"
+
+#: server/templates/tab_config.html:37
+msgid "config.mark.round"
+msgstr "rounding"
+
+#: server/templates/tab_config.html:38
+msgid "config.mark.floor"
+msgstr "floor"
+
+#: server/templates/tab_config.html:39
+msgid "config.mark.ceil"
+msgstr "ceiling"
+
+#: server/templates/tab_config.html:46
+msgid "config.annotation"
+msgstr "Papers annotation"
+
+#: server/templates/tab_config.html:49
+msgid "config.annotation.pos"
+msgstr "Question marks position:"
+
+#: server/templates/tab_config.html:51
+msgid "config.annotation.pos.none"
+msgstr "None (do not write anything)"
+
+#: server/templates/tab_config.html:52
+msgid "config.annotation.pos.margin"
+msgstr "In one margin"
+
+#: server/templates/tab_config.html:53
+msgid "config.annotation.pos.margins"
+msgstr "In the margins"
+
+#: server/templates/tab_config.html:54
+msgid "config.annotation.pos.boxes"
+msgstr "Near boxes"
+
+#: server/templates/tab_config.html:55
+msgid "config.annotation.pos.source"
+msgstr "Where defined in the source"
+
+#: server/templates/tab_config.html:58
+msgid "config.annotation.header"
+msgstr "Header text:"
+
+#: server/templates/tab_config.html:65
+msgid "config.global"
+msgstr "Global configuration"
+
+#: server/templates/tab_config.html:68
+msgid "config.scan"
+msgstr "Scanning"
+
+#: server/templates/tab_config.html:71
+msgid "config.scan.bwthreshold"
+msgstr "Black&white conversion threshold:"
+
+#: server/templates/tab_config.html:75
+msgid "config.scan.msized"
+msgstr "Marks size max decrease:"
+
+#: server/templates/tab_config.html:79
+msgid "config.scan.msizei"
+msgstr "Marks size max increase:"
+
+#: server/templates/tab_config.html:84
+msgid "config.scan.3m"
+msgstr "Process scans with 3 corner marks"
+
+#: server/templates/tab_config.html:90
+msgid "config.i18n"
+msgstr "Internationalisation"
+
+#: server/templates/tab_config.html:94
+msgid "config.i18n.ascii"
+msgstr "Use only ASCII characters in filenames"
+
+#: server/templates/tab_grading.html:5
+msgid "grading.title"
+msgstr "Grading"
+
+#: server/templates/tab_grading.html:10
+msgid "grading.scale.update"
+msgstr "Update marking scale"
+
+#: server/templates/tab_grading.html:13
+msgid "grading.mark"
+msgstr "Mark"
+
+#: server/templates/tab_grading.html:26
+msgid "export.title"
+msgstr "Marks export"
+
+#: server/templates/tab_grading.html:29
+msgid "export.format"
+msgstr "Format:"
+
+#: server/templates/tab_grading.html:38
+msgid "export.abs"
+msgstr "Include absentees"
+
+#: server/templates/tab_grading.html:42
+msgid "export.stats"
+msgstr "Stats table:"
+
+#: server/templates/tab_grading.html:44 server/templates/tab_grading.html:52
+msgid "export.stats.none"
+msgstr "None"
+
+#: server/templates/tab_grading.html:45 server/templates/tab_grading.html:53
+msgid "export.stats.horiz"
+msgstr "Horizontal flow"
+
+#: server/templates/tab_grading.html:46 server/templates/tab_grading.html:54
+msgid "export.stats.vert"
+msgstr "Vertical flow"
+
+#: server/templates/tab_grading.html:50
+msgid "export.statsindic"
+msgstr "Indicative stats table:"
+
+#: server/templates/tab_grading.html:58
+msgid "export.groups"
+msgstr "Groups score:"
+
+#: server/templates/tab_grading.html:60
+msgid "export.groups.no"
+msgstr "No"
+
+#: server/templates/tab_grading.html:61
+msgid "export.groups.value"
+msgstr "Yes (value)"
+
+#: server/templates/tab_grading.html:62
+msgid "export.groups.percent"
+msgstr "Yes (percentage)"
+
+#: server/templates/tab_grading.html:65
+msgid "export.groupsep"
+msgstr "with scope separator:"
+
+#: server/templates/tab_grading.html:67
+msgid "export.groupsep.colon"
+msgstr "':' (colon)"
+
+#: server/templates/tab_grading.html:68
+msgid "export.groupsep.dot"
+msgstr "'.' (dot)"
+
+#: server/templates/tab_grading.html:74
+msgid "export.ticked"
+msgstr "Ticked boxes:"
+
+#: server/templates/tab_grading.html:76
+msgid "export.ticked.no"
+msgstr "No"
+
+#: server/templates/tab_grading.html:77
+msgid "export.ticked.01"
+msgstr "Yes: 0;0;1;0"
+
+#: server/templates/tab_grading.html:78
+msgid "export.ticked.ab"
+msgstr "Yes: AB"
+
+#: server/templates/tab_grading.html:83
+msgid "export.btn"
+msgstr "Export"
+
+#: server/templates/tab_grading.html:90
+msgid "annotate.title"
+msgstr "Annotation"
+
+#: server/templates/tab_grading.html:94
+msgid "annotate.students"
+msgstr "One file per student"
+
+#: server/templates/tab_grading.html:95
+msgid "annotate.all"
+msgstr "One file for all students"
+
+#: server/templates/tab_grading.html:99
+msgid "annotate.compose"
+msgstr "Insert pages from the subject when needed"
+
+#: server/templates/tab_grading.html:102
+msgid "annotate.corrected"
+msgstr "Append the corrected subject"
+
+#: server/templates/tab_grading.html:104
+msgid "annotate.model"
+msgstr "Filename model:"
+
+#: server/templates/tab_grading.html:108
+msgid "annotate.btn"
+msgstr "Annotate"
+
+#: server/templates/tab_grading.html:119
+msgid "assoc.done"
+msgstr "Done"
+
+#: server/templates/tab_scans.html:6
+msgid "scans.photocopy"
+msgstr "Photocopy mode"
+
+#: server/templates/tab_scans.html:11
+msgid "scans.upload"
+msgstr "Add scans…"
+
+#: server/templates/tab_scans.html:15
+msgid "scans.thresholds"
+msgstr "Darkness thresholds:"
+
+#: server/templates/tab_scans.html:21
+msgid "scans.thresholds.lower"
+msgstr "lower"
+
+#: server/templates/tab_scans.html:27
+msgid "scans.thresholds.upper"
+msgstr "upper"
+
+#: server/templates/tab_scans.html:33
+msgid "scans.add"
+msgstr "Add student"
+
+#: server/templates/tab_scans.html:39
+msgid "scans.ticked.no"
+msgstr "Not ticked"
+
+#: server/templates/tab_scans.html:42
+msgid "scans.ticked.yes"
+msgstr "Ticked"
+
+#: server/templates/tab_scans.html:48
+msgid "scans.page.select"
+msgstr "Please select a page."
+
+#: server/templates/tab_source.html:9
+msgid "btn.revert"
+msgstr "Revert"
+
+#: server/templates/tab_source.html:10
+msgid "btn.save"
+msgstr "Save"
+
+#: server/templates/tab_source.html:16
+msgid "btn.allfiles"
+msgstr "All"
+
+#: server/templates/tab_source.html:20
+msgid "btn.upload"
+msgstr "Upload"
+
+#: server/templates/tab_source.html:32
+msgid "number.copies"
+msgstr "#copies:"
+
+#: server/templates/tab_source.html:35
+msgid "option.choose"
+msgstr "choose"
+
+#: server/templates/tab_source.html:36
+msgid "doc.subject"
+msgstr "Subject"
+
+#: server/templates/tab_source.html:37
+msgid "doc.layout"
+msgstr "Layout"
+
+#: server/templates/tab_source.html:38
+msgid "doc.catalog"
+msgstr "Catalog"
+
+#: server/templates/tab_source.html:39
+msgid "doc.answers"
+msgstr "Answers"
+
+#: server/templates/tab_source.html:40
+msgid "doc.corrected"
+msgstr "Corrected"
+
+#: server/templates/tab_source.html:42
+msgid "btn.update"
+msgstr "Update"
+
+#: server/templates/tab_source.html:43
+msgid "btn.print"
+msgstr "Print"
+
+#: server/templates/warn_dialog.html:3
+msgid "dialog.errors"
+msgstr "Errors"
+
+#: server/templates/warn_dialog.html:11
+msgid "dialog.warnings"
+msgstr "Warnings"
+
+#: server/templates/warn_dialog.html:25
+msgid "dialog.ok"
+msgstr "OK"

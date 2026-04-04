@@ -1,9 +1,9 @@
 {% if marks %}
-Mean: {{ mean | round(1) }}
+{{ _('marks.mean') }} {{ mean | round(1) }}
 {% if full %}
 / {{ full | round(1) }}
 {% endif %}
-({{ nmarks }} students)
+({{ ngettext('num.student', 'num.students', nmarks) }})
 {% else %}
-No marks yet.
+{{ _('marks.none') }}
 {% endif %}

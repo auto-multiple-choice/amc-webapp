@@ -1,0 +1,581 @@
+# Translations template for PROJECT.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the PROJECT project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-04-04 23:32+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: server/amc.py:174
+msgid "t.cloning"
+msgstr ""
+
+#: server/amc.py:185
+msgid "msg.cloned"
+msgstr ""
+
+#: server/amc.py:190
+msgid "msg.clone.err"
+msgstr ""
+
+#: server/amc.py:220
+msgid "msg.rename.exists"
+msgstr ""
+
+#: server/amc.py:311
+msgid "msg.create.exists"
+msgstr ""
+
+#: server/amc.py:369 server/amc.py:394
+msgid "t.options"
+msgstr ""
+
+#: server/amc.py:382 server/amc.py:405
+msgid "t.extract"
+msgstr ""
+
+#: server/amc.py:471
+msgid "t.archive.save"
+msgstr ""
+
+#: server/amc.py:533
+msgid "t.scans.extract"
+msgstr ""
+
+#: server/amc.py:540
+msgid "t.automatic"
+msgstr ""
+
+#: server/amc.py:726
+msgid "t.clear"
+msgstr ""
+
+#: server/amc.py:749
+msgid "t.layouts"
+msgstr ""
+
+#: server/amc.py:816
+msgid "t.print_to"
+msgstr ""
+
+#: server/amc.py:834
+msgid "msg.printing.done"
+msgstr ""
+
+#: server/amc.py:845
+msgid "t.print.files"
+msgstr ""
+
+#: server/amc.py:1299
+msgid "files.all"
+msgstr ""
+
+#: server/amc.py:1306
+msgid "t.export"
+msgstr ""
+
+#: server/amc.py:1342
+msgid "t.annotate"
+msgstr ""
+
+#: server/amc.py:1361
+msgid "files.indiv"
+msgstr ""
+
+#: server/templates/document_missing.html:3
+msgid "document.missing"
+msgstr ""
+
+#: server/templates/files.html:14
+msgid "files.none"
+msgstr ""
+
+#: server/templates/index.html:18
+msgid "menu.main"
+msgstr ""
+
+#: server/templates/index.html:21
+msgid "menu.source"
+msgstr ""
+
+#: server/templates/index.html:24
+msgid "menu.scans"
+msgstr ""
+
+#: server/templates/index.html:27
+msgid "menu.grading"
+msgstr ""
+
+#: server/templates/index.html:30
+msgid "menu.config"
+msgstr ""
+
+#: server/templates/manual_view.html:5
+msgid "manual.revert"
+msgstr ""
+
+#: server/templates/print_dialog.html:1
+msgid "print.title"
+msgstr ""
+
+#: server/templates/print_dialog.html:3
+msgid "print.desc"
+msgstr ""
+
+#: server/templates/print_dialog.html:4
+msgid "print.from"
+msgstr ""
+
+#: server/templates/print_dialog.html:6
+msgid "print.to"
+msgstr ""
+
+#: server/templates/print_dialog.html:8
+msgid "print.choose"
+msgstr ""
+
+#: server/templates/print_dialog.html:9
+msgid "btn.cancel"
+msgstr ""
+
+#: server/templates/print_dialog.html:12
+msgid "print.print"
+msgstr ""
+
+#: server/templates/print_dialog.html:22
+msgid "print.print.btn"
+msgstr ""
+
+#: server/templates/print_dialog.html:25
+msgid "print.files"
+msgstr ""
+
+#: server/templates/print_dialog.html:27
+msgid "print.files.btn"
+msgstr ""
+
+#: server/templates/project_new.html:1
+msgid "newproject.title"
+msgstr ""
+
+#: server/templates/project_new.html:3
+msgid "newproject.intro"
+msgstr ""
+
+#: server/templates/project_new.html:6
+msgid "newproject.name"
+msgstr ""
+
+#: server/templates/project_new.html:12
+msgid "newproject.empty"
+msgstr ""
+
+#: server/templates/project_new.html:14
+msgid "newproject.empty.desc"
+msgstr ""
+
+#: server/templates/project_new.html:24
+msgid "newproject.file"
+msgstr ""
+
+#: server/templates/project_new.html:26
+msgid "newproject.file.desc"
+msgstr ""
+
+#: server/templates/project_new.html:34
+msgid "newproject.template"
+msgstr ""
+
+#: server/templates/project_new.html:37
+msgid "newproject.template.allgroups"
+msgstr ""
+
+#: server/templates/project_new.html:59
+msgid "newproject.create"
+msgstr ""
+
+#: server/templates/projects_list.html:3
+msgid "project.open"
+msgstr ""
+
+#: server/templates/projects_list.html:4
+msgid "project.rename"
+msgstr ""
+
+#: server/templates/projects_list.html:5
+msgid "project.clone"
+msgstr ""
+
+#: server/templates/projects_list.html:6
+msgid "project.delete"
+msgstr ""
+
+#: server/templates/scans_report.html:4
+msgid "scans.page"
+msgstr ""
+
+#: server/templates/scans_report.html:5
+msgid "scans.mse"
+msgstr ""
+
+#: server/templates/scans_report.html:6
+msgid "scans.sensitivity"
+msgstr ""
+
+#: server/templates/show_marks.html:2
+msgid "marks.mean"
+msgstr ""
+
+#: server/templates/show_marks.html:6
+msgid "num.student"
+msgid_plural "num.students"
+msgstr[0] ""
+msgstr[1] ""
+
+#: server/templates/show_marks.html:8
+msgid "marks.none"
+msgstr ""
+
+#: server/templates/tab_config.html:6
+msgid "config.project"
+msgstr ""
+
+#: server/templates/tab_config.html:9
+msgid "config.external"
+msgstr ""
+
+#: server/templates/tab_config.html:12
+msgid "config.latex_engine"
+msgstr ""
+
+#: server/templates/tab_config.html:20
+msgid "config.grading"
+msgstr ""
+
+#: server/templates/tab_config.html:23
+msgid "config.mark.null"
+msgstr ""
+
+#: server/templates/tab_config.html:27
+msgid "config.mark.max"
+msgstr ""
+
+#: server/templates/tab_config.html:31
+msgid "config.mark.grain"
+msgstr ""
+
+#: server/templates/tab_config.html:35
+msgid "config.mark.rounding"
+msgstr ""
+
+#: server/templates/tab_config.html:37
+msgid "config.mark.round"
+msgstr ""
+
+#: server/templates/tab_config.html:38
+msgid "config.mark.floor"
+msgstr ""
+
+#: server/templates/tab_config.html:39
+msgid "config.mark.ceil"
+msgstr ""
+
+#: server/templates/tab_config.html:46
+msgid "config.annotation"
+msgstr ""
+
+#: server/templates/tab_config.html:49
+msgid "config.annotation.pos"
+msgstr ""
+
+#: server/templates/tab_config.html:51
+msgid "config.annotation.pos.none"
+msgstr ""
+
+#: server/templates/tab_config.html:52
+msgid "config.annotation.pos.margin"
+msgstr ""
+
+#: server/templates/tab_config.html:53
+msgid "config.annotation.pos.margins"
+msgstr ""
+
+#: server/templates/tab_config.html:54
+msgid "config.annotation.pos.boxes"
+msgstr ""
+
+#: server/templates/tab_config.html:55
+msgid "config.annotation.pos.source"
+msgstr ""
+
+#: server/templates/tab_config.html:58
+msgid "config.annotation.header"
+msgstr ""
+
+#: server/templates/tab_config.html:65
+msgid "config.global"
+msgstr ""
+
+#: server/templates/tab_config.html:68
+msgid "config.scan"
+msgstr ""
+
+#: server/templates/tab_config.html:71
+msgid "config.scan.bwthreshold"
+msgstr ""
+
+#: server/templates/tab_config.html:75
+msgid "config.scan.msized"
+msgstr ""
+
+#: server/templates/tab_config.html:79
+msgid "config.scan.msizei"
+msgstr ""
+
+#: server/templates/tab_config.html:84
+msgid "config.scan.3m"
+msgstr ""
+
+#: server/templates/tab_config.html:90
+msgid "config.i18n"
+msgstr ""
+
+#: server/templates/tab_config.html:94
+msgid "config.i18n.ascii"
+msgstr ""
+
+#: server/templates/tab_grading.html:5
+msgid "grading.title"
+msgstr ""
+
+#: server/templates/tab_grading.html:10
+msgid "grading.scale.update"
+msgstr ""
+
+#: server/templates/tab_grading.html:13
+msgid "grading.mark"
+msgstr ""
+
+#: server/templates/tab_grading.html:26
+msgid "export.title"
+msgstr ""
+
+#: server/templates/tab_grading.html:29
+msgid "export.format"
+msgstr ""
+
+#: server/templates/tab_grading.html:38
+msgid "export.abs"
+msgstr ""
+
+#: server/templates/tab_grading.html:42
+msgid "export.stats"
+msgstr ""
+
+#: server/templates/tab_grading.html:44 server/templates/tab_grading.html:52
+msgid "export.stats.none"
+msgstr ""
+
+#: server/templates/tab_grading.html:45 server/templates/tab_grading.html:53
+msgid "export.stats.horiz"
+msgstr ""
+
+#: server/templates/tab_grading.html:46 server/templates/tab_grading.html:54
+msgid "export.stats.vert"
+msgstr ""
+
+#: server/templates/tab_grading.html:50
+msgid "export.statsindic"
+msgstr ""
+
+#: server/templates/tab_grading.html:58
+msgid "export.groups"
+msgstr ""
+
+#: server/templates/tab_grading.html:60
+msgid "export.groups.no"
+msgstr ""
+
+#: server/templates/tab_grading.html:61
+msgid "export.groups.value"
+msgstr ""
+
+#: server/templates/tab_grading.html:62
+msgid "export.groups.percent"
+msgstr ""
+
+#: server/templates/tab_grading.html:65
+msgid "export.groupsep"
+msgstr ""
+
+#: server/templates/tab_grading.html:67
+msgid "export.groupsep.colon"
+msgstr ""
+
+#: server/templates/tab_grading.html:68
+msgid "export.groupsep.dot"
+msgstr ""
+
+#: server/templates/tab_grading.html:74
+msgid "export.ticked"
+msgstr ""
+
+#: server/templates/tab_grading.html:76
+msgid "export.ticked.no"
+msgstr ""
+
+#: server/templates/tab_grading.html:77
+msgid "export.ticked.01"
+msgstr ""
+
+#: server/templates/tab_grading.html:78
+msgid "export.ticked.ab"
+msgstr ""
+
+#: server/templates/tab_grading.html:83
+msgid "export.btn"
+msgstr ""
+
+#: server/templates/tab_grading.html:90
+msgid "annotate.title"
+msgstr ""
+
+#: server/templates/tab_grading.html:94
+msgid "annotate.students"
+msgstr ""
+
+#: server/templates/tab_grading.html:95
+msgid "annotate.all"
+msgstr ""
+
+#: server/templates/tab_grading.html:99
+msgid "annotate.compose"
+msgstr ""
+
+#: server/templates/tab_grading.html:102
+msgid "annotate.corrected"
+msgstr ""
+
+#: server/templates/tab_grading.html:104
+msgid "annotate.model"
+msgstr ""
+
+#: server/templates/tab_grading.html:108
+msgid "annotate.btn"
+msgstr ""
+
+#: server/templates/tab_grading.html:119
+msgid "assoc.done"
+msgstr ""
+
+#: server/templates/tab_scans.html:6
+msgid "scans.photocopy"
+msgstr ""
+
+#: server/templates/tab_scans.html:11
+msgid "scans.upload"
+msgstr ""
+
+#: server/templates/tab_scans.html:15
+msgid "scans.thresholds"
+msgstr ""
+
+#: server/templates/tab_scans.html:21
+msgid "scans.thresholds.lower"
+msgstr ""
+
+#: server/templates/tab_scans.html:27
+msgid "scans.thresholds.upper"
+msgstr ""
+
+#: server/templates/tab_scans.html:33
+msgid "scans.add"
+msgstr ""
+
+#: server/templates/tab_scans.html:39
+msgid "scans.ticked.no"
+msgstr ""
+
+#: server/templates/tab_scans.html:42
+msgid "scans.ticked.yes"
+msgstr ""
+
+#: server/templates/tab_scans.html:48
+msgid "scans.page.select"
+msgstr ""
+
+#: server/templates/tab_source.html:9
+msgid "btn.revert"
+msgstr ""
+
+#: server/templates/tab_source.html:10
+msgid "btn.save"
+msgstr ""
+
+#: server/templates/tab_source.html:16
+msgid "btn.allfiles"
+msgstr ""
+
+#: server/templates/tab_source.html:20
+msgid "btn.upload"
+msgstr ""
+
+#: server/templates/tab_source.html:32
+msgid "number.copies"
+msgstr ""
+
+#: server/templates/tab_source.html:35
+msgid "option.choose"
+msgstr ""
+
+#: server/templates/tab_source.html:36
+msgid "doc.subject"
+msgstr ""
+
+#: server/templates/tab_source.html:37
+msgid "doc.layout"
+msgstr ""
+
+#: server/templates/tab_source.html:38
+msgid "doc.catalog"
+msgstr ""
+
+#: server/templates/tab_source.html:39
+msgid "doc.answers"
+msgstr ""
+
+#: server/templates/tab_source.html:40
+msgid "doc.corrected"
+msgstr ""
+
+#: server/templates/tab_source.html:42
+msgid "btn.update"
+msgstr ""
+
+#: server/templates/tab_source.html:43
+msgid "btn.print"
+msgstr ""
+
+#: server/templates/warn_dialog.html:3
+msgid "dialog.errors"
+msgstr ""
+
+#: server/templates/warn_dialog.html:11
+msgid "dialog.warnings"
+msgstr ""
+
+#: server/templates/warn_dialog.html:25
+msgid "dialog.ok"
+msgstr ""
+
