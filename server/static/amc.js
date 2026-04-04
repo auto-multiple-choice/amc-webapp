@@ -1,4 +1,5 @@
 var socket = io();
+var socket_creation = true;
 
 var project_name = null;
 var editor = null;
@@ -34,6 +35,11 @@ function show_tab(tab_name) {
         .then(()=> { set_current_tab(tab_name); });
 }
 
+function set_hash_url() {
+    location.hash = (current_tab == "main" ? "" : project_name)
+        + "/" + (current_tab || "");
+}
+
 function set_current_tab(tab_name) {
     current_tab = tab_name;
     for(var e of document.getElementsByClassName("menubtn")) {
@@ -41,6 +47,7 @@ function set_current_tab(tab_name) {
         if(name == current_tab) e.classList.add("current");
         else e.classList.remove("current");
     }
+    set_hash_url();
 }
 
 function adapt_menu(data) {
@@ -132,8 +139,24 @@ function project_open(data) {
     if(name != project_name || data[1]) {
         project_name = name;
         socket.emit('adapt-menu')
-        if(name) tab_source();
-        else tab_main();
+        if(name) {
+            switch(data[1]) {
+            case "main":
+                tab_main();
+                break;
+            case "scans":
+                tab_scans();
+                break;
+            case "grading":
+                tab_grading();
+                break;
+            case "config":
+                tab_config();
+                break;
+            default:
+                tab_source();
+            }
+        } else tab_main();
     }
 }
 socket.on("project-open", project_open );
@@ -409,7 +432,11 @@ function tab_source() {
 
 socket.on("connect", () => {
     connection_status("online");
-    request_project(project_name, false);
+    if(socket_creation) {
+        socket_creation = false;
+    } else {
+        request_project(project_name, false);
+    }
 });
 
 socket.on("disconnect", () => {
@@ -1089,11 +1116,17 @@ socket.on("update-annotated-files", u_annotated_files);
 
 document.addEventListener('DOMContentLoaded', function() {
     connection_status(socket.connected ? "online" : "offline");
-    project_name = localStorage.getItem("project-name");
-    if(project_name) {
-        request_project(project_name, true);
+    if(location.hash) {
+        var pt = location.hash.split("/");
+        pt[0] = pt[0].replace("#","");
+        request_project(...pt);
     } else {
-        tab_main();
+        project_name = localStorage.getItem("project-name");
+        if(project_name) {
+            request_project(project_name, true);
+        } else {
+            tab_main();
+        }
     }
 });
 
