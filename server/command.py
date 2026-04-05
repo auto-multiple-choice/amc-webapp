@@ -5,7 +5,9 @@ import subprocess
 from basic import *
 
 def command_str(command):
-    return " ".join([ x if x else '""' for x in command ])
+    return " ".join([ '"'+str(x)+'"' if (x=="" or " " in  x)
+                      else str(x)
+                      for x in command ])
 
 def amc_command(*args,
                 messages=None, variables=None,

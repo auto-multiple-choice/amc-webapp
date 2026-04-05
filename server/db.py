@@ -324,3 +324,19 @@ class Amcdb:
         self.db.row_factory = None
         return self.db.execute("SELECT kind, class, h1, h2 FROM layout.layout_defects").fetchall();
         
+    def orientation(self):
+        self.use_module("layout")
+        self.db.row_factory = None
+        rmin, rmax = self.db.execute(
+            """SELECT MIN(ratio), MAX(ratio)
+            FROM (SELECT CASE WHEN ABS(width)<1 THEN 1
+                         ELSE height/width END
+                  AS ratio
+                  FROM layout.layout_page)
+            """).fetchone()
+        if rmin > 1.1:
+            return "portrait"
+        elif rmax < 0.9:
+            return "landscape"
+        else:
+            return ""

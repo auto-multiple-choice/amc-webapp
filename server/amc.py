@@ -550,12 +550,15 @@ def file_upload(dest):
             for p in local_paths:
                 print(p, file=f)
 
+        db = get_db()
+        orientation = db.orientation()
         lock_scans_mode()
         emit_progress("begin-command")
         emit_progress("t", _('t.scans.extract'))
         messages, variables = amc_command(
             "getimages",
             "--list", list_path,
+            "--orientation", orientation,
             "--copy-to", project_dir() + "/scans",
             "--progression-id", "GETI", app=app
         )
