@@ -15,6 +15,11 @@ def amc_command(*args,
 
     env = os.environ.copy()
     env["AMC_USERCONFDIR"] = user_confdir()
+    locale = get_locale()
+    if locale == "en":
+        env["LANG"] = "C"
+    elif locale == "fr":
+        env["LANG"] = "fr_FR.UTF-8"
     
     if messages is None:
         messages = {}

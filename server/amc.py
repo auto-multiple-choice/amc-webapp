@@ -40,9 +40,6 @@ app.config.from_mapping(
 socketio = SocketIO(app, logger=True, async_mode='gevent')
 app.socketio = socketio
 
-def get_locale():
-    return request.accept_languages.best_match(['fr', 'en'])
-
 babel = Babel(app, locale_selector=get_locale)
 
 temp_dir = tempfile.mkdtemp(prefix="amcapp")

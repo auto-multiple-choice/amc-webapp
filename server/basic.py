@@ -10,6 +10,9 @@ from flask_socketio import emit
 
 users = {}
 
+def get_locale():
+    return request.accept_languages.best_match(['fr', 'en'])
+
 def get_session():
     session = request.cookies.get('amcsession')
     if not session:
