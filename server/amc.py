@@ -550,36 +550,42 @@ def file_upload(dest):
             for p in local_paths:
                 print(p, file=f)
 
-        db = get_db()
-        orientation = db.orientation()
-        lock_scans_mode()
-        emit_progress("begin-command")
-        emit_progress("t", _('t.scans.extract'))
-        messages, variables = amc_command(
-            "getimages",
-            "--list", list_path,
-            "--orientation", orientation,
-            "--copy-to", project_dir() + "/scans",
-            "--progression-id", "GETI", app=app
-        )
-        emit_progress("t", _('t.automatic'))
-        amc_command(
-            "analyse",
-            "--liste-fichiers", list_path,
-            "--unlink-on-global-err",
-            "--progression-id", "SCAN",
-            "--progression", "1",
-            messages=messages, variables=variables, app=app
-        )
-        emit_progress("end-command")
-        emit_progress("scans-report")
-        show_messages(messages)
-        io_adapt_menu()
-        return { "ok": True }
+        return { 'ok': True,
+                 'list': list_path.replace(rep, "%SCANS", 1) }
+
     else:
         emit_progress("end-command")
         return { "error": f"Unknown upload dest: {dest}" }
 
+@socketio.on('data-capture')
+def io_data_capture(list_path):
+    rep = f"{temp_dir}/{get_session()}/scans"
+    list_path = list_path.replace("%SCANS", rep, 1)
+    db = get_db()
+    orientation = db.orientation()
+    lock_scans_mode()
+    emit_progress("begin-command")
+    emit_progress("t", _('t.scans.extract'))
+    messages, variables = amc_command(
+        "getimages",
+        "--list", list_path,
+        "--orientation", orientation,
+        "--copy-to", project_dir() + "/scans",
+        "--progression-id", "GETI", app=app
+    )
+    emit_progress("t", _('t.automatic'))
+    amc_command(
+        "analyse",
+        "--liste-fichiers", list_path,
+        "--unlink-on-global-err",
+        "--progression-id", "SCAN",
+        "--progression", "1",
+        messages=messages, variables=variables, app=app
+    )
+    emit_progress("end-command")
+    emit_progress("scans-report")
+    show_messages(messages)
+    io_adapt_menu()
     
 @socketio.on('ncopies')
 def io_ncopies(n):

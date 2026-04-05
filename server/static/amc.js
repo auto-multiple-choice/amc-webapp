@@ -232,7 +232,7 @@ function upload_files(url, files,
                 console.log("Upload response: " + xhr.responseText);
                 var r = JSON.parse(xhr.responseText);
                 if(r["ok"]) {
-                    if(callback) callback();
+                    if(callback) callback(r);
                 } else {
                     alert("Error: " + r["error"]);
                 }
@@ -245,7 +245,7 @@ function upload_files(url, files,
     xhr.send(formData);
 }
 
-function upload_file_to_project_done() {
+function upload_file_to_project_done(r) {
     all_files_change();
 }
 
@@ -290,7 +290,7 @@ function do_create_project() {
             upload_files("/upload/create",
                          f.files, "Uploading…",
                          { "name": name },
-                         function() { project_open([name, true]); }
+                         function(r) { project_open([name, true]); }
                         )
         } else {
             alert("Please choose a file to send!");
@@ -820,8 +820,9 @@ function clickBox(question, answer) {
     }
 }
 
-function upload_scans_done() {
-    console.log("Scans uploaded.");
+function upload_scans_done(r) {
+    console.log("Scans uploaded: start data capture");
+    socket.emit("data-capture", r["list"]);
 }
 
 function upload_scans() {
