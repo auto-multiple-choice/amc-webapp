@@ -210,12 +210,13 @@ function template_group_select(gid) {
     }
 }
 
-function upload_file(url, file,
-                     message,
-                     params={}, callback=null) {
+function upload_files(url, files,
+                      message,
+                      params={}, callback=null) {
     const formData = new FormData();
-    formData.append('file', file);
-    for(k of Object.keys(params)) {
+    for(var f of files)
+        formData.append('file', f);
+    for(var k of Object.keys(params)) {
         formData.append(k, params[k]);
     }
     const xhr = new XMLHttpRequest();
@@ -250,11 +251,11 @@ function upload_file_to_project_done() {
 
 function upload_file_to_project() {
     var f = document.getElementById('project-upload-file');
-    if(f.files[0]) {
-        upload_file("/upload/project",
-                    f.files[0], "Uploading…", {},
-                    upload_file_to_project_done
-                   );
+    if(f.files.length) {
+        upload_files("/upload/project",
+                     f.files, "Uploading…", {},
+                     upload_file_to_project_done
+                    );
     }
 }
 
@@ -285,12 +286,12 @@ function do_create_project() {
         socket.emit("create-project-template", [name, tid]);
     } else if(way == "file") {
         var f = document.getElementById('source-file');
-        if(f.files[0]) {
-            upload_file("/upload/create",
-                        f.files[0], "Uploading…",
-                        { "name": name },
-                        function() { project_open([name, true]); }
-                       )
+        if(f.files.length) {
+            upload_files("/upload/create",
+                         f.files, "Uploading…",
+                         { "name": name },
+                         function() { project_open([name, true]); }
+                        )
         } else {
             alert("Please choose a file to send!");
         }
@@ -825,11 +826,11 @@ function upload_scans_done() {
 
 function upload_scans() {
     var f = document.getElementById('scans-upload');
-    if(f.files[0]) {
-        upload_file("/upload/scans",
-                    f.files[0], "Uploading…", { "project_name": project_name },
-                    upload_scans_done
-                   );
+    if(f.files.length) {
+        upload_files("/upload/scans",
+                     f.files, "Uploading…", { "project_name": project_name },
+                     upload_scans_done
+                    );
     }
 }
 

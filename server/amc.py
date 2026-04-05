@@ -485,49 +485,71 @@ def create_from_archive(name, rep, f):
     u_open_project(name)
     return { "ok": ok }
 
+def upload_file_parts(f):
+    simple_filename = f.filename.replace("/", "").replace(" ","_")
+    ext = ""
+    if r := re.match(r'.*\.([a-z0-9]{1,3})$', simple_filename):
+        ext = r[1].lower()
+    return simple_filename, ext
+
 @app.route('/upload/<dest>', methods=['POST'])
 def file_upload(dest):
-    if 'file' not in request.files:
-        return { 'error': 'File missing' }
-    f = request.files['file']
-    fn = f.filename.replace("/", "").replace(" ","_")
-    ext = ""
-    if r := re.match(r'.*\.([a-z0-9]{1,3})$', fn):
-        ext = r[1].lower()
-    if fn == '':
+
+    request_files = request.files.getlist("file")
+    if not request_files:
+        return { 'error': 'Empty upload' }
+
+    if request_files[0].filename == '':
         return { 'error': 'Empty file' }
+
+    app.logger.info(f"Upload to {dest}: {len(request_files)} file(s)")
+
     if dest=="create":
         name = request.form['name']
         rep = check_unused_name(name, warn=False)
         if rep:
             emit_progress("p", 0)
+            fn, ext = upload_file_parts(request_files[0])
             if re.match(r'.*\.(tgz|tar\.gz|tar|zip)', fn, re.IGNORECASE):
-                return create_from_archive(name, rep, f)
+                return create_from_archive(name, rep, request_files[0])
             elif re.match(r'.*\.(tex|latex|txt)', fn, re.IGNORECASE):
-                return create_from_source_file(name, rep, f, fn)
+                return create_from_source_file(name, rep, request_files[0], fn)
             else:
                 emit_progress("end-command")
                 return { "error": f"File {fn} can't be used to create a project" }
         else:
             emit_progress("end-command")
             return { "error": f"Can't create project {name}: already used" }
+
     elif dest=="project":
         rep = project_dir();
         emit_progress("end-command");
+        fn, ext = upload_file_parts(request_files[0])
         if rep:
             f.save(f"{rep}/{fn}");
             return { "ok": True }
         else:
             return { "error": f"Project unknown" }
+
     elif dest=="scans":
         project_name = request.form['project_name']
+
+        # use the scans subdirectory to store uploaded files
         rep = f"{temp_dir}/{get_session()}/scans"
         Path(rep).mkdir(parents=True, exist_ok=True)
-        n, path = tempfile.mkstemp(suffix="." + ext, dir=rep)
-        f.save(path)
+        local_paths = []
+        for f in request_files:
+            fn, ext = upload_file_parts(f)
+            n, path = tempfile.mkstemp(suffix="." + ext, dir=rep)
+            f.save(path)
+            local_paths.append(path)
+
+        # create a file to list paths of the uploaded files
         n, list_path = tempfile.mkstemp(prefix="list-", dir=rep)
         with open(list_path, "w") as f:
-            print(path, file=f)
+            for p in local_paths:
+                print(p, file=f)
+
         lock_scans_mode()
         emit_progress("begin-command")
         emit_progress("t", _('t.scans.extract'))
