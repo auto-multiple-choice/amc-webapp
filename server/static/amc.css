@@ -702,16 +702,23 @@ tr[amc-manual="0"] .manual-tag {
     display: flex;
     flex-direction: column;
     flex-wrap: wrap;
+    column-gap: 4px;
 }
 
 #grading > div {
     width: 20em;
 }
 
+#tab-config {
+    height: 100%;
+}
+
 #project-config {
     display: flex;
     flex-direction: column;
     flex-wrap: wrap;
+    column-gap: 4px;
+    height: 100%;
 }
 
 #project-config > div {
