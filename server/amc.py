@@ -4,6 +4,7 @@ monkey.patch_all()
 
 import re
 import os
+import math
 from pathlib import Path
 import datetime
 import shutil
@@ -650,7 +651,8 @@ def io_project_config():
               "verdict", "annote_position",
               "global:bw_threshold",
               "global:tolerance_marque_inf", "global:tolerance_marque_sup",
-              "global:try_three", "global:ascii_filenames"
+              "global:try_three", "global:ascii_filenames",
+              "global:view_histogram",
              ]
          ))
 
@@ -1067,7 +1069,13 @@ def io_add_student(student):
 def x_show_marks():
     db = get_db()
     marks, maxis = db.get_marks()
-    full = float(get_option("note_max"))
+    o = get_options(
+        ["note_null", "note_max", "note_grain",
+         "global:view_histogram"])
+    mini = float(o["note_null"])
+    full = float(o["note_max"])
+    grain = float(o["note_grain"])
+    histogram = o["global:view_histogram"]
     if full == 0:
         if len(maxis) == 1:
             full = maxis[0]
@@ -1077,9 +1085,37 @@ def x_show_marks():
         mean = sum(marks)/len(marks)
     else:
         mean = None
+
+    if histogram and full:
+        n_class = 20 if len(marks) >= 40 else 10
+        if grain and grain > 0:
+            max_class = abs(full-mini)/grain
+            n_class = min(max_class, n_class)
+
+        classes = [
+            { "low":  mini + i*(full-mini)/n_class,
+              "high": mini + (i+1)*(full-mini)/n_class,
+              "n": 0 }
+            for i in range(n_class) ]
+        for x in marks:
+            i = n_class * (x-mini)/(full-mini)
+            i = math.floor(i+0.001)
+            i = min(i, n_class-1)
+            i = max(i, 0)
+            classes[i]["n"] += 1
+        clmax = max([c["n"] for c in classes])
+        for c in classes:
+            c["pc"] = c["n"] / clmax * 100
+
+        classes.reverse()
+    else:
+        classes = None
+        clmax = None
+        
     return render_template("show_marks.html",
                            marks=marks, nmarks=len(marks),
-                           mean=mean, full=full)
+                           mean=mean, full=full,
+                           classes=classes)
 
 @socketio.on('do-mark')
 def io_do_mark(update):

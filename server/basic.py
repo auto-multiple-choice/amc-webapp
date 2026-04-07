@@ -174,7 +174,9 @@ def get_options(names_list):
             options[options_file] = etree.parse(options_file)
         e = first_or_none(
             options[options_file].xpath(f"/*/{short_name}"))
-        if e is not None:
+        if e is None:
+            o[name] = ""
+        else:
             o[name] = "" if e.text is None else e.text
 
     return o

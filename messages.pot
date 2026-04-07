@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-07 16:26+0200\n"
+"POT-Creation-Date: 2026-04-07 21:44+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,87 +17,87 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: server/amc.py:171
+#: server/amc.py:172
 msgid "t.cloning"
 msgstr ""
 
-#: server/amc.py:182
+#: server/amc.py:183
 msgid "msg.cloned"
 msgstr ""
 
-#: server/amc.py:187
+#: server/amc.py:188
 msgid "msg.clone.err"
 msgstr ""
 
-#: server/amc.py:217
+#: server/amc.py:218
 msgid "msg.rename.exists"
 msgstr ""
 
-#: server/amc.py:308
+#: server/amc.py:309
 msgid "msg.create.exists"
 msgstr ""
 
-#: server/amc.py:366 server/amc.py:391
+#: server/amc.py:367 server/amc.py:392
 msgid "t.options"
 msgstr ""
 
-#: server/amc.py:379 server/amc.py:402
+#: server/amc.py:380 server/amc.py:403
 msgid "t.extract"
 msgstr ""
 
-#: server/amc.py:468
+#: server/amc.py:469
 msgid "t.archive.save"
 msgstr ""
 
-#: server/amc.py:576
+#: server/amc.py:577
 msgid "t.scans.extract"
 msgstr ""
 
-#: server/amc.py:584
+#: server/amc.py:585
 msgid "t.automatic"
 msgstr ""
 
-#: server/amc.py:765
+#: server/amc.py:767
 msgid "t.clear"
 msgstr ""
 
-#: server/amc.py:788
+#: server/amc.py:790
 msgid "t.layouts"
 msgstr ""
 
-#: server/amc.py:855
+#: server/amc.py:857
 msgid "t.print_to"
 msgstr ""
 
-#: server/amc.py:873
+#: server/amc.py:875
 msgid "msg.printing.done"
 msgstr ""
 
-#: server/amc.py:884
+#: server/amc.py:886
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1091
+#: server/amc.py:1127
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1098
+#: server/amc.py:1134
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1339
+#: server/amc.py:1375
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1346
+#: server/amc.py:1382
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1382
+#: server/amc.py:1418
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1401
+#: server/amc.py:1437
 msgid "files.indiv"
 msgstr ""
 
@@ -293,17 +293,17 @@ msgstr ""
 msgid "scans.sensitivity"
 msgstr ""
 
-#: server/templates/show_marks.html:2
+#: server/templates/show_marks.html:3
 msgid "marks.mean"
 msgstr ""
 
-#: server/templates/show_marks.html:6
+#: server/templates/show_marks.html:7
 msgid "num.student"
 msgid_plural "num.students"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/templates/show_marks.html:8
+#: server/templates/show_marks.html:27
 msgid "marks.none"
 msgstr ""
 
@@ -415,6 +415,14 @@ msgstr ""
 msgid "config.i18n.ascii"
 msgstr ""
 
+#: server/templates/tab_config.html:100
+msgid "config.view"
+msgstr ""
+
+#: server/templates/tab_config.html:104
+msgid "config.view.histogram"
+msgstr ""
+
 #: server/templates/tab_grading.html:5
 msgid "grading.title"
 msgstr ""
@@ -427,115 +435,115 @@ msgstr ""
 msgid "grading.mark"
 msgstr ""
 
-#: server/templates/tab_grading.html:26
+#: server/templates/tab_grading.html:24
 msgid "export.title"
 msgstr ""
 
-#: server/templates/tab_grading.html:29
+#: server/templates/tab_grading.html:27
 msgid "export.format"
 msgstr ""
 
-#: server/templates/tab_grading.html:38
+#: server/templates/tab_grading.html:36
 msgid "export.abs"
 msgstr ""
 
-#: server/templates/tab_grading.html:42
+#: server/templates/tab_grading.html:40
 msgid "export.stats"
 msgstr ""
 
-#: server/templates/tab_grading.html:44 server/templates/tab_grading.html:52
+#: server/templates/tab_grading.html:42 server/templates/tab_grading.html:50
 msgid "export.stats.none"
 msgstr ""
 
-#: server/templates/tab_grading.html:45 server/templates/tab_grading.html:53
+#: server/templates/tab_grading.html:43 server/templates/tab_grading.html:51
 msgid "export.stats.horiz"
 msgstr ""
 
-#: server/templates/tab_grading.html:46 server/templates/tab_grading.html:54
+#: server/templates/tab_grading.html:44 server/templates/tab_grading.html:52
 msgid "export.stats.vert"
 msgstr ""
 
-#: server/templates/tab_grading.html:50
+#: server/templates/tab_grading.html:48
 msgid "export.statsindic"
 msgstr ""
 
-#: server/templates/tab_grading.html:58
+#: server/templates/tab_grading.html:56
 msgid "export.groups"
 msgstr ""
 
-#: server/templates/tab_grading.html:60
+#: server/templates/tab_grading.html:58
 msgid "export.groups.no"
 msgstr ""
 
-#: server/templates/tab_grading.html:61
+#: server/templates/tab_grading.html:59
 msgid "export.groups.value"
 msgstr ""
 
-#: server/templates/tab_grading.html:62
+#: server/templates/tab_grading.html:60
 msgid "export.groups.percent"
 msgstr ""
 
-#: server/templates/tab_grading.html:65
+#: server/templates/tab_grading.html:63
 msgid "export.groupsep"
 msgstr ""
 
-#: server/templates/tab_grading.html:67
+#: server/templates/tab_grading.html:65
 msgid "export.groupsep.colon"
 msgstr ""
 
-#: server/templates/tab_grading.html:68
+#: server/templates/tab_grading.html:66
 msgid "export.groupsep.dot"
 msgstr ""
 
-#: server/templates/tab_grading.html:74
+#: server/templates/tab_grading.html:72
 msgid "export.ticked"
 msgstr ""
 
-#: server/templates/tab_grading.html:76
+#: server/templates/tab_grading.html:74
 msgid "export.ticked.no"
 msgstr ""
 
-#: server/templates/tab_grading.html:77
+#: server/templates/tab_grading.html:75
 msgid "export.ticked.01"
 msgstr ""
 
-#: server/templates/tab_grading.html:78
+#: server/templates/tab_grading.html:76
 msgid "export.ticked.ab"
 msgstr ""
 
-#: server/templates/tab_grading.html:83
+#: server/templates/tab_grading.html:81
 msgid "export.btn"
 msgstr ""
 
-#: server/templates/tab_grading.html:90
+#: server/templates/tab_grading.html:88
 msgid "annotate.title"
 msgstr ""
 
-#: server/templates/tab_grading.html:94
+#: server/templates/tab_grading.html:92
 msgid "annotate.students"
 msgstr ""
 
-#: server/templates/tab_grading.html:95
+#: server/templates/tab_grading.html:93
 msgid "annotate.all"
 msgstr ""
 
-#: server/templates/tab_grading.html:99
+#: server/templates/tab_grading.html:97
 msgid "annotate.compose"
 msgstr ""
 
-#: server/templates/tab_grading.html:102
+#: server/templates/tab_grading.html:100
 msgid "annotate.corrected"
 msgstr ""
 
-#: server/templates/tab_grading.html:104
+#: server/templates/tab_grading.html:102
 msgid "annotate.model"
 msgstr ""
 
-#: server/templates/tab_grading.html:108
+#: server/templates/tab_grading.html:106
 msgid "annotate.btn"
 msgstr ""
 
-#: server/templates/tab_grading.html:119
+#: server/templates/tab_grading.html:117
 msgid "assoc.done"
 msgstr ""
 

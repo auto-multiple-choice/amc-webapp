@@ -815,3 +815,48 @@ div.sheetnum div {
 #students-list li.student-name.associated {
     background: #eee;
 }
+
+.blockview {
+    max-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+#marks-report {
+    overflow-y: auto;
+}
+div.hist {
+
+}
+table.hist {
+    position: relative;
+    box-sizing: border-box;
+    border-spacing: 0px;
+    border: 0px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    border-top: #aaa dashed 2px;
+    border-bottom: #aaa dashed 2px;
+    width: 100%;
+}
+.hist-bar {
+    height: 1.5rem;
+    background: #f2a134;
+}
+.hist-base {
+    vertical-align: bottom;
+    font-size: 0.75rem;
+    width: fit-content;
+    border-bottom: #aaa solid 1px;
+    text-align: center;
+}
+.hist-base > div {
+    position: relative;
+    bottom: -3px;
+}
+.hist-level {
+    width: 100%;
+}
+.hist-n {
+    padding-left: .5em;
+    position: absolute;
+}

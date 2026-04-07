@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-07 16:26+0200\n"
-"PO-Revision-Date: 2026-04-07 16:27+0200\n"
+"POT-Creation-Date: 2026-04-07 21:44+0200\n"
+"PO-Revision-Date: 2026-04-07 21:44+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -19,91 +19,91 @@ msgstr ""
 "Generated-By: Babel 2.18.0\n"
 "X-Generator: Poedit 3.9\n"
 
-#: server/amc.py:171
+#: server/amc.py:172
 msgid "t.cloning"
 msgstr "Cloning project…"
 
-#: server/amc.py:182
+#: server/amc.py:183
 msgid "msg.cloned"
 msgstr "Project cloned to %(name)s."
 
-#: server/amc.py:187
+#: server/amc.py:188
 msgid "msg.clone.err"
 msgstr ""
 "Errors while cloning to %(name)s: only %(n)s files copied out of %"
 "(ntotal)s."
 
-#: server/amc.py:217
+#: server/amc.py:218
 msgid "msg.rename.exists"
 msgstr "Can't rename \"%(old)s\" to \"%(new)s\": \"%(new)s\" already exists."
 
-#: server/amc.py:308
+#: server/amc.py:309
 msgid "msg.create.exists"
 msgstr ""
 "Can't create project \"%(name)s\": some file or directory already exists "
 "with this name."
 
-#: server/amc.py:366 server/amc.py:391
+#: server/amc.py:367 server/amc.py:392
 msgid "t.options"
 msgstr "Looking for the options file…"
 
-#: server/amc.py:379 server/amc.py:402
+#: server/amc.py:380 server/amc.py:403
 msgid "t.extract"
 msgstr "Extracting…"
 
-#: server/amc.py:468
+#: server/amc.py:469
 msgid "t.archive.save"
 msgstr "Saving archive…"
 
-#: server/amc.py:576
+#: server/amc.py:577
 msgid "t.scans.extract"
 msgstr "Extracting scans images…"
 
-#: server/amc.py:584
+#: server/amc.py:585
 msgid "t.automatic"
 msgstr "Automatic data capture…"
 
-#: server/amc.py:765
+#: server/amc.py:767
 msgid "t.clear"
 msgstr "Clear project data…"
 
-#: server/amc.py:788
+#: server/amc.py:790
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:855
+#: server/amc.py:857
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:873
+#: server/amc.py:875
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:884
+#: server/amc.py:886
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1091
+#: server/amc.py:1127
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1098
+#: server/amc.py:1134
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1339
+#: server/amc.py:1375
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1346
+#: server/amc.py:1382
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1382
+#: server/amc.py:1418
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1401
+#: server/amc.py:1437
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -303,17 +303,17 @@ msgstr "MSE"
 msgid "scans.sensitivity"
 msgstr "sens"
 
-#: server/templates/show_marks.html:2
+#: server/templates/show_marks.html:3
 msgid "marks.mean"
 msgstr "Mean:"
 
-#: server/templates/show_marks.html:6
+#: server/templates/show_marks.html:7
 msgid "num.student"
 msgid_plural "num.students"
 msgstr[0] "%(num)s student"
 msgstr[1] "%(num)s students"
 
-#: server/templates/show_marks.html:8
+#: server/templates/show_marks.html:27
 msgid "marks.none"
 msgstr "No marks yet."
 
@@ -425,6 +425,14 @@ msgstr "Internationalisation"
 msgid "config.i18n.ascii"
 msgstr "Use only ASCII characters in filenames"
 
+#: server/templates/tab_config.html:100
+msgid "config.view"
+msgstr "View"
+
+#: server/templates/tab_config.html:104
+msgid "config.view.histogram"
+msgstr "Histogram"
+
 #: server/templates/tab_grading.html:5
 msgid "grading.title"
 msgstr "Grading"
@@ -437,115 +445,115 @@ msgstr "Update marking scale"
 msgid "grading.mark"
 msgstr "Mark"
 
-#: server/templates/tab_grading.html:26
+#: server/templates/tab_grading.html:24
 msgid "export.title"
 msgstr "Marks export"
 
-#: server/templates/tab_grading.html:29
+#: server/templates/tab_grading.html:27
 msgid "export.format"
 msgstr "Format:"
 
-#: server/templates/tab_grading.html:38
+#: server/templates/tab_grading.html:36
 msgid "export.abs"
 msgstr "Include absentees"
 
-#: server/templates/tab_grading.html:42
+#: server/templates/tab_grading.html:40
 msgid "export.stats"
 msgstr "Stats table:"
 
-#: server/templates/tab_grading.html:44 server/templates/tab_grading.html:52
+#: server/templates/tab_grading.html:42 server/templates/tab_grading.html:50
 msgid "export.stats.none"
 msgstr "None"
 
-#: server/templates/tab_grading.html:45 server/templates/tab_grading.html:53
+#: server/templates/tab_grading.html:43 server/templates/tab_grading.html:51
 msgid "export.stats.horiz"
 msgstr "Horizontal flow"
 
-#: server/templates/tab_grading.html:46 server/templates/tab_grading.html:54
+#: server/templates/tab_grading.html:44 server/templates/tab_grading.html:52
 msgid "export.stats.vert"
 msgstr "Vertical flow"
 
-#: server/templates/tab_grading.html:50
+#: server/templates/tab_grading.html:48
 msgid "export.statsindic"
 msgstr "Indicative stats table:"
 
-#: server/templates/tab_grading.html:58
+#: server/templates/tab_grading.html:56
 msgid "export.groups"
 msgstr "Groups score:"
 
-#: server/templates/tab_grading.html:60
+#: server/templates/tab_grading.html:58
 msgid "export.groups.no"
 msgstr "No"
 
-#: server/templates/tab_grading.html:61
+#: server/templates/tab_grading.html:59
 msgid "export.groups.value"
 msgstr "Yes (value)"
 
-#: server/templates/tab_grading.html:62
+#: server/templates/tab_grading.html:60
 msgid "export.groups.percent"
 msgstr "Yes (percentage)"
 
-#: server/templates/tab_grading.html:65
+#: server/templates/tab_grading.html:63
 msgid "export.groupsep"
 msgstr "with scope separator:"
 
-#: server/templates/tab_grading.html:67
+#: server/templates/tab_grading.html:65
 msgid "export.groupsep.colon"
 msgstr "':' (colon)"
 
-#: server/templates/tab_grading.html:68
+#: server/templates/tab_grading.html:66
 msgid "export.groupsep.dot"
 msgstr "'.' (dot)"
 
-#: server/templates/tab_grading.html:74
+#: server/templates/tab_grading.html:72
 msgid "export.ticked"
 msgstr "Ticked boxes:"
 
-#: server/templates/tab_grading.html:76
+#: server/templates/tab_grading.html:74
 msgid "export.ticked.no"
 msgstr "No"
 
-#: server/templates/tab_grading.html:77
+#: server/templates/tab_grading.html:75
 msgid "export.ticked.01"
 msgstr "Yes: 0;0;1;0"
 
-#: server/templates/tab_grading.html:78
+#: server/templates/tab_grading.html:76
 msgid "export.ticked.ab"
 msgstr "Yes: AB"
 
-#: server/templates/tab_grading.html:83
+#: server/templates/tab_grading.html:81
 msgid "export.btn"
 msgstr "Export"
 
-#: server/templates/tab_grading.html:90
+#: server/templates/tab_grading.html:88
 msgid "annotate.title"
 msgstr "Annotation"
 
-#: server/templates/tab_grading.html:94
+#: server/templates/tab_grading.html:92
 msgid "annotate.students"
 msgstr "One file per student"
 
-#: server/templates/tab_grading.html:95
+#: server/templates/tab_grading.html:93
 msgid "annotate.all"
 msgstr "One file for all students"
 
-#: server/templates/tab_grading.html:99
+#: server/templates/tab_grading.html:97
 msgid "annotate.compose"
 msgstr "Insert pages from the subject when needed"
 
-#: server/templates/tab_grading.html:102
+#: server/templates/tab_grading.html:100
 msgid "annotate.corrected"
 msgstr "Append the corrected subject"
 
-#: server/templates/tab_grading.html:104
+#: server/templates/tab_grading.html:102
 msgid "annotate.model"
 msgstr "Filename model:"
 
-#: server/templates/tab_grading.html:108
+#: server/templates/tab_grading.html:106
 msgid "annotate.btn"
 msgstr "Annotate"
 
-#: server/templates/tab_grading.html:119
+#: server/templates/tab_grading.html:117
 msgid "assoc.done"
 msgstr "Done"
 
