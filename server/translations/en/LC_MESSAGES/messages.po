@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-04 23:32+0200\n"
-"PO-Revision-Date: 2026-04-04 23:36+0200\n"
+"POT-Creation-Date: 2026-04-07 15:43+0200\n"
+"PO-Revision-Date: 2026-04-07 15:44+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -19,83 +19,91 @@ msgstr ""
 "Generated-By: Babel 2.18.0\n"
 "X-Generator: Poedit 3.9\n"
 
-#: server/amc.py:174
+#: server/amc.py:171
 msgid "t.cloning"
 msgstr "Cloning project…"
 
-#: server/amc.py:185
+#: server/amc.py:182
 msgid "msg.cloned"
 msgstr "Project cloned to %(name)s."
 
-#: server/amc.py:190
+#: server/amc.py:187
 msgid "msg.clone.err"
 msgstr ""
 "Errors while cloning to %(name)s: only %(n)s files copied out of %"
 "(ntotal)s."
 
-#: server/amc.py:220
+#: server/amc.py:217
 msgid "msg.rename.exists"
 msgstr "Can't rename \"%(old)s\" to \"%(new)s\": \"%(new)s\" already exists."
 
-#: server/amc.py:311
+#: server/amc.py:308
 msgid "msg.create.exists"
 msgstr ""
 "Can't create project \"%(name)s\": some file or directory already exists "
 "with this name."
 
-#: server/amc.py:369 server/amc.py:394
+#: server/amc.py:366 server/amc.py:391
 msgid "t.options"
 msgstr "Looking for the options file…"
 
-#: server/amc.py:382 server/amc.py:405
+#: server/amc.py:379 server/amc.py:402
 msgid "t.extract"
 msgstr "Extracting…"
 
-#: server/amc.py:471
+#: server/amc.py:468
 msgid "t.archive.save"
 msgstr "Saving archive…"
 
-#: server/amc.py:533
+#: server/amc.py:565
 msgid "t.scans.extract"
 msgstr "Extracting scans images…"
 
-#: server/amc.py:540
+#: server/amc.py:573
 msgid "t.automatic"
 msgstr "Automatic data capture…"
 
-#: server/amc.py:726
+#: server/amc.py:754
 msgid "t.clear"
 msgstr "Clear project data…"
 
-#: server/amc.py:749
+#: server/amc.py:777
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:816
+#: server/amc.py:844
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:834
+#: server/amc.py:862
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:845
+#: server/amc.py:873
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1299
+#: server/amc.py:1080
+msgid "t.mark.extract"
+msgstr "Extracting scoring strategy…"
+
+#: server/amc.py:1087
+msgid "t.mark.compute"
+msgstr "Calculating…"
+
+#: server/amc.py:1330
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1306
+#: server/amc.py:1337
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1342
+#: server/amc.py:1373
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1361
+#: server/amc.py:1392
 msgid "files.indiv"
 msgstr "Download all individual files"
 

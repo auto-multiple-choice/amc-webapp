@@ -1075,13 +1075,16 @@ def io_do_mark(update):
     messages = {}
     variables = {}
     emit_progress("begin-command")
+    emit_progress("begin-command")
     if update:
+        emit_progress("t", _('t.mark.extract'))
         amc_command(
             "prepare",
             "--mode", "b",
             "--progression-id", "MAJ", "--progression", "1",
             messages=messages, variables=variables, app=app
         )
+    emit_progress("t", _('t.mark.compute'))
     amc_command(
         "note",
         "--progression-id", "GRD",

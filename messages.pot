@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-04 23:32+0200\n"
+"POT-Creation-Date: 2026-04-07 15:43+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,79 +17,87 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: server/amc.py:174
+#: server/amc.py:171
 msgid "t.cloning"
 msgstr ""
 
-#: server/amc.py:185
+#: server/amc.py:182
 msgid "msg.cloned"
 msgstr ""
 
-#: server/amc.py:190
+#: server/amc.py:187
 msgid "msg.clone.err"
 msgstr ""
 
-#: server/amc.py:220
+#: server/amc.py:217
 msgid "msg.rename.exists"
 msgstr ""
 
-#: server/amc.py:311
+#: server/amc.py:308
 msgid "msg.create.exists"
 msgstr ""
 
-#: server/amc.py:369 server/amc.py:394
+#: server/amc.py:366 server/amc.py:391
 msgid "t.options"
 msgstr ""
 
-#: server/amc.py:382 server/amc.py:405
+#: server/amc.py:379 server/amc.py:402
 msgid "t.extract"
 msgstr ""
 
-#: server/amc.py:471
+#: server/amc.py:468
 msgid "t.archive.save"
 msgstr ""
 
-#: server/amc.py:533
+#: server/amc.py:565
 msgid "t.scans.extract"
 msgstr ""
 
-#: server/amc.py:540
+#: server/amc.py:573
 msgid "t.automatic"
 msgstr ""
 
-#: server/amc.py:726
+#: server/amc.py:754
 msgid "t.clear"
 msgstr ""
 
-#: server/amc.py:749
+#: server/amc.py:777
 msgid "t.layouts"
 msgstr ""
 
-#: server/amc.py:816
+#: server/amc.py:844
 msgid "t.print_to"
 msgstr ""
 
-#: server/amc.py:834
+#: server/amc.py:862
 msgid "msg.printing.done"
 msgstr ""
 
-#: server/amc.py:845
+#: server/amc.py:873
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1299
+#: server/amc.py:1080
+msgid "t.mark.extract"
+msgstr ""
+
+#: server/amc.py:1087
+msgid "t.mark.compute"
+msgstr ""
+
+#: server/amc.py:1330
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1306
+#: server/amc.py:1337
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1342
+#: server/amc.py:1373
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1361
+#: server/amc.py:1392
 msgid "files.indiv"
 msgstr ""
 
