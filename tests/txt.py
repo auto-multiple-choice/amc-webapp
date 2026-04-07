@@ -41,8 +41,9 @@ aw.check_marks(
         "3": { "Name": "GŁOBIŚ André", "Q001": 0, "Q002": 2 },
     },
     export=True)
+aw.set_options({"global:ascii_filenames": True})
 aw.do_annotate(model="(ID)")
-aw.check_annotated_files("BOULIX_Jojo.pdf", "G_OBIS_Andre.pdf")
+aw.check_annotated_files("BOULIX_Jojo.pdf", "GLOBIS_Andre.pdf")
 aw.set_options({"global:ascii_filenames": False})
 aw.do_annotate(model="(N)-(nom)")
 aw.check_annotated_files("0002-BOULIX.pdf", "0003-GŁOBIŚ.pdf")
