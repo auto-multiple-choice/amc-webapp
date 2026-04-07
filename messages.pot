@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-07 15:43+0200\n"
+"POT-Creation-Date: 2026-04-07 16:05+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -85,19 +85,19 @@ msgstr ""
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1330
+#: server/amc.py:1328
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1337
+#: server/amc.py:1335
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1373
+#: server/amc.py:1371
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1392
+#: server/amc.py:1390
 msgid "files.indiv"
 msgstr ""
 
@@ -107,6 +107,54 @@ msgstr ""
 
 #: server/templates/files.html:14
 msgid "files.none"
+msgstr ""
+
+#: server/templates/identification.html:2
+msgid "students.title"
+msgstr ""
+
+#: server/templates/identification.html:6
+msgid "students.filename"
+msgstr ""
+
+#: server/templates/identification.html:10
+msgid "students.listkey"
+msgstr ""
+
+#: server/templates/identification.html:23
+msgid "students.listkey.none"
+msgstr ""
+
+#: server/templates/identification.html:28
+msgid "assoc.code"
+msgstr ""
+
+#: server/templates/identification.html:33
+msgid "assoc.preassoc"
+msgstr ""
+
+#: server/templates/identification.html:39
+msgid "assoc.code.none"
+msgstr ""
+
+#: server/templates/identification.html:43
+msgid "assoc.title"
+msgstr ""
+
+#: server/templates/identification.html:49
+msgid "assoc.clear"
+msgstr ""
+
+#: server/templates/identification.html:51
+msgid "assoc.auto"
+msgstr ""
+
+#: server/templates/identification.html:53
+msgid "assoc.manual"
+msgstr ""
+
+#: server/templates/identification.html:57
+msgid "students.none"
 msgstr ""
 
 #: server/templates/index.html:18

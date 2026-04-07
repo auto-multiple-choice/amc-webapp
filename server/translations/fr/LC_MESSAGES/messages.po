@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-07 15:43+0200\n"
-"PO-Revision-Date: 2026-04-07 15:44+0200\n"
+"POT-Creation-Date: 2026-04-07 16:05+0200\n"
+"PO-Revision-Date: 2026-04-07 16:12+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -93,19 +93,19 @@ msgstr "Extraction du barème…"
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1330
+#: server/amc.py:1328
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1337
+#: server/amc.py:1335
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1373
+#: server/amc.py:1371
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1392
+#: server/amc.py:1390
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
@@ -116,6 +116,56 @@ msgstr "Ce document n'a pas encore été généré. Effectuez une mise à jour."
 #: server/templates/files.html:14
 msgid "files.none"
 msgstr "Pas encore de fichier."
+
+#: server/templates/identification.html:2
+msgid "students.title"
+msgstr "Étudiant·es"
+
+#: server/templates/identification.html:6
+msgid "students.filename"
+msgstr "Liste des étudiant·es :"
+
+#: server/templates/identification.html:10
+msgid "students.listkey"
+msgstr "Identifiant dans la liste :"
+
+#: server/templates/identification.html:23
+msgid "students.listkey.none"
+msgstr "Aucun identifiant unique n'a été trouvé dans la liste !"
+
+#: server/templates/identification.html:28
+msgid "assoc.code"
+msgstr "Code pour l'identification :"
+
+#: server/templates/identification.html:33
+msgid "assoc.preassoc"
+msgstr "pré-association"
+
+#: server/templates/identification.html:39
+msgid "assoc.code.none"
+msgstr "Aucun code utilisé dans ce projet."
+
+#: server/templates/identification.html:43
+msgid "assoc.title"
+msgstr "Association copies/étudiant·es"
+
+#: server/templates/identification.html:49
+msgid "assoc.clear"
+msgstr "Effacer"
+
+#: server/templates/identification.html:51
+msgid "assoc.auto"
+msgstr "Automatique"
+
+#: server/templates/identification.html:53
+msgid "assoc.manual"
+msgstr "Manuelle"
+
+#: server/templates/identification.html:57
+msgid "students.none"
+msgstr ""
+"Ajoutez une liste d'étudiant·es (sous la forme d'un fichier CSV) dans "
+"votre répertoire projet."
 
 #: server/templates/index.html:18
 msgid "menu.main"

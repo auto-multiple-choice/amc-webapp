@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-07 15:43+0200\n"
-"PO-Revision-Date: 2026-04-07 15:44+0200\n"
+"POT-Creation-Date: 2026-04-07 16:05+0200\n"
+"PO-Revision-Date: 2026-04-07 16:08+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -91,19 +91,19 @@ msgstr "Extracting scoring strategy…"
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1330
+#: server/amc.py:1328
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1337
+#: server/amc.py:1335
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1373
+#: server/amc.py:1371
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1392
+#: server/amc.py:1390
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -114,6 +114,54 @@ msgstr "This document is missing. Please update."
 #: server/templates/files.html:14
 msgid "files.none"
 msgstr "No files yet."
+
+#: server/templates/identification.html:2
+msgid "students.title"
+msgstr "Students"
+
+#: server/templates/identification.html:6
+msgid "students.filename"
+msgstr "Students list:"
+
+#: server/templates/identification.html:10
+msgid "students.listkey"
+msgstr "Key in students list:"
+
+#: server/templates/identification.html:23
+msgid "students.listkey.none"
+msgstr "No unique key in this students list!"
+
+#: server/templates/identification.html:28
+msgid "assoc.code"
+msgstr "Code for identification:"
+
+#: server/templates/identification.html:33
+msgid "assoc.preassoc"
+msgstr "pre-association"
+
+#: server/templates/identification.html:39
+msgid "assoc.code.none"
+msgstr "No code found."
+
+#: server/templates/identification.html:43
+msgid "assoc.title"
+msgstr "Papers/students association"
+
+#: server/templates/identification.html:49
+msgid "assoc.clear"
+msgstr "Clear"
+
+#: server/templates/identification.html:51
+msgid "assoc.auto"
+msgstr "Automatic"
+
+#: server/templates/identification.html:53
+msgid "assoc.manual"
+msgstr "Manual"
+
+#: server/templates/identification.html:57
+msgid "students.none"
+msgstr "Please add a students list as a CSV file in your project directory."
 
 #: server/templates/index.html:18
 msgid "menu.main"

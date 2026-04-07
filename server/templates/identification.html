@@ -1,13 +1,13 @@
 <div class="part-title">
-  Students
+  {{ _('students.title') }}
 </div>
 {% if filename %}
 <div>
-  Students: <span class="filename">{{ filename }}</span>
+  {{ _('students.filename') }} <span class="filename">{{ filename }}</span>
 </div>
   {% if ukeys %}
 <div>
-  Key in students file:
+  {{ _('students.listkey') }}
   <select id="lkey"
           onchange="change_lkey(this, '{% if n_id %}{{ lkey }}{% endif %}');"
           >
@@ -20,41 +20,40 @@
 </div>
   {% else %}
 <div>
-  No unique key in this students file!
+  {{ _('students.listkey.none') }}
 </div>
   {% endif %}
   {% if codes %}
 <div>
-  Code for identification:
+  {{ _('assoc.code') }}
   <select id="acode" onchange="change_acode(this);">
     {% for k in codes %}
     <option value="{{ k }}"
             {% if k==acode %}selected{% endif %}
-            >{% if k=="<preassoc>" %}pre-association{% else %}{{ k }}{% endif %}</option>
+            >{% if k=="<preassoc>" %}{{ _('assoc.preassoc') }}{% else %}{{ k }}{% endif %}</option>
     {% endfor %}
   </select>
 </div>
   {% else %}
 <div>
-  No code found.
+  {{ _('assoc.code.none') }}
 </div>
   {% endif %}
 <div class="part-title">
-  Papers/students association
+  {{ _('assoc.title') }}
 </div>
 <div>
   {{ n_id }} / {{ n_students }}
 </div>
 <div class="bandeau">
-  <span id="do-association-clear" class="btn btn-danger" onclick="association_clear();">Clear</span>
+  <span id="do-association-clear" class="btn btn-danger" onclick="association_clear();">{{ _('assoc.clear') }}</span>
   {% if ukeys and codes %}
-  <span id="do-association-auto" class="btn btn-ok" onclick="association_auto();">Automatic</span>
+  <span id="do-association-auto" class="btn btn-ok" onclick="association_auto();">{{ _('assoc.auto') }}</span>
   {% endif %}
-  <span id="do-association-manual" class="btn btn-ok" onclick="association_manual();">Manual</span>
+  <span id="do-association-manual" class="btn btn-ok" onclick="association_manual();">{{ _('assoc.manual') }}</span>
 </div>
 {% else %}
 <div>
-  Please add a <span class="filename">students.csv</span>
-  file in your project directory.
+  {{ _('students.none') }}
 </div>
 {% endif %}
