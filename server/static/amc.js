@@ -932,7 +932,7 @@ function association_manual() {
 function association_manual_done() {
     document.getElementById("association").classList.add("hidden");
     document.getElementById("grading").classList.remove("hidden");
-    socket.emit("identification");
+    u_identification();
 }
 
 function association_clear() {
