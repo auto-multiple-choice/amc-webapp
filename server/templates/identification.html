@@ -56,4 +56,10 @@
 <div>
   {{ _('students.none') }}
 </div>
+<div class="bandeau">
+  <input type="file" id="students-upload" name="file" class="hidden"
+         accept=".csv,.txt,text/csv"
+         onchange="upload_students();" />
+  <label class="btn btn-ok" for="students-upload">{{ _('students.upload') }}</label>
+</div>
 {% endif %}

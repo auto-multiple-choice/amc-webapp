@@ -523,7 +523,18 @@ def file_upload(dest):
         emit_progress("end-command");
         fn, ext = upload_file_parts(request_files[0])
         if rep:
-            f.save(f"{rep}/{fn}");
+            request_files[0].save(f"{rep}/{fn}");
+            return { "ok": True }
+        else:
+            return { "error": f"Project unknown" }
+
+    elif dest=="students":
+        rep = project_dir();
+        emit_progress("end-command");
+        fn, ext = upload_file_parts(request_files[0])
+        if rep:
+            request_files[0].save(f"{rep}/{fn}");
+            change_option("listeetudiants", "%PROJET/" + fn)
             return { "ok": True }
         else:
             return { "error": f"Project unknown" }
@@ -1106,7 +1117,7 @@ def students_list_file():
         if not os.path.isfile(path):
             path = None
             change_option("listeetudiants", None)
-    else:
+    if not path:
         filename = None
         for x in ('students.csv', 'students.txt',
                   'etudiants.csv', 'etudiants.txt'):
@@ -1114,12 +1125,10 @@ def students_list_file():
                 filename = x
 
         if not filename:
-            db = get_db()
-            if db.layout_nassociations():
-                cand = [ f for f in os.listdir(pdir)
-                         if f.lower().endswith(".csv") ]
-                if len(cand) == 1:
-                    filename = cand[0]
+            cand = [ f for f in os.listdir(pdir)
+                     if f.lower().endswith(".csv") ]
+            if len(cand) == 1:
+                filename = cand[0]
                 
         if filename:
             change_option("listeetudiants", "%PROJET/" + filename)

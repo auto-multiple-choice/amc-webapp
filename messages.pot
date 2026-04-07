@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-07 16:05+0200\n"
+"POT-Creation-Date: 2026-04-07 16:26+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -49,55 +49,55 @@ msgstr ""
 msgid "t.archive.save"
 msgstr ""
 
-#: server/amc.py:565
+#: server/amc.py:576
 msgid "t.scans.extract"
 msgstr ""
 
-#: server/amc.py:573
+#: server/amc.py:584
 msgid "t.automatic"
 msgstr ""
 
-#: server/amc.py:754
+#: server/amc.py:765
 msgid "t.clear"
 msgstr ""
 
-#: server/amc.py:777
+#: server/amc.py:788
 msgid "t.layouts"
 msgstr ""
 
-#: server/amc.py:844
+#: server/amc.py:855
 msgid "t.print_to"
 msgstr ""
 
-#: server/amc.py:862
+#: server/amc.py:873
 msgid "msg.printing.done"
 msgstr ""
 
-#: server/amc.py:873
+#: server/amc.py:884
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1080
+#: server/amc.py:1091
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1087
+#: server/amc.py:1098
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1328
+#: server/amc.py:1339
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1335
+#: server/amc.py:1346
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1371
+#: server/amc.py:1382
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1390
+#: server/amc.py:1401
 msgid "files.indiv"
 msgstr ""
 
@@ -155,6 +155,10 @@ msgstr ""
 
 #: server/templates/identification.html:57
 msgid "students.none"
+msgstr ""
+
+#: server/templates/identification.html:63
+msgid "students.upload"
 msgstr ""
 
 #: server/templates/index.html:18

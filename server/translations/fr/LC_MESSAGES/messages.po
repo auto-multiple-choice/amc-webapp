@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-07 16:05+0200\n"
-"PO-Revision-Date: 2026-04-07 16:12+0200\n"
+"POT-Creation-Date: 2026-04-07 16:26+0200\n"
+"PO-Revision-Date: 2026-04-07 16:27+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -57,55 +57,55 @@ msgstr "Extraction…"
 msgid "t.archive.save"
 msgstr "Sauvegarde de l'archive…"
 
-#: server/amc.py:565
+#: server/amc.py:576
 msgid "t.scans.extract"
 msgstr "Extraction des images…"
 
-#: server/amc.py:573
+#: server/amc.py:584
 msgid "t.automatic"
 msgstr "Saisie automatique…"
 
-#: server/amc.py:754
+#: server/amc.py:765
 msgid "t.clear"
 msgstr "Nettoyage des données du projet…"
 
-#: server/amc.py:777
+#: server/amc.py:788
 msgid "t.layouts"
 msgstr "Détection des mises en page…"
 
-#: server/amc.py:844
+#: server/amc.py:855
 msgid "t.print_to"
 msgstr "Impression vers %(printer)s…"
 
-#: server/amc.py:862
+#: server/amc.py:873
 msgid "msg.printing.done"
 msgstr "Impression terminée !"
 
-#: server/amc.py:873
+#: server/amc.py:884
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1080
+#: server/amc.py:1091
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1087
+#: server/amc.py:1098
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1328
+#: server/amc.py:1339
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1335
+#: server/amc.py:1346
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1371
+#: server/amc.py:1382
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1390
+#: server/amc.py:1401
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
@@ -166,6 +166,10 @@ msgid "students.none"
 msgstr ""
 "Ajoutez une liste d'étudiant·es (sous la forme d'un fichier CSV) dans "
 "votre répertoire projet."
+
+#: server/templates/identification.html:63
+msgid "students.upload"
+msgstr "Téléverser une liste…"
 
 #: server/templates/index.html:18
 msgid "menu.main"

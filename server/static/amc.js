@@ -848,6 +848,20 @@ function u_marks() {
 }
 socket.on("update-marks", u_marks);
 
+function upload_students_done() {
+    u_identification();
+}
+
+function upload_students() {
+    var f = document.getElementById('students-upload');
+    if(f.files.length) {
+        upload_files("/upload/students",
+                     f.files, "Uploading…", {},
+                     upload_students_done
+                    );
+    }
+}
+
 function u_identification() {
     fetch_to_dom("identification", "/identification.html", {});
 }

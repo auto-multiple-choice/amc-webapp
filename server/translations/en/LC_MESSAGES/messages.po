@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-07 16:05+0200\n"
-"PO-Revision-Date: 2026-04-07 16:08+0200\n"
+"POT-Creation-Date: 2026-04-07 16:26+0200\n"
+"PO-Revision-Date: 2026-04-07 16:27+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -55,55 +55,55 @@ msgstr "Extracting…"
 msgid "t.archive.save"
 msgstr "Saving archive…"
 
-#: server/amc.py:565
+#: server/amc.py:576
 msgid "t.scans.extract"
 msgstr "Extracting scans images…"
 
-#: server/amc.py:573
+#: server/amc.py:584
 msgid "t.automatic"
 msgstr "Automatic data capture…"
 
-#: server/amc.py:754
+#: server/amc.py:765
 msgid "t.clear"
 msgstr "Clear project data…"
 
-#: server/amc.py:777
+#: server/amc.py:788
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:844
+#: server/amc.py:855
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:862
+#: server/amc.py:873
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:873
+#: server/amc.py:884
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1080
+#: server/amc.py:1091
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1087
+#: server/amc.py:1098
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1328
+#: server/amc.py:1339
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1335
+#: server/amc.py:1346
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1371
+#: server/amc.py:1382
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1390
+#: server/amc.py:1401
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -162,6 +162,10 @@ msgstr "Manual"
 #: server/templates/identification.html:57
 msgid "students.none"
 msgstr "Please add a students list as a CSV file in your project directory."
+
+#: server/templates/identification.html:63
+msgid "students.upload"
+msgstr "Send students list…"
 
 #: server/templates/index.html:18
 msgid "menu.main"
