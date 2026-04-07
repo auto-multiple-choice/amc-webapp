@@ -1086,7 +1086,7 @@ def x_show_marks():
     else:
         mean = None
 
-    if histogram and full:
+    if histogram and full and marks:
         n_class = 20 if len(marks) >= 40 else 10
         if grain and grain > 0:
             max_class = abs(full-mini)/grain
@@ -1103,7 +1103,7 @@ def x_show_marks():
             i = min(i, n_class-1)
             i = max(i, 0)
             classes[i]["n"] += 1
-        clmax = max([c["n"] for c in classes])
+        clmax = max(1, max([c["n"] for c in classes]))
         for c in classes:
             c["pc"] = c["n"] / clmax * 100
 
@@ -1111,6 +1111,8 @@ def x_show_marks():
     else:
         classes = None
         clmax = None
+
+    emit_progress("n-marks", len(marks))
         
     return render_template("show_marks.html",
                            marks=marks, nmarks=len(marks),
@@ -1121,7 +1123,6 @@ def x_show_marks():
 def io_do_mark(update):
     messages = {}
     variables = {}
-    emit_progress("begin-command")
     emit_progress("begin-command")
     if update:
         emit_progress("t", _('t.mark.extract'))

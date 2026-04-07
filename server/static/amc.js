@@ -843,6 +843,17 @@ function add_student() {
 
 // ----------------------- GRADING
 
+socket.on("n-marks", function(n) {
+    console.log(n);
+    for(var id of ["block-export", "block-annotate"]) {
+        var e = document.getElementById(id);
+        if(e) {
+            if(n>0) e.classList.remove("hidden");
+            else e.classList.add("hidden");
+        }
+    }
+});
+
 function u_marks() {
     fetch_to_dom("marks-report", "/show_marks.html", {});
 }

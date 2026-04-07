@@ -281,7 +281,7 @@ li.selectable.recent {
     flex-direction: column;
 }
 
-#code.hidden, #document.hidden, #print.hidden, #association.hidden, #grading.hidden {
+#code.hidden, #document.hidden, #print.hidden, #association.hidden, #grading.hidden, #block-export.hidden, #block-annotate.hidden  {
     display: none;
 }
 
