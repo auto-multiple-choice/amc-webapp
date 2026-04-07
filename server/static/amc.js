@@ -1038,7 +1038,9 @@ function change_config_value(e) {
     var value;
     if(e.type == "checkbox")
         value = (e.checked ? "on" : "");
-    else if(e.type == "select-one" || e.type == "text")
+    else if(e.type == "select-one"
+            || e.type == "text"
+            || e.type == "number")
         value = e.value;
     else if(e.type == "textarea")
         value = e.textContent;
