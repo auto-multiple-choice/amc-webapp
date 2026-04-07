@@ -31,6 +31,7 @@ def amc_command(*args,
 
     command = [ "/usr/bin/auto-multiple-choice",
                 *args ]
+    command += ["--profile", "default"]
     command += ["--project-dir", project_dir()]
     if app:
         app.logger.info("c-cmd> " + command_str(command))
