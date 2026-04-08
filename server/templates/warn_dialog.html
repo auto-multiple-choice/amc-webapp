@@ -1,5 +1,5 @@
 {% if err %}
-<div id="warn-err">
+<div id="warn-err" class="msg-err">
   <p class="message-title">{{ _('dialog.errors') }}</p>
   <p id="warn-err-text" class="message">
     {{ err | safe }}
@@ -7,7 +7,7 @@
 </div>
 {% endif %}
 {% if warn %}
-<div id="warn-warn">
+<div id="warn-warn" class="msg-warn">
   <p class="message-title">{{ _('dialog.warnings') }}</p>
   <p id="warn-warn-text" class="message">
     {{ warn | safe }}
@@ -15,7 +15,7 @@
 </div>
 {% endif %}
 {% if info %}
-<div id="warn-info">
+<div id="warn-info" class="msg-info">
   <p id="warn-warn-text" class="message">
     {{ info | safe }}
   </p>

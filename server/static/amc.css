@@ -446,9 +446,16 @@ li.selectable.recent {
     overflow-y: scroll;
 
     padding: 5px;
-    border-color: red;
+    border-radius: 5px;
+    border-color: #84c8e0;
     border-width: 4px;
     border-style: solid;
+}
+#warn-content:has(div.msg-err) {
+    border-color: #ff7e83;
+}
+#warn-content:has(div.msg-warn):not(:has(div.msg-err)) {
+    border-color: #ffac29;
 }
 
 .message-title {
