@@ -985,6 +985,35 @@ def scans_report(threshold, threshold_up):
                            n_failed=n_failed,
                            pages=pages)
 
+@socketio.on('n-incomplete-details')
+def io_incomplete_details():
+    db = get_db()
+    n_complete, n_incomplete, missing = db.counts()
+    miss = {}
+    for p in missing:
+        sc = (p[0], p[2])
+        if not miss.get(sc):
+            miss[sc] = []
+        miss[sc].append(p[1])
+    miss_sc = sorted(miss.keys())
+    miss_sorted = []
+    for sc in miss_sc:
+        sc_text = str(sc[0])
+        if sc[1]:
+            sc_text += ":" + str(sc[1])
+        miss_sorted.append(
+            { "sc": sc_text,
+              "pages": ", ".join([str(x) for x in sorted(miss[sc])]) })
+        
+    emit("dialog",
+         render_template(
+             "warn_dialog.html",
+             err = "",
+             warn = "",
+             info = render_template("incomplete_details.html",
+                                    n_incomplete=n_incomplete,
+                                    missing=miss_sorted)))
+
 @app.route('/scans_report.html')
 def u_scans_report():
     threshold = float(get_option("seuil"))

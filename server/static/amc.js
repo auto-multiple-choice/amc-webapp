@@ -859,6 +859,10 @@ function u_marks() {
 }
 socket.on("update-marks", u_marks);
 
+function n_incomplete_details() {
+    socket.emit("n-incomplete-details");
+}
+
 function upload_students_done() {
     u_identification();
 }

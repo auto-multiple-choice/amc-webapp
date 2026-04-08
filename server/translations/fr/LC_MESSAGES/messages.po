@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-08 10:57+0200\n"
-"PO-Revision-Date: 2026-04-08 11:00+0200\n"
+"POT-Creation-Date: 2026-04-08 11:29+0200\n"
+"PO-Revision-Date: 2026-04-08 11:33+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -16,7 +16,7 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-"Generated-By: Babel 2.17.0\n"
+"Generated-By: Babel 2.18.0\n"
 "X-Generator: Poedit 3.9\n"
 
 #: server/amc.py:172
@@ -85,27 +85,27 @@ msgstr "Impression terminée !"
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1134
+#: server/amc.py:1163
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1141
+#: server/amc.py:1170
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1382
+#: server/amc.py:1411
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1389
+#: server/amc.py:1418
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1425
+#: server/amc.py:1454
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1444
+#: server/amc.py:1473
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
@@ -170,6 +170,16 @@ msgstr ""
 #: server/templates/identification.html:63
 msgid "students.upload"
 msgstr "Téléverser une liste…"
+
+#: server/templates/incomplete_details.html:1
+msgid "scans.incomplete.one"
+msgid_plural "scans.incomplete.plural"
+msgstr[0] "Des pages manquent pour %(num)s copie."
+msgstr[1] "Des pages manquent pour %(num)s copies."
+
+#: server/templates/incomplete_details.html:3
+msgid "scans.missing.text"
+msgstr "Copie %(copy)s — pages manquantes : %(pages)s"
 
 #: server/templates/index.html:18
 msgid "menu.main"
@@ -303,19 +313,19 @@ msgstr "Copies complètes"
 msgid "scans.numbers.incomplete"
 msgstr "Copies avec pages manquantes"
 
-#: server/templates/scans_report.html:8
+#: server/templates/scans_report.html:9
 msgid "scans.numbers.failed"
 msgstr "Pages qui n'ont pas pu être reconnues"
 
-#: server/templates/scans_report.html:16
+#: server/templates/scans_report.html:17
 msgid "scans.page"
 msgstr "page"
 
-#: server/templates/scans_report.html:17
+#: server/templates/scans_report.html:18
 msgid "scans.mse"
 msgstr "EQM"
 
-#: server/templates/scans_report.html:18
+#: server/templates/scans_report.html:19
 msgid "scans.sensitivity"
 msgstr "sens"
 

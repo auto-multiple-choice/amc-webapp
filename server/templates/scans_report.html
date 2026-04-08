@@ -4,6 +4,7 @@
        >{{ n_complete }}</div>
   <div title="{{ _('scans.numbers.incomplete') }}"
        class="{% if n_incomplete > 0 %}warning{% endif %}"
+       onclick="n_incomplete_details();"
        >{{ n_incomplete }}</div>
   <div title="{{ _('scans.numbers.failed') }}"
        class="{% if n_failed > 0 %}error{% endif %}"
