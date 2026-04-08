@@ -594,6 +594,7 @@ input.one-way:checked ~ div {
 
 #scans-pages-block {
     overflow-y: auto;
+    scroll-behavior: smooth;
 }
 
 #scans-pages th, #scan-pages td {

@@ -5,6 +5,24 @@ var project_name = null;
 var editor = null;
 var current_tab = null;
 
+function is_scrolled_view(elem, frac=0.1) {
+    var container = elem.offsetParent.parentElement;
+    var up = container.scrollTop;
+    var height = container.getBoundingClientRect().height;
+    console.log(elem.offsetTop, elem.offsetTop + elem.offsetHeight,
+                up, up+height);
+    if(elem.offsetTop < up + frac*height)
+        return false;
+    if(elem.offsetTop + elem.offsetHeight > up + (1-frac)*height)
+        return false;
+    return true;
+}
+
+function scroll_into_view(elem) {
+    if(! is_scrolled_view(elem))
+        elem.scrollIntoView({block: "center"});
+}
+
 function fetch_to_dom(id, url, opts) {
     if(!opts) opts={};
     return fetch(url, opts)
@@ -735,7 +753,10 @@ function highlight_selected_page(e, student, page, copy) {
     for(old of document.getElementsByClassName("selected pagerow")) {
         old.classList.remove("selected");
     }
-    if(e) e.classList.add("selected");
+    if(e) {
+        e.classList.add("selected");
+        scroll_into_view(e);
+    }
 }
 
 function scans_page_select(e, student, page, copy) {
@@ -835,11 +856,13 @@ function compare_reports(a, b, column) {
 }
 
 function scans_report_sort(column) {
-    rows = Array.from(document.getElementsByClassName("pagerow")).sort((a,b)=> compare_reports(a,b,column));
-    c = document.getElementById("scans-pages-rows");
-    for(r of rows) {
+    var rows = Array.from(document.getElementsByClassName("pagerow")).sort((a,b)=> compare_reports(a,b,column));
+    var c = document.getElementById("scans-pages-rows");
+    for(var r of rows) {
         c.appendChild(r);
     }
+    var sel = selected_pagerow();
+    if(sel.length) scroll_into_view(sel[0]);
 }
 
 function clickBox(question, answer) {
@@ -1036,7 +1059,7 @@ function first_not_associated() {
         select_assoc_sheet(e,
                            parseInt(e.getAttribute("amc-student")),
                            parseInt(e.getAttribute("amc-copy")));
-        e.scrollIntoView();
+        e.scrollIntoView({block: "center"});
     }
 }
 
