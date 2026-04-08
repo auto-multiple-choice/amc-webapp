@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-08 11:29+0200\n"
+"POT-Creation-Date: 2026-04-08 23:07+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,87 +17,87 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: server/amc.py:172
+#: server/amc.py:185
 msgid "t.cloning"
 msgstr ""
 
-#: server/amc.py:183
+#: server/amc.py:196
 msgid "msg.cloned"
 msgstr ""
 
-#: server/amc.py:188
+#: server/amc.py:201
 msgid "msg.clone.err"
 msgstr ""
 
-#: server/amc.py:218
+#: server/amc.py:231
 msgid "msg.rename.exists"
 msgstr ""
 
-#: server/amc.py:309
+#: server/amc.py:322
 msgid "msg.create.exists"
 msgstr ""
 
-#: server/amc.py:367 server/amc.py:392
+#: server/amc.py:380 server/amc.py:405
 msgid "t.options"
 msgstr ""
 
-#: server/amc.py:380 server/amc.py:403
+#: server/amc.py:393 server/amc.py:416
 msgid "t.extract"
 msgstr ""
 
-#: server/amc.py:469
+#: server/amc.py:482
 msgid "t.archive.save"
 msgstr ""
 
-#: server/amc.py:577
+#: server/amc.py:590
 msgid "t.scans.extract"
 msgstr ""
 
-#: server/amc.py:585
+#: server/amc.py:598
 msgid "t.automatic"
 msgstr ""
 
-#: server/amc.py:767
+#: server/amc.py:780
 msgid "t.clear"
 msgstr ""
 
-#: server/amc.py:790
+#: server/amc.py:803
 msgid "t.layouts"
 msgstr ""
 
-#: server/amc.py:857
+#: server/amc.py:870
 msgid "t.print_to"
 msgstr ""
 
-#: server/amc.py:875
+#: server/amc.py:888
 msgid "msg.printing.done"
 msgstr ""
 
-#: server/amc.py:886
+#: server/amc.py:899
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1163
+#: server/amc.py:1215
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1170
+#: server/amc.py:1222
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1411
+#: server/amc.py:1463
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1418
+#: server/amc.py:1470
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1454
+#: server/amc.py:1506
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1473
+#: server/amc.py:1525
 msgid "files.indiv"
 msgstr ""
 
@@ -303,15 +303,15 @@ msgstr ""
 msgid "scans.numbers.failed"
 msgstr ""
 
-#: server/templates/scans_report.html:17
+#: server/templates/scans_report.html:18
 msgid "scans.page"
 msgstr ""
 
-#: server/templates/scans_report.html:18
+#: server/templates/scans_report.html:19
 msgid "scans.mse"
 msgstr ""
 
-#: server/templates/scans_report.html:19
+#: server/templates/scans_report.html:20
 msgid "scans.sensitivity"
 msgstr ""
 
@@ -603,6 +603,18 @@ msgstr ""
 
 #: server/templates/tab_scans.html:48
 msgid "scans.page.select"
+msgstr ""
+
+#: server/templates/tab_scans_failed.html:6
+msgid "failed.close"
+msgstr ""
+
+#: server/templates/tab_scans_failed.html:10
+msgid "failed.preproc"
+msgstr ""
+
+#: server/templates/tab_scans_failed.html:14
+msgid "failed.delete"
 msgstr ""
 
 #: server/templates/tab_source.html:9

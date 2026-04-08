@@ -155,6 +155,21 @@ class Amcdb:
         self.db.row_factory = None
         return self.db.execute(
             "SELECT count(*) FROM capture.capture_failed").fetchone()[0]
+
+    def failed_scans(self):
+        self.use_module("capture")
+        self.db.row_factory = None
+        return self.db.execute(
+            "SELECT filename, timestamp FROM capture.capture_failed"
+            ).fetchall()
+
+    def failed_delete(self, filename):
+        self.use_module("capture")
+        self.db.execute(
+            "DELETE FROM capture.capture_failed WHERE filename=?",
+            (filename,))
+        self.db.commit()
+        return self.n_failed()
     
     def page_t_manual(self, student, page, copy):
         self.use_module("capture")

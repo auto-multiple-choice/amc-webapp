@@ -7,3 +7,4 @@ unidecode
 filelock
 uuid
 gevent
+pillow

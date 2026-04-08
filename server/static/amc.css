@@ -94,6 +94,11 @@ img.menu {
     color: black;
 }
 
+.btn-grow {
+    flex-grow: 1;
+    text-align: center;
+}
+
 .btn.disabled {
     background: #cfcfcf;
     cursor: not-allowed;
@@ -259,6 +264,12 @@ li.selectable.recent {
 
 .bandeau {
     margin: 5px;
+}
+.distrib {
+    padding: 5px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
 }
 
 #source-name {
@@ -537,9 +548,45 @@ input.one-way:checked ~ div {
     flex-direction: row;
 }
 
-#pages {
+#failed-pages {
     flex-grow: 0;
     flex-shrink: 0;
+    max-width: 15em;
+}
+
+#failed-images {
+    flex-basis: 0px;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: row;
+    overflow-y: auto;
+}
+
+#failed-orig, #failed-pp {
+    flex-basis: 0px;
+    flex-grow: 1;
+}
+
+#failed-orig img, #failed-pp img {
+    width: 100%;
+    box-sizing: border-box;
+}
+#failed-orig img:not([src=""]), #failed-pp img:not([src=""]) {
+    border: #aaa dashed 2px;
+}
+
+#failed-scans table {
+    border-collapse: collapse;
+}
+#failed-scans tbody td {
+    border: #aaa solid 1px;
+    cursor: default;
+}
+#failed-scans tbody tr.selected {
+    background: #9bbedf;
+}
+#failed-scans tbody tr:hover {
+    background: #9bdfa8;
 }
 
 #zooms {

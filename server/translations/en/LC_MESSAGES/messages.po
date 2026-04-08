@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-08 11:29+0200\n"
-"PO-Revision-Date: 2026-04-08 11:31+0200\n"
+"POT-Creation-Date: 2026-04-08 23:07+0200\n"
+"PO-Revision-Date: 2026-04-08 23:07+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -19,91 +19,91 @@ msgstr ""
 "Generated-By: Babel 2.18.0\n"
 "X-Generator: Poedit 3.9\n"
 
-#: server/amc.py:172
+#: server/amc.py:185
 msgid "t.cloning"
 msgstr "Cloning project…"
 
-#: server/amc.py:183
+#: server/amc.py:196
 msgid "msg.cloned"
 msgstr "Project cloned to %(name)s."
 
-#: server/amc.py:188
+#: server/amc.py:201
 msgid "msg.clone.err"
 msgstr ""
 "Errors while cloning to %(name)s: only %(n)s files copied out of %"
 "(ntotal)s."
 
-#: server/amc.py:218
+#: server/amc.py:231
 msgid "msg.rename.exists"
 msgstr "Can't rename \"%(old)s\" to \"%(new)s\": \"%(new)s\" already exists."
 
-#: server/amc.py:309
+#: server/amc.py:322
 msgid "msg.create.exists"
 msgstr ""
 "Can't create project \"%(name)s\": some file or directory already exists "
 "with this name."
 
-#: server/amc.py:367 server/amc.py:392
+#: server/amc.py:380 server/amc.py:405
 msgid "t.options"
 msgstr "Looking for the options file…"
 
-#: server/amc.py:380 server/amc.py:403
+#: server/amc.py:393 server/amc.py:416
 msgid "t.extract"
 msgstr "Extracting…"
 
-#: server/amc.py:469
+#: server/amc.py:482
 msgid "t.archive.save"
 msgstr "Saving archive…"
 
-#: server/amc.py:577
+#: server/amc.py:590
 msgid "t.scans.extract"
 msgstr "Extracting scans images…"
 
-#: server/amc.py:585
+#: server/amc.py:598
 msgid "t.automatic"
 msgstr "Automatic data capture…"
 
-#: server/amc.py:767
+#: server/amc.py:780
 msgid "t.clear"
 msgstr "Clear project data…"
 
-#: server/amc.py:790
+#: server/amc.py:803
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:857
+#: server/amc.py:870
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:875
+#: server/amc.py:888
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:886
+#: server/amc.py:899
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1163
+#: server/amc.py:1215
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1170
+#: server/amc.py:1222
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1411
+#: server/amc.py:1463
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1418
+#: server/amc.py:1470
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1454
+#: server/amc.py:1506
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1473
+#: server/amc.py:1525
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -313,15 +313,15 @@ msgstr "Copies with some pages missing"
 msgid "scans.numbers.failed"
 msgstr "Pages that could not be recognized"
 
-#: server/templates/scans_report.html:17
+#: server/templates/scans_report.html:18
 msgid "scans.page"
 msgstr "page"
 
-#: server/templates/scans_report.html:18
+#: server/templates/scans_report.html:19
 msgid "scans.mse"
 msgstr "MSE"
 
-#: server/templates/scans_report.html:19
+#: server/templates/scans_report.html:20
 msgid "scans.sensitivity"
 msgstr "sens"
 
@@ -614,6 +614,18 @@ msgstr "Ticked"
 #: server/templates/tab_scans.html:48
 msgid "scans.page.select"
 msgstr "Please select a page."
+
+#: server/templates/tab_scans_failed.html:6
+msgid "failed.close"
+msgstr "Close"
+
+#: server/templates/tab_scans_failed.html:10
+msgid "failed.preproc"
+msgstr "Pre-process"
+
+#: server/templates/tab_scans_failed.html:14
+msgid "failed.delete"
+msgstr "Delete"
 
 #: server/templates/tab_source.html:9
 msgid "btn.revert"

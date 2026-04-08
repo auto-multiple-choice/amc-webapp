@@ -8,6 +8,7 @@
        >{{ n_incomplete }}</div>
   <div title="{{ _('scans.numbers.failed') }}"
        class="{% if n_failed > 0 %}error{% endif %}"
+       onclick="{% if n_failed > 0 %}tab_scans_failed();{% endif %}"
        >{{ n_failed }}</div>
 </div>
 <div id="scans-pages-block">

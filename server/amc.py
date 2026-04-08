@@ -2,6 +2,7 @@
 from gevent import monkey
 monkey.patch_all()
 
+import io
 import re
 import os
 import math
@@ -22,6 +23,8 @@ from urllib.parse import quote
 from unidecode import unidecode
 from lxml import etree
 import threading
+
+from PIL import Image
 
 from db import Amcdb
 from command import amc_command
@@ -80,6 +83,12 @@ def index():
 def tab(tab_name):
     return render_template(f"tab_{tab_name}.html")
 
+def serve_pil_image(pil_img):
+    img_io = io.BytesIO()
+    pil_img.save(img_io, 'JPEG', quality=75)
+    img_io.seek(0)
+    return send_file(img_io, mimetype='image/jpeg')
+
 @app.route('/fs/<path:path>', methods=['GET', 'POST'])
 def fs_file(path):
     path = path.replace("..", "")
@@ -95,9 +104,13 @@ def fs_file(path):
     else:
         app.logger.info(f"Send file: {path}")
         attach = bool(int(request.args.get('attach', "1")))
+        ext = path.split(".")[-1].lower()
         if os.path.isfile(path):
-            return send_file(path,
-                             as_attachment=attach)
+            if ext in ('tiff', 'tif') and not attach:
+                return serve_pil_image(Image.open(path))
+            else:
+                return send_file(path,
+                                 as_attachment=attach)
         elif os.path.isdir(path):
             return send_dir_as_zip(path,
                                    filename=request.args.get('filename'),
@@ -1020,6 +1033,45 @@ def u_scans_report():
     threshold_up = float(get_option("seuil_up"))
     emit_progress("thresholds", [threshold, threshold_up])
     return scans_report(threshold, threshold_up)
+
+@app.route('/failed_report.html')
+def u_failed_report():
+    db = get_db()
+    purl = "/fs/" + get_var("project_name") + "/"
+    failed = db.failed_scans()
+    scans = []
+    for f in failed:
+        d, fn = os.path.split(f[0])
+        url = purl + f[0].replace("%PROJET/", "", 1)
+        scans.append({ "filename": f[0], "file": fn, "url": url })
+    return render_template('failed_report.html',
+                           scans=scans)
+
+@socketio.on('failed-delete')
+def io_failed_delete(filename):
+    db = get_db()
+    n = db.failed_delete(filename)
+    if n:
+        emit("failed-report")
+    else:
+        emit("tab-scans")
+
+@socketio.on('failed-pre-process')
+def io_failed_pre_process(filename):
+    pdir = project_dir()
+    orig_path = filename.replace("%PROJET", pdir, 1)
+    d, fn = os.path.split(orig_path)
+    pp_file = "/cr/diagnostic/" + fn + ".png"
+    pp_path = pdir + pp_file
+    pp_url  = "/fs/" + get_var("project_name") + pp_file
+
+    amc_command(
+        "analyse",
+        "--debug-image-dir", f"{pdir}/cr/diagnostic",
+        "--no-tag-overwritten",
+        orig_path)
+        
+    emit("failed-pp-url", pp_url)
 
 @app.route('/set_thresholds.html', methods=['POST'])
 def x_set_thresholds():

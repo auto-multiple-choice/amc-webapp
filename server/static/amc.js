@@ -59,6 +59,7 @@ function set_hash_url() {
 }
 
 function set_current_tab(tab_name) {
+    tab_name = tab_name.replace(/_.*/, "");
     current_tab = tab_name;
     for(var e of document.getElementsByClassName("menubtn")) {
         var name = e.id.substring(5);
@@ -687,6 +688,70 @@ function tab_scans() {
         socket.emit("scans-mode");
         u_scans_report();
     });
+}
+
+socket.on("tab-scans", tab_scans);
+
+function failed_clear_img() {
+    for(var n of ["failed-orig-img", "failed-pp-img"])
+        document.getElementById(n).setAttribute("src", "");
+}
+
+function u_scans_failed_report() {
+    return fetch_to_dom("failed-report", "/failed_report.html", {})
+        .then(() => {
+            var s = document.getElementsByClassName("failed-scan");
+            if(s.length) {
+                failed_scan_view(s[0]);
+            }
+        });
+}
+
+socket.on("failed-report", u_scans_failed_report);
+
+function tab_scans_failed() {
+    show_tab("scans_failed").then(() => {
+        u_scans_failed_report();
+    });
+}
+
+function failed_set_pp_url(url) {
+    document.getElementById("failed-pp-img")
+        .setAttribute("src", url);
+}
+
+function failed_scan_view(e) {
+    var url = e.getAttribute("amc-scan-url");
+    document.getElementById("failed-orig-img")
+        .setAttribute("src", url);
+    failed_set_pp_url("");
+    var t = document.getElementById("failed-scans");
+    for(x of t.getElementsByClassName("scan-file selected"))
+        x.classList.remove("selected");
+    e.classList.add("selected");
+}
+
+function failed_selected_filename() {
+    var t = document.getElementById("failed-scans");
+    x = t.getElementsByClassName("scan-file selected");
+    if(x.length)
+        return x[0].getAttribute("amc-filename");
+    else
+        return null;
+}
+
+socket.on("failed-pp-url", function(url) {
+    failed_set_pp_url(url);
+});
+
+function failed_pre_process() {
+    fn = failed_selected_filename();
+    if(fn) socket.emit("failed-pre-process", fn);
+}
+
+function failed_delete() {
+    fn = failed_selected_filename();
+    if(fn) socket.emit("failed-delete", fn);
 }
 
 function update_zoom_ticked(question, answer) {
