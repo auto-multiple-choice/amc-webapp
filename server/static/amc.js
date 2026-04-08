@@ -767,6 +767,42 @@ socket.on("scans-page-select", function(data) {
         });
 });
 
+function row_spc(row) {
+    return [ row.getAttribute("amc-student"),
+             row.getAttribute("amc-page"),
+             row.getAttribute("amc-copy") ];
+}
+
+function selected_pagerow() {
+    return document.getElementById("scans-pages-rows")
+        .getElementsByClassName("pagerow selected");
+}
+
+function first_pagerow() {
+    var x= document.getElementById("scans-pages-rows")
+        .getElementsByClassName("pagerow");
+    if(x.length) return(x[0]);
+    else return(null);
+}
+
+function scans_page_move(move_function) {
+    var sel = selected_pagerow();
+    var target = null;
+    if(sel.length) {
+        target = move_function(sel[0]);
+    } else {
+        target = first_pagerow();
+    }
+    if(target) scans_page_select(target, ...row_spc(target));
+}
+
+function scans_page_move_up() {
+    scans_page_move((e) => e.previousElementSibling);
+}
+function scans_page_move_down() {
+    scans_page_move((e) => e.nextElementSibling);
+}
+
 socket.on("tick-box", function(data) {
     var question = data[0];
     var answer = data[1];
@@ -1145,9 +1181,22 @@ function u_annotated_files(t) {
 }
 socket.on("update-annotated-files", u_annotated_files);
 
+// ----------------------- keys
+
+function key_up(event) {
+    if(event.target.id == "app-body") {
+        console.log(event.code);
+        if(current_tab == "scans") {
+            if(event.code == "PageUp") scans_page_move_up();
+            if(event.code == "PageDown") scans_page_move_down();
+        }
+    }
+}
+
 // ----------------------- MAIN
 
 document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById("app-body").addEventListener("keyup", key_up);
     connection_status(socket.connected ? "online" : "offline");
     if(location.hash) {
         var pt = location.hash.split("/");
