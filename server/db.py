@@ -116,6 +116,46 @@ class Amcdb:
             GROUP BY p.student,p.page,p.copy
             ORDER BY p.student,p.copy,p.page""").fetchall()
 
+    def n_copies(self):
+        self.use_module("capture")
+        self.db.row_factory = None
+        return self.db.execute(
+            """SELECT COUNT(*) FROM
+            ( SELECT student,copy FROM capture.capture_page
+               WHERE timestamp_auto>0 OR timestamp_manual>0
+               GROUP BY student,copy)
+            """).fetchone()[0]
+
+    def missing_pages(self):
+        self.use_module("layout")
+        self.use_module("capture")
+        self.db.row_factory = None
+        # [missingPages]
+        return self.db.execute(
+            """SELECT enter.student AS student, enter.page AS page,
+                      capture.capture_page.copy AS copy
+            FROM ( SELECT student,page FROM layout.layout_box WHERE role=1
+                   UNION
+                   SELECT student,page FROM layout.layout_zone) AS enter,
+                capture.capture_page
+            ON enter.student=capture.capture_page.student
+            EXCEPT SELECT student,page,copy FROM capture.capture_page
+            ORDER BY student,copy,page
+            """).fetchall()
+
+    def counts(self):
+        missing = self.missing_pages()
+        incomplete = set([ (p[0], p[2]) for p in missing ])
+        n_incomplete = len(incomplete)
+        n_complete = self.n_copies() - n_incomplete
+        return n_complete, n_incomplete, missing
+
+    def n_failed(self):
+        self.use_module("capture")
+        self.db.row_factory = None
+        return self.db.execute(
+            "SELECT count(*) FROM capture.capture_failed").fetchone()[0]
+    
     def page_t_manual(self, student, page, copy):
         self.use_module("capture")
         self.db.row_factory = None

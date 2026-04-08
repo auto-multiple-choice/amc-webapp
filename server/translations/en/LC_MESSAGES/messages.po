@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-07 21:44+0200\n"
-"PO-Revision-Date: 2026-04-07 21:44+0200\n"
+"POT-Creation-Date: 2026-04-08 10:57+0200\n"
+"PO-Revision-Date: 2026-04-08 10:59+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -16,7 +16,7 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"Generated-By: Babel 2.18.0\n"
+"Generated-By: Babel 2.17.0\n"
 "X-Generator: Poedit 3.9\n"
 
 #: server/amc.py:172
@@ -83,27 +83,27 @@ msgstr "Printing done!"
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1127
+#: server/amc.py:1134
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1134
+#: server/amc.py:1141
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1375
+#: server/amc.py:1382
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1382
+#: server/amc.py:1389
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1418
+#: server/amc.py:1425
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1437
+#: server/amc.py:1444
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -291,15 +291,27 @@ msgstr "Clone"
 msgid "project.delete"
 msgstr "Delete"
 
-#: server/templates/scans_report.html:4
+#: server/templates/scans_report.html:2
+msgid "scans.numbers.complete"
+msgstr "Complete copies"
+
+#: server/templates/scans_report.html:5
+msgid "scans.numbers.incomplete"
+msgstr "Copies with some pages missing"
+
+#: server/templates/scans_report.html:8
+msgid "scans.numbers.failed"
+msgstr "Pages that could not be recognized"
+
+#: server/templates/scans_report.html:16
 msgid "scans.page"
 msgstr "page"
 
-#: server/templates/scans_report.html:5
+#: server/templates/scans_report.html:17
 msgid "scans.mse"
 msgstr "MSE"
 
-#: server/templates/scans_report.html:6
+#: server/templates/scans_report.html:18
 msgid "scans.sensitivity"
 msgstr "sens"
 

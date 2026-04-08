@@ -965,6 +965,10 @@ def discretize(value, thresholds):
 
 def scans_report(threshold, threshold_up):
     db = get_db()
+
+    n_complete, n_incomplete, missing = db.counts()
+    n_failed = db.n_failed()
+    
     pages = db.capture_pages(threshold, threshold_up)
     for p in pages:
         p["sens-level"] = discretize(p.get("sensitivity"),
@@ -977,6 +981,8 @@ def scans_report(threshold, threshold_up):
     else:
         emit_progress("unlock-photocopy")
     return render_template('scans_report.html',
+                           n_complete=n_complete, n_incomplete=n_incomplete,
+                           n_failed=n_failed,
                            pages=pages)
 
 @app.route('/scans_report.html')

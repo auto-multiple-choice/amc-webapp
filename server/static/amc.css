@@ -565,7 +565,34 @@ input.one-way:checked ~ div {
     overflow-x: clip;
 }
 
-#scans-report {
+#scans-report, #scans-page-block {
+    display: flex;
+    flex-direction: column;
+    min-height: 0px;
+}
+
+#report-numbers {
+    display: flex;
+    flex-direction: row;
+}
+#report-numbers > div {
+    flex-grow: 1;
+    flex-basis: 0;
+    text-align: center;
+    border: black solid 1px;
+    cursor: default;
+}
+#report-numbers > div.ok {
+    background: #00e462;
+}
+#report-numbers > div.warning {
+    background: #ffac29;
+}
+#report-numbers > div.error {
+    background: #ff7e83;
+}
+
+#scans-pages-block {
     overflow-y: auto;
 }
 

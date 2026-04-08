@@ -1,4 +1,16 @@
-<table id="scans-pages" class="lock-header">
+<div id="report-numbers">
+  <div title="{{ _('scans.numbers.complete') }}"
+       class="{% if n_complete > 0 %}ok{% endif %}"
+       >{{ n_complete }}</div>
+  <div title="{{ _('scans.numbers.incomplete') }}"
+       class="{% if n_incomplete > 0 %}warning{% endif %}"
+       >{{ n_incomplete }}</div>
+  <div title="{{ _('scans.numbers.failed') }}"
+       class="{% if n_failed > 0 %}error{% endif %}"
+       >{{ n_failed }}</div>
+</div>
+<div id="scans-pages-block">
+  <table id="scans-pages" class="lock-header">
   <thead>
     <tr>
       <th onclick="scans_report_sort('');">{{ _('scans.page') }}</th>
@@ -28,3 +40,4 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
