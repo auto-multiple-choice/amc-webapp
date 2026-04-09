@@ -979,6 +979,8 @@ def discretize(value, thresholds):
 def scans_report(threshold, threshold_up):
     db = get_db()
 
+    questions_textpos = db.questions_with_textpos()
+
     n_complete, n_incomplete, missing = db.counts()
     n_failed = db.n_failed()
     
@@ -996,6 +998,7 @@ def scans_report(threshold, threshold_up):
     return render_template('scans_report.html',
                            n_complete=n_complete, n_incomplete=n_incomplete,
                            n_failed=n_failed,
+                           questions_textpos=questions_textpos,
                            pages=pages)
 
 @socketio.on('n-incomplete-details')
@@ -1090,14 +1093,21 @@ def x_scans_page_select():
     student = request.json.get('student')
     page = request.json.get('page')
     copy = request.json.get('copy')
+    question = request.json.get('question')
     rep = f"{temp_dir}/{get_session()}/{student}/{page}/{copy}"
     Path(rep).mkdir(parents=True, exist_ok=True)
-    messages, variables = amc_command(
-        "db", "layout-image",
+
+    params = [
         f"{student}/{page}:{copy}",
         "--scan",
         "--dest-file", f"{rep}/manual",
-        "--url-prefix", f"/manual/{student}/{page}/{copy}/",
+        "--url-prefix", f"/manual/{student}/{page}/{copy}/"
+    ]
+    if question is not None:
+        params += ["--question-number", str(question) ]
+    messages, variables = amc_command(
+        "db", "layout-image",
+        *params,
         app=app)
     log_messages(messages)
     url = f"/manual/{student}/{page}/{copy}/manual.svg"
@@ -1121,9 +1131,9 @@ def scans_page_zooms(student, page, copy):
 
 @socketio.on('set-manual')
 def io_set_manual(data):
-    student, page, copy, question, answer, ticked = data
+    student, page, copy, question, answer, ticked, all_page = data
     db = get_db()
-    db.set_manual(student, page, copy, question, answer, ticked,
+    db.set_manual(student, page, copy, question, answer, ticked, all_page,
                   app=app)
     emit("tick-box", [question, answer, ticked])
 
@@ -1142,6 +1152,12 @@ def io_revert_manual(data):
         if b["auto_ticked"] != b["manual"]:
             emit("tick-box", [ b["question"], b["answer"], b["auto_ticked"] ])
 
+@app.route('/pages/<question>')
+def j_pages_with_question(question):
+    db = get_db()
+    pages = db.pages_with_question(question)
+    return pages
+            
 @socketio.on('add-student')
 def io_add_student(student):
     app.logger.info(f"Add student: {student}")

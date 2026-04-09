@@ -11,6 +11,18 @@
        onclick="{% if n_failed > 0 %}tab_scans_failed();{% endif %}"
        >{{ n_failed }}</div>
 </div>
+{% if questions_textpos %}
+<div id="q-textpos">
+  <select id="q-select" name="q-select"
+          onchange="q_select_change(this);"
+          >
+    <option value="" selected>-- {{ _('qselect.none') }} --</option>
+    {% for q in questions_textpos %}
+    <option value="{{ q[0] }}">{{ q[1] }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endif %}
 <div id="scans-pages-block">
   <table id="scans-pages" class="lock-header">
   <thead>

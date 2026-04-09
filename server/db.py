@@ -191,9 +191,10 @@ class Amcdb:
               (student, page, copy, 4, question, answer)).fetchone()[0]
 
     def set_manual(self, student, page, copy, question, answer, ticked,
+                   all_page=True,
                    app=None):
         self.use_module("capture")
-        if self.page_t_manual(student, page, copy)==0:
+        if all_page and self.page_t_manual(student, page, copy)==0:
             messages, variables = amc_command(
                 "db", "force-manual",
                 f"{student}/{page}:{copy}",
@@ -395,3 +396,24 @@ class Amcdb:
             return "landscape"
         else:
             return ""
+
+    def questions_with_textpos(self):
+        self.use_module("layout")
+        self.db.row_factory = None
+        return self.db.execute(
+            """SELECT b.question, q.name
+            FROM layout.layout_box AS b, layout.layout_question AS q
+            ON b.question=q.question
+            WHERE b.role=102
+            GROUP BY b.question"""
+            ).fetchall()
+
+    def pages_with_question(self, question_number):
+        self.use_module("layout")
+        self.db.row_factory = None
+        return self.db.execute(
+            """SELECT student, page
+            FROM layout.layout_box
+            WHERE role=102 AND question=?""",
+            (int(question_number),)).fetchall()
+            

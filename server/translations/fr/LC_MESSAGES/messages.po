@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-08 23:07+0200\n"
-"PO-Revision-Date: 2026-04-08 23:09+0200\n"
+"POT-Creation-Date: 2026-04-09 12:33+0200\n"
+"PO-Revision-Date: 2026-04-09 12:34+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -85,27 +85,27 @@ msgstr "Impression terminée !"
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1215
+#: server/amc.py:1231
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1222
+#: server/amc.py:1238
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1463
+#: server/amc.py:1479
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1470
+#: server/amc.py:1486
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1506
+#: server/amc.py:1522
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1525
+#: server/amc.py:1541
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
@@ -317,15 +317,19 @@ msgstr "Copies avec pages manquantes"
 msgid "scans.numbers.failed"
 msgstr "Pages qui n'ont pas pu être reconnues"
 
-#: server/templates/scans_report.html:18
+#: server/templates/scans_report.html:19
+msgid "qselect.none"
+msgstr "toute la page"
+
+#: server/templates/scans_report.html:30
 msgid "scans.page"
 msgstr "page"
 
-#: server/templates/scans_report.html:19
+#: server/templates/scans_report.html:31
 msgid "scans.mse"
 msgstr "EQM"
 
-#: server/templates/scans_report.html:20
+#: server/templates/scans_report.html:32
 msgid "scans.sensitivity"
 msgstr "sens"
 

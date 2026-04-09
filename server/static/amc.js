@@ -9,8 +9,6 @@ function is_scrolled_view(elem, frac=0.1) {
     var container = elem.offsetParent.parentElement;
     var up = container.scrollTop;
     var height = container.getBoundingClientRect().height;
-    console.log(elem.offsetTop, elem.offsetTop + elem.offsetHeight,
-                up, up+height);
     if(elem.offsetTop < up + frac*height)
         return false;
     if(elem.offsetTop + elem.offsetHeight > up + (1-frac)*height)
@@ -832,11 +830,14 @@ function scans_page_select(e, student, page, copy) {
                        'Content-Type': 'application/json'
                    },
                    body: JSON.stringify({
-                       student: student, page: page, copy: copy })
+                       student: student, page: page, copy: copy,
+                       question: q_select()
+                   })
                  })
         .then(() => {
             var s = document.getElementsByClassName("selected pagerow")[0];
-            allow_manual_revert(s.getAttribute("amc-manual") == "1");
+            allow_manual_revert(s.getAttribute("amc-manual") == "1"
+                                && q_select() == null);
         })
         .then(() => {
             fetch_to_dom(["zooms-0", "zooms-1"],
@@ -874,12 +875,28 @@ function first_pagerow() {
 function scans_page_move(move_function) {
     var sel = selected_pagerow();
     var target = null;
+
     if(sel.length) {
         target = move_function(sel[0]);
     } else {
         target = first_pagerow();
+        move_function = (e) => e.nextElementSibling;
     }
-    if(target) scans_page_select(target, ...row_spc(target));
+
+    while(target != null && target.classList.contains("hidden")) {
+        target = move_function(target);
+    }
+
+    if(target)
+        scans_page_select(target, ...row_spc(target));
+    return target;
+}
+
+function scans_page_reload() {
+    var sel = selected_pagerow();
+    if(sel.length) {
+        scans_page_select(sel[0], ...row_spc(sel[0]));
+    }
 }
 
 function scans_page_move_up() {
@@ -930,17 +947,75 @@ function scans_report_sort(column) {
     if(sel.length) scroll_into_view(sel[0]);
 }
 
+function q_select() {
+    var qs = document.getElementById("q-select");
+    if(qs) {
+        if(qs.value == "") return null;
+        else return qs.value;
+    } else
+        return null;
+}
+
+function q_select_set(pages_list) {
+    var pages = document.getElementById("scans-pages-rows");
+    if(pages_list == null || pages_list == []) {
+        // All pages available
+        for(var p of pages.getElementsByClassName("pagerow"))
+            p.classList.remove("hidden");
+    } else {
+        with_q = new Set();
+        for(var x of pages_list) {
+            with_q.add(x[0] + "-" + x[1])
+        }
+        for(var p of pages.getElementsByClassName("pagerow")) {
+            if(with_q.has(p.getAttribute("amc-student") + "-"
+                          + p.getAttribute("amc-page")))
+                p.classList.remove("hidden");
+            else
+                p.classList.add("hidden");
+        }
+    }
+    // Move to next available page if necessary
+    var sel = selected_pagerow();
+    if(sel.length) {
+        if(sel[0].classList.contains("hidden")) {
+            if(!scans_page_move_down()) scans_page_move_up();
+        } else {
+            scans_page_reload();
+        }
+    }
+}
+
+function q_select_change(e) {
+    var question_number = e.value;
+    if(question_number) {
+        // Download list of pages with this question
+        fetch(`/pages/${question_number}`)
+            .then(function(response) {
+                return response.json();
+            })
+            .then(function(j) {
+                q_select_set(j);
+                document.getElementById('zooms').classList.add("hidden");
+            });
+    } else {
+        q_select_set(null);
+        document.getElementById('zooms').classList.remove("hidden");
+    }
+}
+
 function clickBox(question, answer) {
     var mv = document.getElementById('manual-view');
     var b = document.getElementById(`box1_${question}_${answer}`);
     if(mv && b) {
         console.log(`Click on box(${question}/${answer})`);
+        var all_page = (q_select() == null);
         var ticked = !b.classList.contains("ticked");
         socket.emit("set-manual",
                     [ mv.getAttribute("amc-student"),
                       mv.getAttribute("amc-page"),
                       mv.getAttribute("amc-copy"),
-                      question, answer, ticked ]);
+                      question, answer, ticked, all_page ]);
     }
 }
 
@@ -968,7 +1043,6 @@ function add_student() {
 // ----------------------- GRADING
 
 socket.on("n-marks", function(n) {
-    console.log(n);
     for(var id of ["block-export", "block-annotate"]) {
         var e = document.getElementById(id);
         if(e) {
@@ -1273,7 +1347,6 @@ socket.on("update-annotated-files", u_annotated_files);
 
 function key_up(event) {
     if(event.target.id == "app-body") {
-        console.log(event.code);
         if(current_tab == "scans") {
             if(event.code == "PageUp") scans_page_move_up();
             if(event.code == "PageDown") scans_page_move_down();

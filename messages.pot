@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-08 23:07+0200\n"
+"POT-Creation-Date: 2026-04-09 12:33+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -77,27 +77,27 @@ msgstr ""
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1215
+#: server/amc.py:1231
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1222
+#: server/amc.py:1238
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1463
+#: server/amc.py:1479
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1470
+#: server/amc.py:1486
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1506
+#: server/amc.py:1522
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1525
+#: server/amc.py:1541
 msgid "files.indiv"
 msgstr ""
 
@@ -303,15 +303,19 @@ msgstr ""
 msgid "scans.numbers.failed"
 msgstr ""
 
-#: server/templates/scans_report.html:18
+#: server/templates/scans_report.html:19
+msgid "qselect.none"
+msgstr ""
+
+#: server/templates/scans_report.html:30
 msgid "scans.page"
 msgstr ""
 
-#: server/templates/scans_report.html:19
+#: server/templates/scans_report.html:31
 msgid "scans.mse"
 msgstr ""
 
-#: server/templates/scans_report.html:20
+#: server/templates/scans_report.html:32
 msgid "scans.sensitivity"
 msgstr ""
 

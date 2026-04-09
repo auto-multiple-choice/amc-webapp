@@ -292,7 +292,7 @@ li.selectable.recent {
     flex-direction: column;
 }
 
-#code.hidden, #document.hidden, #print.hidden, #association.hidden, #grading.hidden, #block-export.hidden, #block-annotate.hidden  {
+#code.hidden, #document.hidden, #print.hidden, #association.hidden, #grading.hidden, #block-export.hidden, #block-annotate.hidden, #zooms.hidden {
     display: none;
 }
 
@@ -948,4 +948,9 @@ table.hist {
 .hist-n {
     padding-left: .5em;
     position: absolute;
+}
+
+#q-textpos {
+    margin-top: 5px;
+    margin-bottom: 5px;
 }
