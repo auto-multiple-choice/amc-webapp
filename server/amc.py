@@ -30,7 +30,7 @@ from db import Amcdb
 from command import amc_command
 from basic import *
 
-from flask import Flask, render_template, request, send_file, make_response
+from flask import Flask, render_template, request, send_file, make_response, url_for
 from flask_socketio import SocketIO, emit
 from flask_babel import Babel, _
 
@@ -1541,6 +1541,26 @@ def x_annotated_files():
                          zip_text=_('files.indiv'),
                          filename=f"{project}-annotated.zip",
                          exclude="all-students.pdf")
+
+@app.route('/manifest.json')
+def x_manifest():
+    return {
+        "short_name": "AMC",
+        "name": "Auto Multiple Choice",
+        "description": "Auto Multiple Choice on " + request.host,
+        "icons": [
+            { "src": url_for('static', filename='menu-amc.svg',
+                             _scheme=os.environ.get('PREFERRED_URL_SCHEME'),
+                             _external=True),
+              "sizes": "any"
+             },
+        ],
+        "start_url": "./",
+        "scope": ".",
+        "display": "standalone",
+        "theme_color": "#000000",
+        "background_color": "#ffffff",
+    }
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
