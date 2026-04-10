@@ -34,7 +34,9 @@ from flask import Flask, render_template, request, send_file, make_response, url
 from flask_socketio import SocketIO, emit
 from flask_babel import Babel, _
 
-TEMPLATES_DIR="/usr/share/auto-multiple-choice/models"
+TEMPLATES_DIR = os.environ.get(
+    'AMC_TEMPLATES_DIR',
+    "/usr/share/auto-multiple-choice/models")
 
 app = Flask(__name__)
 
