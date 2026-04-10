@@ -632,6 +632,8 @@ def io_source_code(filename):
         mode = "yaml"
     elif re.match(r'.*\.(csv)$', filename, re.IGNORECASE):
         mode = "csv"
+    elif re.match(r'.*\.(txt)$', filename, re.IGNORECASE):
+        mode = "amc_txt"
 
     fn = project_dir() + "/" + filename
     filecontent = ""

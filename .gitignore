@@ -10,3 +10,9 @@ venv
 dev.sh
 
 *.mo
+
+server/ace-src/*.0
+server/ace-src/mode-amc_txt.js
+
+server/static/ace/mode-amc_txt.js
+

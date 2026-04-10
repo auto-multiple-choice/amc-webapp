@@ -56,7 +56,7 @@ RUN apk add netpbm ghostscript poppler-utils unzip font-linux-libertine qpdf
 ###############################################################
 # AMC-web
 
-RUN apk add py3-pip python3-dev
+RUN apk add py3-pip python3-dev uglify-js
 
 COPY requirements.txt .
 RUN python3 -m venv /venv
@@ -77,7 +77,7 @@ RUN mkdir files
 ENV HOME=/amc-web/files
 ENV PATH=/venv/bin:${PATH}
 ENV AMC_TXT_DEFAULTFONT="Linux Libertine"
-RUN make messages
+RUN make
 
 VOLUME /amc-web/files
 

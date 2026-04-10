@@ -954,3 +954,35 @@ table.hist {
     margin-top: 5px;
     margin-bottom: 5px;
 }
+
+.ace_parameter {
+    color: #8200af;
+}
+.ace_unknown {
+    font-weight: bold;
+}
+.ace_declaration {
+    font-weight: bold;
+    color: #e93139;
+}
+.ace_correct {
+    background: #9bdfa820;
+}
+.ace_wrong {
+    background: #df9b9c20;
+}
+.ace_option {
+    font-weight: bold;
+    color: #00650c;
+}
+.ace_scoring {
+    font-weight: bold;
+    color: #041d89;
+}
+.ace_angles {
+    font-weight: bold;
+    color: #00b2af;
+}
+.ace_filename {
+    color: #8200af;
+}
