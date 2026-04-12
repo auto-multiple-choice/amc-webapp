@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-09 12:33+0200\n"
-"PO-Revision-Date: 2026-04-09 12:34+0200\n"
+"POT-Creation-Date: 2026-04-12 11:07+0200\n"
+"PO-Revision-Date: 2026-04-12 11:09+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -16,96 +16,96 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-"Generated-By: Babel 2.18.0\n"
+"Generated-By: Babel 2.17.0\n"
 "X-Generator: Poedit 3.9\n"
 
-#: server/amc.py:185
+#: server/amc.py:191
 msgid "t.cloning"
 msgstr "Clonage du projet…"
 
-#: server/amc.py:196
+#: server/amc.py:202
 msgid "msg.cloned"
 msgstr "Le projet a été cloné vers %(name)s."
 
-#: server/amc.py:201
+#: server/amc.py:207
 msgid "msg.clone.err"
 msgstr ""
 "Erreur lors de la création du clone %(name)s : %(n)s fichiers sur %"
 "(ntotal)s ont seulement été copiés."
 
-#: server/amc.py:231
+#: server/amc.py:237
 msgid "msg.rename.exists"
 msgstr ""
 "Impossible de renommer \"%(old)s\" en \"%(new)s\", car ce dernier existe "
 "déjà."
 
-#: server/amc.py:322
+#: server/amc.py:328
 msgid "msg.create.exists"
 msgstr ""
 "Impossible de créer un projet nommé \"%(name)s\", car un fichier ou "
 "répertoire existe déjà sous ce nom."
 
-#: server/amc.py:380 server/amc.py:405
+#: server/amc.py:386 server/amc.py:411
 msgid "t.options"
 msgstr "Recherche du fichier d'options…"
 
-#: server/amc.py:393 server/amc.py:416
+#: server/amc.py:399 server/amc.py:422
 msgid "t.extract"
 msgstr "Extraction…"
 
-#: server/amc.py:482
+#: server/amc.py:488
 msgid "t.archive.save"
 msgstr "Sauvegarde de l'archive…"
 
-#: server/amc.py:590
+#: server/amc.py:607
 msgid "t.scans.extract"
 msgstr "Extraction des images…"
 
-#: server/amc.py:598
+#: server/amc.py:616
 msgid "t.automatic"
 msgstr "Saisie automatique…"
 
-#: server/amc.py:780
+#: server/amc.py:800
 msgid "t.clear"
 msgstr "Nettoyage des données du projet…"
 
-#: server/amc.py:803
+#: server/amc.py:825
 msgid "t.layouts"
 msgstr "Détection des mises en page…"
 
-#: server/amc.py:870
+#: server/amc.py:899
 msgid "t.print_to"
 msgstr "Impression vers %(printer)s…"
 
-#: server/amc.py:888
+#: server/amc.py:917
 msgid "msg.printing.done"
 msgstr "Impression terminée !"
 
-#: server/amc.py:899
+#: server/amc.py:928
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1231
+#: server/amc.py:1260
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1238
+#: server/amc.py:1267
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1479
+#: server/amc.py:1508
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1486
+#: server/amc.py:1515
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1522
+#: server/amc.py:1551
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1541
+#: server/amc.py:1570
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
@@ -181,23 +181,23 @@ msgstr[1] "Des pages manquent pour %(num)s copies."
 msgid "scans.missing.text"
 msgstr "Copie %(copy)s — pages manquantes : %(pages)s"
 
-#: server/templates/index.html:18
+#: server/templates/index.html:20
 msgid "menu.main"
 msgstr "Gestion des projets"
 
-#: server/templates/index.html:21
+#: server/templates/index.html:23
 msgid "menu.source"
 msgstr "Source et documents de travail"
 
-#: server/templates/index.html:24
+#: server/templates/index.html:26
 msgid "menu.scans"
 msgstr "Saisie"
 
-#: server/templates/index.html:27
+#: server/templates/index.html:29
 msgid "menu.grading"
 msgstr "Notation et annotation"
 
-#: server/templates/index.html:30
+#: server/templates/index.html:32
 msgid "menu.config"
 msgstr "Configuration"
 
@@ -462,6 +462,10 @@ msgstr "Affichage"
 #: server/templates/tab_config.html:104
 msgid "config.view.histogram"
 msgstr "Histogramme"
+
+#: server/templates/tab_config.html:107
+msgid "config.view.ahead"
+msgstr "Ouvrir les onglets en avance"
 
 #: server/templates/tab_grading.html:5
 msgid "grading.title"

@@ -148,11 +148,15 @@ def io_adapt_menu():
     project = get_var("project_name")
     if project:
         menus = { "main": True, "source": True, "config": True }
-        db = get_db()
-        if db.layout_npages():
-            menus["scans"] = True
-            if db.capture_npages():
-                menus["grading"] = True
+        if get_option("global:activate_ahead"):
+            menus['scans'] = True
+            menus['grading'] = True
+        else:
+            db = get_db()
+            if db.layout_npages():
+                menus["scans"] = True
+                if db.capture_npages():
+                    menus["grading"] = True
     else:
         menus = { "main": True }
         
@@ -681,7 +685,7 @@ def io_project_config():
               "global:bw_threshold",
               "global:tolerance_marque_inf", "global:tolerance_marque_sup",
               "global:try_three", "global:ascii_filenames",
-              "global:view_histogram",
+              "global:view_histogram", "global:activate_ahead",
              ]
          ))
 
@@ -1474,6 +1478,8 @@ def io_export_config():
 @socketio.on('set-config')
 def io_set_config(data):
     change_option(*data)
+    if data[0] == "global:activate_ahead":
+        io_adapt_menu()
 
 def send_dir_list(t, subdir,
                   zip_text="Download",

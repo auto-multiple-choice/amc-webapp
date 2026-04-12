@@ -1264,7 +1264,7 @@ function change_export_module(e) {
 function change_config_value(e) {
     var value;
     if(e.type == "checkbox")
-        value = (e.checked ? "on" : "");
+        value = (e.checked ? "1" : "");
     else if(e.type == "select-one"
             || e.type == "text"
             || e.type == "number")

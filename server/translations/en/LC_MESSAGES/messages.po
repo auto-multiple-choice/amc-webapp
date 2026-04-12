@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-09 12:33+0200\n"
-"PO-Revision-Date: 2026-04-09 12:34+0200\n"
+"POT-Creation-Date: 2026-04-12 11:07+0200\n"
+"PO-Revision-Date: 2026-04-12 11:08+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -16,94 +16,94 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"Generated-By: Babel 2.18.0\n"
+"Generated-By: Babel 2.17.0\n"
 "X-Generator: Poedit 3.9\n"
 
-#: server/amc.py:185
+#: server/amc.py:191
 msgid "t.cloning"
 msgstr "Cloning project…"
 
-#: server/amc.py:196
+#: server/amc.py:202
 msgid "msg.cloned"
 msgstr "Project cloned to %(name)s."
 
-#: server/amc.py:201
+#: server/amc.py:207
 msgid "msg.clone.err"
 msgstr ""
 "Errors while cloning to %(name)s: only %(n)s files copied out of %"
 "(ntotal)s."
 
-#: server/amc.py:231
+#: server/amc.py:237
 msgid "msg.rename.exists"
 msgstr "Can't rename \"%(old)s\" to \"%(new)s\": \"%(new)s\" already exists."
 
-#: server/amc.py:322
+#: server/amc.py:328
 msgid "msg.create.exists"
 msgstr ""
 "Can't create project \"%(name)s\": some file or directory already exists "
 "with this name."
 
-#: server/amc.py:380 server/amc.py:405
+#: server/amc.py:386 server/amc.py:411
 msgid "t.options"
 msgstr "Looking for the options file…"
 
-#: server/amc.py:393 server/amc.py:416
+#: server/amc.py:399 server/amc.py:422
 msgid "t.extract"
 msgstr "Extracting…"
 
-#: server/amc.py:482
+#: server/amc.py:488
 msgid "t.archive.save"
 msgstr "Saving archive…"
 
-#: server/amc.py:590
+#: server/amc.py:607
 msgid "t.scans.extract"
 msgstr "Extracting scans images…"
 
-#: server/amc.py:598
+#: server/amc.py:616
 msgid "t.automatic"
 msgstr "Automatic data capture…"
 
-#: server/amc.py:780
+#: server/amc.py:800
 msgid "t.clear"
 msgstr "Clear project data…"
 
-#: server/amc.py:803
+#: server/amc.py:825
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:870
+#: server/amc.py:899
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:888
+#: server/amc.py:917
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:899
+#: server/amc.py:928
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1231
+#: server/amc.py:1260
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1238
+#: server/amc.py:1267
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1479
+#: server/amc.py:1508
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1486
+#: server/amc.py:1515
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1522
+#: server/amc.py:1551
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1541
+#: server/amc.py:1570
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -177,23 +177,23 @@ msgstr[1] "There are %(num)s copies with missing pages."
 msgid "scans.missing.text"
 msgstr "Copy %(copy)s — missing pages: %(pages)s"
 
-#: server/templates/index.html:18
+#: server/templates/index.html:20
 msgid "menu.main"
 msgstr "Projects management"
 
-#: server/templates/index.html:21
+#: server/templates/index.html:23
 msgid "menu.source"
 msgstr "Source and working documents"
 
-#: server/templates/index.html:24
+#: server/templates/index.html:26
 msgid "menu.scans"
 msgstr "Data capture"
 
-#: server/templates/index.html:27
+#: server/templates/index.html:29
 msgid "menu.grading"
 msgstr "Grading and annotating"
 
-#: server/templates/index.html:30
+#: server/templates/index.html:32
 msgid "menu.config"
 msgstr "Configuration"
 
@@ -458,6 +458,10 @@ msgstr "View"
 #: server/templates/tab_config.html:104
 msgid "config.view.histogram"
 msgstr "Histogram"
+
+#: server/templates/tab_config.html:107
+msgid "config.view.ahead"
+msgstr "Activate tabs ahead of time"
 
 #: server/templates/tab_grading.html:5
 msgid "grading.title"
