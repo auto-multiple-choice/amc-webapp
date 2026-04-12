@@ -92,7 +92,8 @@ img.menu {
     cursor: pointer;
     text-decoration: none;
     color: black;
-    box-sizing: border-box;
+    margin: 2px;
+    display: inline-block;
     border-color: #0000;
     border-width: 3px;
     border-style: solid;
