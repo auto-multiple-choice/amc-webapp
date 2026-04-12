@@ -812,10 +812,15 @@ tr[amc-manual="0"] .manual-tag {
     flex-direction: row;
 }
 
+#assoc-left {
+    display: flex;
+    flex-direction: column;
+}
+
 #assoc-sheets {
-    height: 100%;
+    min-height: 0px;
     flex-grow: 0;
-    flex-shrink: 0;
+    flex-shrink: 1;
     overflow-y: auto;
 }
 
