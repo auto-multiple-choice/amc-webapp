@@ -1,4 +1,5 @@
 
+import re
 import datetime
 import sqlite3
 
@@ -429,3 +430,42 @@ class Amcdb:
             WHERE role=102 AND question=?""",
             (int(question_number),)).fetchall()
 
+    def code_digit_pattern(self):
+        codedigit = self.get_variable("layout", "build:codedigit")
+        if codedigit == "squarebrackets":
+            return r'\[(\d+)\]$'
+        else:
+            return r'\.(\d+)$'
+
+    def indicative_questions(self):
+        cd_re = re.compile(self.code_digit_pattern())
+        self.use_module("scoring")
+        self.db.row_factory = None
+        q = self.db.execute(
+            """SELECT t.question, t.title
+            FROM scoring.scoring_question AS q, scoring.scoring_title AS t
+            ON q.question = t.question
+            WHERE q.indicative=1
+            GROUP BY t.question""").fetchall()
+        q = filter(lambda x: not cd_re.search(x[1]), q)
+        return list(q)
+        
+    def groupsep_available(self):
+        self.use_module("scoring")
+        questions = self.db.execute(
+            "SELECT title FROM scoring.scoring_title").fetchall()
+        sep_ok = []
+        for sep in (":", "."):
+            groups = set()
+            ok = False
+            for q in questions:
+                x = q[0].split(sep, 1)
+                if len(x) == 2:
+                    if x[0] in groups:
+                        ok = True
+                    else:
+                        groups.add(x[0])
+            if ok:
+                sep_ok.append(sep)
+        return sep_ok
+            

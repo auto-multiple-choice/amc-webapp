@@ -1057,6 +1057,24 @@ function u_marks() {
 }
 socket.on("update-marks", u_marks);
 
+socket.on("export-available", function(a) {
+    for (const [key, value] of Object.entries(a)) {
+        var e = document.getElementById(key);
+        if(e) {
+            if(value instanceof Array) {
+                for(opt of e.getElementsByTagName("option")) {
+                    if(value.includes(opt.value))
+                        opt.classList.remove("hidden")
+                    else opt.classList.add("hidden");
+                }
+            } else {
+                if(value) e.classList.remove("hidden");
+                else e.classList.add("hidden");
+            }
+        }
+    }
+});
+
 function n_incomplete_details() {
     socket.emit("n-incomplete-details");
 }

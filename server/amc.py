@@ -1271,6 +1271,7 @@ def io_do_mark(update):
             "--progression-id", "MAJ", "--progression", "1",
             messages=messages, variables=variables, app=app
         )
+        u_exports_available()
     emit_progress("t", _('t.mark.compute'))
     amc_command(
         "note",
@@ -1494,8 +1495,23 @@ def io_associate(data):
     emit("update-association",
          [ student, copy, student_id, to_rm ])
 
+def u_exports_available():
+    db = get_db()
+    gs = db.groupsep_available()
+    if len(gs)==1:
+        o = get_option("export_ods_groupsep")
+        if o != gs[0]:
+            change_option("export_ods_groupsep", gs[0])
+            emit("selected-config", get_options(["export_ods_groupsep"]))
+    emit("export-available",
+         { "grading-indic": bool(db.indicative_questions()),
+           "grading-groups": bool(gs),
+           "export_ods_groupsep": gs,
+          })
+    
 @socketio.on('export-config')
 def io_export_config():
+    u_exports_available()
     emit("selected-config",
          get_options(["format_export", "export_include_abs", "export_ods_stats",
                       "export_ods_statsindic", "export_ods_group", "export_ods_groupsep",
