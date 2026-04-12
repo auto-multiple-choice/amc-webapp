@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-12 11:07+0200\n"
-"PO-Revision-Date: 2026-04-12 11:09+0200\n"
+"POT-Creation-Date: 2026-04-12 14:31+0200\n"
+"PO-Revision-Date: 2026-04-12 14:34+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -93,19 +93,29 @@ msgstr "Extraction du barème…"
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1508
+#: server/amc.py:1432
+msgid "assoc.auto.one"
+msgid_plural "assoc.auto.plural"
+msgstr[0] "Une nouvelle identification a été détectée."
+msgstr[1] "Nouvelles identifications détectées : %(num)s"
+
+#: server/amc.py:1435
+msgid "assoc.auto.none"
+msgstr "Aucune nouvelle identification n'a été détectée."
+
+#: server/amc.py:1529
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1515
+#: server/amc.py:1536
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1551
+#: server/amc.py:1572
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1570
+#: server/amc.py:1591
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
@@ -587,7 +597,7 @@ msgstr "Modèle de nom de fichier :"
 msgid "annotate.btn"
 msgstr "Annoter"
 
-#: server/templates/tab_grading.html:117
+#: server/templates/tab_grading.html:115
 msgid "assoc.done"
 msgstr "Fait"
 

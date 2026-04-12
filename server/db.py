@@ -317,12 +317,20 @@ class Amcdb:
         x = self.db.execute("SELECT count(*) FROM scoring.scoring_mark").fetchone()
         return x[0]
         
-    def n_identifications(self):
+    def n_identifications(self, manual=True, auto=True):
         self.use_module("association")
         self.db.row_factory = None
-        x = self.db.execute("""
-        SELECT count(*) FROM association.association_association
-        WHERE manual IS NOT NULL OR auto IS NOT NULL""").fetchone()
+        sql = "SELECT count(*) FROM association.association_association"
+
+        cond = []
+        if manual:
+            cond.append("manual IS NOT NULL")
+        if auto:
+            cond.append("auto IS NOT NULL")
+        if cond:
+            sql += " WHERE " + " OR ".join(cond)
+
+        x = self.db.execute(sql).fetchone()
         return x[0]
 
     def clear_associations(self):

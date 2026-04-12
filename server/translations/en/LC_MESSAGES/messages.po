@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-12 11:07+0200\n"
-"PO-Revision-Date: 2026-04-12 11:08+0200\n"
+"POT-Creation-Date: 2026-04-12 14:31+0200\n"
+"PO-Revision-Date: 2026-04-12 14:33+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -91,19 +91,29 @@ msgstr "Extracting scoring strategy…"
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1508
+#: server/amc.py:1432
+msgid "assoc.auto.one"
+msgid_plural "assoc.auto.plural"
+msgstr[0] "One new student were identified."
+msgstr[1] "New students identified: %(num)s"
+
+#: server/amc.py:1435
+msgid "assoc.auto.none"
+msgstr "No new students were identified."
+
+#: server/amc.py:1529
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1515
+#: server/amc.py:1536
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1551
+#: server/amc.py:1572
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1570
+#: server/amc.py:1591
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -583,7 +593,7 @@ msgstr "Filename model:"
 msgid "annotate.btn"
 msgstr "Annotate"
 
-#: server/templates/tab_grading.html:117
+#: server/templates/tab_grading.html:115
 msgid "assoc.done"
 msgstr "Done"
 

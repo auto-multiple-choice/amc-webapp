@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-12 11:07+0200\n"
+"POT-Creation-Date: 2026-04-12 14:31+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -85,19 +85,29 @@ msgstr ""
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1508
+#: server/amc.py:1432
+msgid "assoc.auto.one"
+msgid_plural "assoc.auto.plural"
+msgstr[0] ""
+msgstr[1] ""
+
+#: server/amc.py:1435
+msgid "assoc.auto.none"
+msgstr ""
+
+#: server/amc.py:1529
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1515
+#: server/amc.py:1536
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1551
+#: server/amc.py:1572
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1570
+#: server/amc.py:1591
 msgid "files.indiv"
 msgstr ""
 
@@ -573,7 +583,7 @@ msgstr ""
 msgid "annotate.btn"
 msgstr ""
 
-#: server/templates/tab_grading.html:117
+#: server/templates/tab_grading.html:115
 msgid "assoc.done"
 msgstr ""
 

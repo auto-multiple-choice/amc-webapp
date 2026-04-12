@@ -32,7 +32,7 @@ from basic import *
 
 from flask import Flask, render_template, request, send_file, make_response, url_for
 from flask_socketio import SocketIO, emit
-from flask_babel import Babel, _
+from flask_babel import Babel, _, ngettext
 
 TEMPLATES_DIR = os.environ.get(
     'AMC_TEMPLATES_DIR',
@@ -769,14 +769,21 @@ def select_messages(messages):
         messages = ["<i>Only display the first 10 messages…</i>"] + messages[:10]
     return "<br>\n". join(messages)
 
-def show_messages(messages):
-    if len(messages["WARN"]) + len(messages["ERR"]) > 0:
+def show_messages(messages, err=True, warn=True, info=False):
+    n = 0
+    if err:
+        n += len(messages["ERR"])
+    if warn:
+        n += len(messages["WARN"])
+    if info:
+        n += len(messages["INFO"])
+    if n:
         emit("dialog",
              render_template(
                  "warn_dialog.html",
-                 err = select_messages(messages["ERR"]),
-                 warn = select_messages(messages["WARN"]),
-                 info = ""))
+                 err = select_messages(messages["ERR"]) if err else "",
+                 warn = select_messages(messages["WARN"]) if warn else "",
+                 info = select_messages(messages["INFO"]) if info else ""))
     return len(messages["ERR"])
 
 def log_messages(messages):
@@ -1421,12 +1428,20 @@ def io_association_clear():
     
 @socketio.on('association-auto')
 def io_association_auto():
+    db = get_db()
+    n_before = db.n_identifications(manual=False)
     messages, variables = amc_command(
             "association-auto",
             app=app
     )
-    show_messages(messages)
-    db = get_db()
+    n_after = db.n_identifications(manual=False)
+    if n_after > n_before:
+        m = ngettext("assoc.auto.one", "assoc.auto.plural",
+                     n_after-n_before)
+    else:
+        m = _("assoc.auto.none")
+    messages["INFO"].append(m)
+    show_messages(messages, info=True)
     db.set_variable("association", "key_in_list", get_option("liste_key"))
     db.set_variable("association", "code", get_option("assoc_code"))
     emit_progress("update-identification")
