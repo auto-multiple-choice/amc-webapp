@@ -1426,6 +1426,9 @@ def io_association_auto():
             app=app
     )
     show_messages(messages)
+    db = get_db()
+    db.set_variable("association", "key_in_list", get_option("liste_key"))
+    db.set_variable("association", "code", get_option("assoc_code"))
     emit_progress("update-identification")
 
 @app.route("/assoc_sheets.html")
@@ -1463,6 +1466,14 @@ def x_namefield(student, copy):
 def io_associate(data):
     student, copy, student_id = data
     db = get_db()
+    
+    old_lkey = db.get_variable("association", "key_in_list")
+    lkey = get_option("liste_key")
+    if old_lkey != lkey:
+        db.set_variable_nocommit("association", "key_in_list", lkey)
+        if old_lkey:
+            app.logger.warning(f"key_in_list changed! {old_lkey} -> {lkey}")
+
     to_rm = db.associate(student, copy, student_id)
     app.logger.info(f"Associated: [{student},{copy}] <-> \"{student_id}\" | {to_rm}")
     emit("update-association",

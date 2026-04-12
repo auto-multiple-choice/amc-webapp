@@ -36,12 +36,14 @@ class Amcdb:
         else:
             return None
 
-    def set_variable(self, module, name, value):
+    def set_variable_nocommit(self, module, name, value):
         self.use_module(module)
-        self.db.row_factory = None
         self.db.execute(
             f"""INSERT OR REPLACE INTO {module}.{module}_variables (name, value)
             VALUES (?,?)""", (name, value))
+        
+    def set_variable(self, module, name, value):
+        self.set_variable_nocommit(module, name, value)
         self.db.commit()
 
     def layout_npages(self):
@@ -326,6 +328,8 @@ class Amcdb:
     def clear_associations(self):
         self.use_module("association")
         self.db.execute("DELETE FROM association.association_association")
+        self.set_variable_nocommit("association", "key_in_list", None)
+        self.set_variable_nocommit("association", "code", None)
         self.db.commit()
 
     def get_assoc_sheets(self):
