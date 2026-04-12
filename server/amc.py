@@ -589,13 +589,25 @@ def io_data_capture(list_path):
     orientation = db.orientation()
     lock_scans_mode()
     emit_progress("begin-command")
+
+    messages = {}
+    variables = {}
+    
+    if int(get_option("pdfform")):
+        amc_command(
+            "read-pdfform",
+            "progression-id", "PDF",
+            "--list", list_path,
+            messages=messages, variables=variables, app=app)
+    
     emit_progress("t", _('t.scans.extract'))
-    messages, variables = amc_command(
+    amc_command(
         "getimages",
         "--list", list_path,
         "--orientation", orientation,
         "--copy-to", project_dir() + "/scans",
-        "--progression-id", "GETI", app=app
+        "--progression-id", "GETI",
+        messages=messages, variables=variables, app=app
     )
     emit_progress("t", _('t.automatic'))
     amc_command(
@@ -804,13 +816,22 @@ def io_doc_update(t):
 
     e = len(messages["ERR"])
     if t == "sujet" and e == 0:
+        db = get_db()
+        
         emit_progress("t", _('t.layouts'))
         amc_command("meptex",
                     "--store-defects",
                     "--progression-id", "MEP",
                     "--progression", "1",
                     messages=messages, variables=variables, app=app)
-        db = get_db()
+
+        for k,v in variables.items():
+            if k.startswith("project:"):
+                change_option(k.replace("project:","",1), v)
+        v = variables.get("pgfseed:subject")
+        if v is not None:
+            db.set_variable("layout", "build:pgfseed", v)
+
         emit_progress("defects", db.defects_class())
 
     emit_progress("end-command")
@@ -1428,7 +1449,7 @@ def x_students_list():
 def x_namefield(student, copy):
     db = get_db()
     path = db.get_namefield_image(student, copy)
-    if path:
+    if path and not path.startswith("text:"):
         path = f"/fs/{get_var('project_name')}/cr/{path}"
     return render_template("namefield.html",
                            student=student, copy=copy,

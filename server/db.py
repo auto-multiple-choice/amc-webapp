@@ -40,10 +40,10 @@ class Amcdb:
         self.use_module(module)
         self.db.row_factory = None
         self.db.execute(
-            f"UPDATE {module}.{module}_variables SET value=? WHERE name=?",
-            (value,name))
+            f"""INSERT OR REPLACE INTO {module}.{module}_variables (name, value)
+            VALUES (?,?)""", (name, value))
         self.db.commit()
-        
+
     def layout_npages(self):
         self.use_module("layout")
         self.db.row_factory = None
@@ -416,4 +416,4 @@ class Amcdb:
             FROM layout.layout_box
             WHERE role=102 AND question=?""",
             (int(question_number),)).fetchall()
-            
+
