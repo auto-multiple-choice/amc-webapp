@@ -227,6 +227,12 @@ class AMCWeb():
         self.driver.find_element(By.ID, 'scans-upload').send_keys(os.path.abspath(path))
         sleep(2)
 
+    def upload_list(self, path):
+        print("Uploading students list…")
+        self.goto_tab("grading")
+        self.driver.find_element(By.ID, 'students-upload').send_keys(os.path.abspath(path))
+        sleep(2)
+
     def scanned_pages_list(self):
         tbody = self.driver.find_element(By.ID, 'scans-pages-rows')
         rows = tbody.find_elements(By.XPATH, '*')
@@ -265,12 +271,35 @@ class AMCWeb():
     def do_association_auto(self):
         self.click_on('do-association-auto')
 
+    def do_association_manual(self, assoc):
+        self.goto_tab("grading")
+        self.driver.find_element(By.ID, 'do-association-manual').click()
+        sleep(.5)
+        sheets = self.driver.find_element(By.ID, 'assoc-sheets')
+        slist = self.driver.find_element(By.ID, 'students-list')
+        for student in assoc:
+            print(f'Click on student {student["student"]}')
+            tr = sheets.find_element(By.XPATH, f'//tr[@amc-student="{student["student"]}"]')
+            tr.click()
+            sleep(1)
+            if student.get("name"):
+                text = sheets.find_element(By.XPATH, '//div[@class="sheetnum"]/div').text
+                print(f"Found {text}")
+                if text != student["name"]:
+                    raise RuntimeError(f'Can\'t see name {student["name"]} (instead: {text})')
+            slist.find_element(By.XPATH, f'//li[@amc-id="{student["id"]}"]').click()
+            sleep(.5)
+        self.driver.find_element(By.ID, 'assoc-manual-done').click()
+
     def do_export(self, **options):
         print("Export marks…")
         self.goto_tab("grading")
 
         sel = Select(self.driver.find_element(By.ID, 'format_export'))
         sel.select_by_value(options.get('format', 'CSV'))
+
+        sel = Select(self.driver.find_element(By.ID, 'export_csv_ticked'))
+        sel.select_by_value(options.get('csv_ticked', 'AB'))
 
         self.click_on("do-export")
         sleep(2)
@@ -301,7 +330,7 @@ class AMCWeb():
                 for k,v in s.items():
                     computed = g.get(k)
                     expected = v
-                    if k != "Name":
+                    if k != "Name" and not k.startswith("TICKED:"):
                         expected = float(expected)
                         computed = None if computed is None else float(computed) 
                     if expected == computed:
