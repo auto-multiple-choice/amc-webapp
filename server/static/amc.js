@@ -394,6 +394,8 @@ function all_files_change() {
                  "/files_list.html" + (all_files ? "?all=1" : ""), {});
 }
 
+socket.on("project-files-list", all_files_change);
+
 function source_other() {
     var fl = document.getElementById("files-list");
     if(fl.classList.contains("hidden")) {

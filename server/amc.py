@@ -721,7 +721,7 @@ def io_project_delete_file(data):
         except Exception as e:
             app.logger.error("Can't delete project file: " + str(e))
             return
-        io_files_list(all_files)
+        emit_progress("project-files-list")
     else:
         app.logger.error("Can't delete project file: unknown project")
 
