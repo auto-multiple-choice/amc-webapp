@@ -92,6 +92,14 @@ img.menu {
     cursor: pointer;
     text-decoration: none;
     color: black;
+    box-sizing: border-box;
+    border-color: #0000;
+    border-width: 3px;
+    border-style: solid;
+}
+
+.btn:active:hover {
+    border-color: #0008;
 }
 
 .btn-grow {
