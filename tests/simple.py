@@ -33,9 +33,9 @@ subprocess.run(["magick", "convert", completed_base + "-5.jpg",
 scans.append(completed_base + "-5r.jpg")
 
 aw.upload_scans(*scans)
-aw.check_scanned_page(4, 1)
-aw.check_scanned_page(5, 1)
-aw.check_scanned_page(6, 1)
+aw.check_scanned_pages(
+    [ (4, 1, 0), (5, 1, 0), (6, 1, 0) ]
+)
 aw.do_grading()
 aw.check_marks(
     marks={

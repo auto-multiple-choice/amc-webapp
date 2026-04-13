@@ -31,8 +31,9 @@ the best you can.
 aw.upload_project_file("txt/students.csv")
 aw.document_view("sujet", build=True)
 aw.upload_scans("txt/scans.pdf")
-aw.check_scanned_page(2, 1)
-aw.check_scanned_page(3, 1)
+aw.check_scanned_pages(
+    [ (2, 1, 0), (3, 1, 0) ]
+)
 aw.do_grading()
 aw.do_association_auto()
 aw.check_marks(

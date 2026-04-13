@@ -262,23 +262,18 @@ class AMCWeb():
             pages.append(p)
         return pages
 
-    def get_scanned_page(self, student, page, copy=0):
+    def check_scanned_pages(self, pages_to_check):
+        print(f"Checking for scanned pages {pages_to_check}…")
         pages = self.scanned_pages_list()
         for p in pages:
-            if (int(p.get("student")) == student
-                and int(p.get("page")) == page
-                and int(p.get("copy")) == copy):
-                return p
-        return None
-
-    def check_scanned_page(self, *args):
-        print("Checking for scanned pages…")
-        p = self.get_scanned_page(*args)
-        if not p:
-            print("Scanned pages:",
-                  self.scanned_pages_list())
-        assert p is not None
-        print("Scanned page:", p)
+            print(f"Page: {p}")
+            pages_to_check.remove(
+                (int(p.get("student",0)),
+                 int(p.get("page"),0),
+                 int(p.get("copy"),0))
+            )
+        if pages_to_check:
+            raise RuntimeError(f"Scanned pages not found: {pages_to_check}")
 
     def do_grading(self):
         print("Grading…")
