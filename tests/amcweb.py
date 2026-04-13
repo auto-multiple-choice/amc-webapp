@@ -238,11 +238,12 @@ class AMCWeb():
             f.write(r.content)
         return local_path
 
-    def upload_scans(self, path):
+    def upload_scans(self, *paths):
         print("Uploading scans…")
+        txt = "\n".join([ os.path.abspath(p) for p in paths ])
         self.goto_tab("scans")
-        self.driver.find_element(By.ID, 'scans-upload').send_keys(os.path.abspath(path))
-        self.sleep(2)
+        self.driver.find_element(By.ID, 'scans-upload').send_keys(txt)
+        self.sleep(2 * len(paths))
 
     def upload_list(self, path):
         print("Uploading students list…")

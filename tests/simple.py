@@ -32,7 +32,7 @@ subprocess.run(["magick", "convert", completed_base + "-5.jpg",
                 "-rotate", "270", completed_base + "-5r.jpg"])
 scans.append(completed_base + "-5r.jpg")
 
-aw.upload_scans("\n".join(scans))
+aw.upload_scans(*scans)
 aw.check_scanned_page(4, 1)
 aw.check_scanned_page(5, 1)
 aw.check_scanned_page(6, 1)
