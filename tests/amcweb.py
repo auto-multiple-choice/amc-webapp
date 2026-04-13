@@ -287,6 +287,9 @@ class AMCWeb():
 
     def do_association_auto(self):
         self.click_on('do-association-auto')
+        self.sleep(1)
+        w = self.driver.find_element(By.ID, 'warn-panel')
+        w.find_element(By.CLASS_NAME, "btn").click()
 
     def do_association_manual(self, assoc):
         self.goto_tab("grading")
