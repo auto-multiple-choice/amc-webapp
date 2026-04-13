@@ -1,6 +1,7 @@
 stages:
   - build
   - test
+  - deploy
 
 build:
   stage: build
@@ -14,9 +15,8 @@ build:
     - echo 'APP_VERSION="'`git describe --tags`'"' > server/version.py
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     - docker build -t amc-webapp .
-    - docker image tag amc-webapp $CI_REGISTRY/a10684/amc-webapp:$CI_COMMIT_TAG
-    - docker image tag amc-webapp $CI_REGISTRY/a10684/amc-webapp:latest
-    - docker image push --all-tags $CI_REGISTRY/a10684/amc-webapp
+    - docker image tag amc-webapp $CI_REGISTRY_IMAGE/test:$CI_COMMIT_TAG
+    - docker push $CI_REGISTRY_IMAGE/test:$CI_COMMIT_TAG
 
 tests:
   stage: test
@@ -26,7 +26,7 @@ tests:
     - job: build
   image: python:3-alpine
   services:
-    - name: $CI_REGISTRY/a10684/amc-webapp:$CI_COMMIT_TAG
+    - name: $CI_REGISTRY_IMAGE/test:$CI_COMMIT_TAG
       alias: amc
   variables:
     CI_DEBUG_SERVICES: "true"
@@ -49,4 +49,14 @@ tests:
     when: always
     paths:
       - $AMC_TESTS_DIR/
+
+docker:
+  stage: deploy
+  needs:
+    - job: tests
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+    - docker image tag $CI_REGISTRY_IMAGE/test:$CI_COMMIT_TAG $CI_REGISTRY_IMAGE/main:$CI_COMMIT_TAG
+    - docker image push $CI_REGISTRY_IMAGE/main:$CI_COMMIT_TAG
+
 
