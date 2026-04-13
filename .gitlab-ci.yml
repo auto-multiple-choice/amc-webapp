@@ -1,8 +1,12 @@
+stages:
+  - build
+  - test
+
 build:
-  image: docker:24.0.5-cli
   stage: build
   rules:
     - if: $CI_COMMIT_TAG =~ /^v/
+  image: docker:24.0.5-cli
   before_script:
     - docker info
   script:
@@ -13,3 +17,36 @@ build:
     - docker image tag amc-webapp $CI_REGISTRY/a10684/amc-webapp:$CI_COMMIT_TAG
     - docker image tag amc-webapp $CI_REGISTRY/a10684/amc-webapp:latest
     - docker image push --all-tags $CI_REGISTRY/a10684/amc-webapp
+
+tests:
+  stage: test
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  needs:
+    - job: build
+  image: python:3-alpine
+  services:
+    - name: $CI_REGISTRY/a10684/amc-webapp:$CI_COMMIT_TAG
+      alias: amc
+  variables:
+    CI_DEBUG_SERVICES: "true"
+    AMCWEB_BASEURL: "http://amc:8080"
+    AMC_TESTS_HEADLESS: 1
+    AMC_TESTS_NO_SANDBOX: 1
+    AMC_TESTS_DIR: "$CI_PROJECT_DIR/tests-results"
+    AMC_TESTS_SLEEP_FACTOR: 2
+  script:
+    - apk add chromium-chromedriver py3-pip ghostscript imagemagick
+    - python3 -m venv /venv
+    - cd tests
+    - /venv/bin/pip3 install -r requirements.txt
+    - mkdir -p $AMC_TESTS_DIR
+    - /venv/bin/python3 simple.py
+    - /venv/bin/python3 archive.py
+    - /venv/bin/python3 txt.py
+    - /venv/bin/python3 pdfform.py
+  artifacts:
+    when: always
+    paths:
+      - $AMC_TESTS_DIR/
+

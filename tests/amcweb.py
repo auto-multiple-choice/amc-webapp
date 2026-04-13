@@ -6,13 +6,15 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.chrome.options import Options
 
-from time import sleep
+import time
 import tempfile
 import requests
 import os
 import sys
 import subprocess
 import csv
+import datetime
+from pathlib import Path
 
 cmd_ctrl = Keys.COMMAND if sys.platform == 'darwin' else Keys.CONTROL
 
@@ -22,11 +24,26 @@ class AMCWeb():
         self.project = None
         self.tab = None
         self.base_url = os.environ.get('AMCWEB_BASEURL', "http://127.0.0.1:5000")
-        self.temp_dir = tempfile.mkdtemp(prefix="amcweb-test-")
+        self.sleep_factor = float(os.environ.get(
+            'AMC_TESTS_SLEEP_FACTOR', 1))
+        if d := os.environ.get('AMC_TESTS_DIR'):
+            date = datetime.datetime.now().strftime("%s")
+            test = os.path.basename(sys.argv[0])
+            self.temp_dir = f"{d}/{date}-{test}"
+            Path(self.temp_dir).mkdir(parents=True, exist_ok=True)
+        else:
+            self.temp_dir = tempfile.mkdtemp(prefix="amcweb-test-")
         print(f"TEMPDIR: {self.temp_dir}")
+
+    def sleep(self, t):
+        time.sleep(t * self.sleep_factor)
 
     def launch(self):
         chrome_options = Options()
+        if os.environ.get('AMC_TESTS_HEADLESS'):
+            chrome_options.add_argument("--headless=new")
+        if os.environ.get('AMC_TESTS_NO_SANDBOX'):
+            chrome_options.add_argument("--no-sandbox")
         # Allow all downloads from server:
         chrome_options.add_argument(
             f"--unsafely-treat-insecure-origin-as-secure={self.base_url}")
@@ -60,18 +77,18 @@ class AMCWeb():
         if old:
             print(f"Delete project {project_name}…")
             self.driver.find_element(By.ID, 'project-delete').click()
-            sleep(0.5)
+            self.sleep(0.5)
             old[0].click()
             alert = WebDriverWait(self.driver, timeout=2).until(
                 lambda d : d.switch_to.alert)
             assert 'delete project' in alert.text
             alert.accept()
-            sleep(1)
+            self.sleep(1)
 
     def goto_home(self):
         self.driver.get(self.base_url)
         self.tab = None
-        sleep(1)
+        self.sleep(1)
         return self
 
     def reload(self, tab_name=None):
@@ -94,13 +111,13 @@ class AMCWeb():
         print(f"Create project {project_name} from template {template}…")
         group_name = template.split(":")[0]
         self.driver.find_element(By.ID, 'way-template').click()
-        sleep(.5)
+        self.sleep(.5)
         if group:
             sel = Select(self.driver.find_element(By.ID, 'template-group'))
             sel.select_by_value(group_name)
-            sleep(.5)
+            self.sleep(.5)
         self.driver.find_element(By.ID, 't:' + template).click()
-        sleep(.5)
+        self.sleep(.5)
 
         create = self.driver.find_element(
             By.XPATH,"//span[ contains (text(), 'Create new' ) ]")
@@ -111,7 +128,7 @@ class AMCWeb():
 
         self.driver.find_element(By.ID,'new-project-name').send_keys(project_name)
         create.click()
-        sleep(2)
+        self.sleep(2)
 
         self.project_name = project_name
         self.tab = "source"
@@ -122,14 +139,14 @@ class AMCWeb():
         ActionChains(self.driver).key_down(cmd_ctrl).send_keys("ax").key_up(cmd_ctrl).perform()
         self.driver.find_element(By.CLASS_NAME, "ace_text-input").send_keys(content)
         self.driver.find_element(By.ID, "source-save").click()
-        sleep(.5)
+        self.sleep(.5)
 
     def upload_project_file(self, path):
         self.goto_tab("source")
         self.driver.find_element(By.ID, "source-name").click()
         self.driver.find_element(By.ID, 'project-upload-file').send_keys(os.path.abspath(path))
         self.driver.find_element(By.ID, "source-name").click()
-        sleep(1)
+        self.sleep(1)
 
     def new_project_from_source_content(self, project_name, format="plain", content=""):
         print(f"Create project {project_name} ({format})…")
@@ -137,10 +154,10 @@ class AMCWeb():
         self.driver.find_element(By.ID, 'way-empty').click()
         sel = Select(self.driver.find_element(By.ID, 'source-type'))
         sel.select_by_value(format)
-        sleep(.5)
+        self.sleep(.5)
         self.driver.find_element(
             By.XPATH,"//span[ contains (text(), 'Create new' ) ]").click()
-        sleep(2)
+        self.sleep(2)
 
         self.project_name = project_name
         self.tab = "source"
@@ -154,7 +171,7 @@ class AMCWeb():
         self.driver.find_element(By.ID, 'source-file').send_keys(os.path.abspath(archive_path))
         self.driver.find_element(
             By.XPATH,"//span[ contains (text(), 'Create new' ) ]").click()
-        sleep(2)
+        self.sleep(2)
 
         self.project_name = project_name
         self.tab = "source"
@@ -172,20 +189,20 @@ class AMCWeb():
         self.goto_tab("source")
         sel = Select(self.driver.find_element(By.ID, 'doc-type'))
         sel.select_by_value(doc_type)
-        sleep(2)
+        self.sleep(2)
         if build:
             self.driver.find_element(By.ID, 'doc-update').click()
-            sleep(2)
+            self.sleep(2)
         
     def layout_page(self, action):
         self.click_on('layout-page-' + action)
-        sleep(2)
+        self.sleep(2)
 
     def print_menu(self):
         print("Open print menu…")
         self.document_view("sujet")
         self.click_on('doc-print-btn')
-        sleep(.5)
+        self.sleep(.5)
     
     def check_downloaded(self, filename):
         path = self.temp_dir + "/" + filename
@@ -204,7 +221,7 @@ class AMCWeb():
             val.clear()
             val.send_keys(str(last_page))
         self.click_on('print-files-btn')
-        sleep(3)
+        self.sleep(3)
         path = self.check_downloaded("printed.zip")
         self.goto_home()
         return path
@@ -225,13 +242,13 @@ class AMCWeb():
         print("Uploading scans…")
         self.goto_tab("scans")
         self.driver.find_element(By.ID, 'scans-upload').send_keys(os.path.abspath(path))
-        sleep(2)
+        self.sleep(2)
 
     def upload_list(self, path):
         print("Uploading students list…")
         self.goto_tab("grading")
         self.driver.find_element(By.ID, 'students-upload').send_keys(os.path.abspath(path))
-        sleep(2)
+        self.sleep(2)
 
     def scanned_pages_list(self):
         tbody = self.driver.find_element(By.ID, 'scans-pages-rows')
@@ -266,7 +283,7 @@ class AMCWeb():
         print("Grading…")
         self.goto_tab("grading")
         self.click_on("do-mark")
-        sleep(2)
+        self.sleep(2)
 
     def do_association_auto(self):
         self.click_on('do-association-auto')
@@ -274,21 +291,21 @@ class AMCWeb():
     def do_association_manual(self, assoc):
         self.goto_tab("grading")
         self.driver.find_element(By.ID, 'do-association-manual').click()
-        sleep(.5)
+        self.sleep(.5)
         sheets = self.driver.find_element(By.ID, 'assoc-sheets')
         slist = self.driver.find_element(By.ID, 'students-list')
         for student in assoc:
             print(f'Click on student {student["student"]}')
             tr = sheets.find_element(By.XPATH, f'//tr[@amc-student="{student["student"]}"]')
             tr.click()
-            sleep(1)
+            self.sleep(1)
             if student.get("name"):
                 text = sheets.find_element(By.XPATH, '//div[@class="sheetnum"]/div').text
                 print(f"Found {text}")
                 if text != student["name"]:
                     raise RuntimeError(f'Can\'t see name {student["name"]} (instead: {text})')
             slist.find_element(By.XPATH, f'//li[@amc-id="{student["id"]}"]').click()
-            sleep(.5)
+            self.sleep(.5)
         self.driver.find_element(By.ID, 'assoc-manual-done').click()
 
     def do_export(self, **options):
@@ -302,7 +319,7 @@ class AMCWeb():
         sel.select_by_value(options.get('csv_ticked', 'AB'))
 
         self.click_on("do-export")
-        sleep(2)
+        self.sleep(2)
 
     def check_marks(self, marks={}, export=False):
         if export:
@@ -316,7 +333,7 @@ class AMCWeb():
             raise RuntimeError(f"Can't find '{filename}' on the server")
 
         files[filename].click()
-        sleep(1)
+        self.sleep(1)
         path = self.check_downloaded(filename)
 
         self.reload()
@@ -359,7 +376,7 @@ class AMCWeb():
         model.send_keys(options.get('model', ''))
 
         self.click_on("do-annotate")
-        sleep(2)
+        self.sleep(2)
 
     def check_annotated_files(self, *files, annotate=False):
         if annotate:
@@ -378,7 +395,7 @@ class AMCWeb():
 
         for filename in files:
             annotated_files[filename].click()
-            sleep(1)
+            self.sleep(1)
             self.check_downloaded(filename)
 
         self.reload()
@@ -396,4 +413,4 @@ class AMCWeb():
             else:
                 e.clear()
                 e.send_keys(v)
-        sleep(1)
+        self.sleep(1)
