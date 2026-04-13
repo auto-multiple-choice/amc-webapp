@@ -408,10 +408,10 @@ class AMCWeb():
         for k,v in options.items():
             element = self.driver.find_element(By.ID, k)
             if v==True:
-                if not element.is_enabled():
+                if not element.is_selected():
                     element.click()
             elif v==False:
-                if element.is_enabled():
+                if element.is_selected():
                     element.click()
             else:
                 e.clear()
