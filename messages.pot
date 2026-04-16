@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-16 10:22+0200\n"
+"POT-Creation-Date: 2026-04-16 14:33+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -77,37 +77,37 @@ msgstr ""
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1282
+#: server/amc.py:1298
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1290
+#: server/amc.py:1306
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1455
+#: server/amc.py:1471
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/amc.py:1458
+#: server/amc.py:1474
 msgid "assoc.auto.none"
 msgstr ""
 
-#: server/amc.py:1567
+#: server/amc.py:1583
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1574
+#: server/amc.py:1590
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1610
+#: server/amc.py:1626
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1629
+#: server/amc.py:1645
 msgid "files.indiv"
 msgstr ""
 
@@ -301,6 +301,10 @@ msgstr ""
 msgid "project.delete"
 msgstr ""
 
+#: server/templates/scans_page_none.html:2
+msgid "scans.page.select"
+msgstr ""
+
 #: server/templates/scans_report.html:2
 msgid "scans.numbers.complete"
 msgstr ""
@@ -317,15 +321,15 @@ msgstr ""
 msgid "qselect.none"
 msgstr ""
 
-#: server/templates/scans_report.html:34
+#: server/templates/scans_report.html:35
 msgid "scans.page"
 msgstr ""
 
-#: server/templates/scans_report.html:35
+#: server/templates/scans_report.html:36
 msgid "scans.mse"
 msgstr ""
 
-#: server/templates/scans_report.html:36
+#: server/templates/scans_report.html:37
 msgid "scans.sensitivity"
 msgstr ""
 
@@ -615,20 +619,28 @@ msgstr ""
 msgid "scans.add"
 msgstr ""
 
-#: server/templates/tab_scans.html:41
+#: server/templates/tab_scans.html:40
+msgid "scans.delete.cancel"
+msgstr ""
+
+#: server/templates/tab_scans.html:44
+msgid "scans.delete.go"
+msgstr ""
+
+#: server/templates/tab_scans.html:48
+msgid "scans.delete"
+msgstr ""
+
+#: server/templates/tab_scans.html:53
 msgid "config.scans.allcols"
 msgstr ""
 
-#: server/templates/tab_scans.html:47
+#: server/templates/tab_scans.html:59
 msgid "scans.ticked.no"
 msgstr ""
 
-#: server/templates/tab_scans.html:50
+#: server/templates/tab_scans.html:62
 msgid "scans.ticked.yes"
-msgstr ""
-
-#: server/templates/tab_scans.html:56
-msgid "scans.page.select"
 msgstr ""
 
 #: server/templates/tab_scans_failed.html:6

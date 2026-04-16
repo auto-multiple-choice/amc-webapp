@@ -129,6 +129,11 @@ img.menu {
     background: #ff7e83;
 }
 
+.btn-large {
+    min-width: 3em;
+    text-align: center;
+}
+
 .btn-fixed {
     position: fixed;
     top: 5px;
@@ -408,6 +413,10 @@ li.selectable.recent {
     cursor: pointer;
 }
 
+.clickable-simple {
+    cursor: default;
+}
+
 .adroite {
     text-align: right;
 }
@@ -678,6 +687,7 @@ input.one-way:checked ~ div {
 
 #scans-pages {
     width: 100%;
+    user-select: none;
 }
 
 #scans-pages th, #scan-pages td {
@@ -713,6 +723,39 @@ input.one-way:checked ~ div {
 
 #scans-pages tbody tr:hover {
     background: #9bdfa8;
+}
+
+#scans-pages tbody tr.to-rm:nth-child(odd) {
+    background: repeating-linear-gradient(
+        -45deg,
+        #eee,
+        #eee 5px,
+        red 5px,
+        red 10px);
+}
+#scans-pages tbody tr.to-rm:hover {
+    background: repeating-linear-gradient(
+        -45deg,
+        #9bdfa8,
+        #9bdfa8 5px,
+        red 5px,
+        red 10px);
+}
+#scans-pages tbody tr.to-rm {
+    background: repeating-linear-gradient(
+        -45deg,
+        white,
+        white 5px,
+        red 5px,
+        red 10px);
+}
+#scans-pages tbody tr.to-rm.selected {
+    background: repeating-linear-gradient(
+        -45deg,
+        #84c8e0,
+        #84c8e0 5px,
+        red 5px,
+        red 10px);
 }
 
 tr[amc-manual="0"] .manual-tag {

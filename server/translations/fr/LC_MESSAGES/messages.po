@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-16 10:22+0200\n"
-"PO-Revision-Date: 2026-04-16 10:23+0200\n"
+"POT-Creation-Date: 2026-04-16 14:33+0200\n"
+"PO-Revision-Date: 2026-04-16 14:35+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -85,37 +85,37 @@ msgstr "Impression terminée !"
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1282
+#: server/amc.py:1298
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1290
+#: server/amc.py:1306
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1455
+#: server/amc.py:1471
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "Une nouvelle identification a été détectée."
 msgstr[1] "Nouvelles identifications détectées : %(num)s"
 
-#: server/amc.py:1458
+#: server/amc.py:1474
 msgid "assoc.auto.none"
 msgstr "Aucune nouvelle identification n'a été détectée."
 
-#: server/amc.py:1567
+#: server/amc.py:1583
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1574
+#: server/amc.py:1590
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1610
+#: server/amc.py:1626
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1629
+#: server/amc.py:1645
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
@@ -315,6 +315,10 @@ msgstr "Cloner"
 msgid "project.delete"
 msgstr "Supprimer"
 
+#: server/templates/scans_page_none.html:2
+msgid "scans.page.select"
+msgstr "Veuillez sélectionner une page."
+
 #: server/templates/scans_report.html:2
 msgid "scans.numbers.complete"
 msgstr "Copies complètes"
@@ -331,15 +335,15 @@ msgstr "Pages qui n'ont pas pu être reconnues"
 msgid "qselect.none"
 msgstr "toute la page"
 
-#: server/templates/scans_report.html:34
+#: server/templates/scans_report.html:35
 msgid "scans.page"
 msgstr "page"
 
-#: server/templates/scans_report.html:35
+#: server/templates/scans_report.html:36
 msgid "scans.mse"
 msgstr "EQM"
 
-#: server/templates/scans_report.html:36
+#: server/templates/scans_report.html:37
 msgid "scans.sensitivity"
 msgstr "sens"
 
@@ -629,21 +633,29 @@ msgstr "Actions"
 msgid "scans.add"
 msgstr "Ajouter un étudiant"
 
-#: server/templates/tab_scans.html:41
+#: server/templates/tab_scans.html:40
+msgid "scans.delete.cancel"
+msgstr "Annuler la suppression"
+
+#: server/templates/tab_scans.html:44
+msgid "scans.delete.go"
+msgstr "Supprimer les pages sélectionnées"
+
+#: server/templates/tab_scans.html:48
+msgid "scans.delete"
+msgstr "Supprimer des pages…"
+
+#: server/templates/tab_scans.html:53
 msgid "config.scans.allcols"
 msgstr "Toutes les colonnes"
 
-#: server/templates/tab_scans.html:47
+#: server/templates/tab_scans.html:59
 msgid "scans.ticked.no"
 msgstr "Non cochée"
 
-#: server/templates/tab_scans.html:50
+#: server/templates/tab_scans.html:62
 msgid "scans.ticked.yes"
 msgstr "Cochée"
-
-#: server/templates/tab_scans.html:56
-msgid "scans.page.select"
-msgstr "Veuillez sélectionner une page."
 
 #: server/templates/tab_scans_failed.html:6
 msgid "failed.close"

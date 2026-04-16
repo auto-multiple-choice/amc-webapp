@@ -39,7 +39,7 @@
   </thead>
   <tbody id="scans-pages-rows">
     {% for p in pages %}
-    <tr onclick="scans_page_select(this,{{ p["student"] }},{{ p["page"] }},{{ p["copy"] }});"
+    <tr onclick="scans_page_select(this,{{ p["student"] }},{{ p["page"] }},{{ p["copy"] }},event);"
         class="pagerow"
         amc-student="{{ p["student"] }}" amc-copy="{{ p["copy"] }}" amc-page="{{ p["page"] }}"
         amc-manual="{% if p["timestamp_manual"]>0 %}1{%else %}0{% endif %}"

@@ -27,14 +27,26 @@
         <label for="threshold">{{ _('scans.thresholds.upper') }}</label>
       </div>
     </div>
-    <div id="scans-actions-open"
+    <div id="scans-actions-open" class="clickable-simple"
          onclick="this.classList.toggle('selected');"
          >{{ _('scans.actions') }}</div>
     <div id="scans-actions">
       <input type="text" id="add-student-n" name="add-student-n"
              size="4" placeholder="num"/>
       <span class="btn btn-ok" onclick="add_student();">{{ _('scans.add') }}</span>
-      <br/>
+      <div class="distrib">
+        <span id="pages-delete-stop" class="btn btn-neutral btn-large hidden"
+              onclick="stop_delete_pages();"
+              title="{{ _('scans.delete.cancel') }}"
+              >←</span>
+        <span id="pages-delete-do" class="btn btn-danger btn-large hidden"
+              onclick="do_delete_pages();"
+              title="{{ _('scans.delete.go') }}"
+              >⊗</span>
+        <span id="pages-delete-start" class="btn btn-danger"
+              onclick="start_delete_pages();"
+              >{{ _('scans.delete') }}</span>
+      </div>
       <input type="checkbox" id="global:scanslist_allcols"
              onchange="scanslist_allcols_change(this);"
              name="global:scanslist_allcols"/>
@@ -52,8 +64,6 @@
     </div>
   </div>
   <div id="manual">
-    <div class="missing">
-      {{ _('scans.page.select') }}
-    </div>
+    {% include 'scans_page_none.html' %}
   </div>
 </div>

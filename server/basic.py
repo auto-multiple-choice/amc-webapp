@@ -105,6 +105,13 @@ def project_dir(p=None):
     else:
         return None
 
+def project_paths_absolute(paths):
+    ps_dir = projects_dir() + "/"
+    p_dir = project_dir() + "/"
+    return [
+        x.replace("%PROJETS/", ps_dir, 1).replace("%PROJET/", p_dir, 1)
+        for x in paths ]
+
 def is_project_dir(path):
     return os.path.isdir(path) and os.path.isfile(path + "/options.xml")
 

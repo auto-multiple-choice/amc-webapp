@@ -834,7 +834,19 @@ function highlight_selected_page(e, student, page, copy) {
     }
 }
 
-function scans_page_select(e, student, page, copy) {
+var to_rm_point = null;
+
+function no_page_select() {
+    document.getElementById("zooms-0").innerHTML = '';
+    document.getElementById("zooms-1").innerHTML = '';
+    fetch_to_dom("manual", "/scans_page_none.html")
+}
+
+function scans_page_select(e, student, page, copy, event=null) {
+    if(to_rm_mode() && event) {
+        to_rm_action(e, event);
+        return;
+    }
     highlight_selected_page(e, student, page, copy);
     fetch_to_dom("manual", "/scans_page_select.html",
                  { method: "POST",
@@ -865,6 +877,74 @@ socket.on("scans-page-select", function(data) {
             scans_page_select(null, ...data);
         });
 });
+
+function to_rm_action(e, event) {
+    if(event.shiftKey) {
+        var next_function;
+        var c = e.compareDocumentPosition(to_rm_point);
+        if(c & 0x04) {
+            next_function = ((e) => e.nextElementSibling);
+        } else if(c & 0x02) {
+            next_function = ((e) => e.previousElementSibling);
+        } else {
+            return;
+        }
+        while(e != null) {
+            e.classList.add("to-rm");
+            if(e == to_rm_point) e = null;
+            else e = next_function(e);
+        }
+    } else if(event.ctrlKey) {
+        e.classList.toggle("to-rm");
+        to_rm_point = e;
+    } else {
+        clear_to_rm();
+        e.classList.add("to-rm");
+        to_rm_point = e;
+    }
+}
+
+function to_rm_mode() {
+    return document.getElementById('pages-delete-start').classList.contains("hidden");
+}
+
+function start_delete_pages() {
+    document.getElementById('pages-delete-start').classList.add("hidden");
+    document.getElementById('pages-delete-stop').classList.remove("hidden");
+    document.getElementById('pages-delete-do').classList.remove("hidden");
+}
+
+function clear_to_rm() {
+    t = document.getElementById('scans-pages');
+    for(e of Array.from(t.getElementsByClassName('to-rm'))) {
+        e.classList.remove('to-rm');
+    }
+}
+
+function stop_delete_pages() {
+    clear_to_rm();
+    document.getElementById('pages-delete-start').classList.remove("hidden");
+    document.getElementById('pages-delete-stop').classList.add("hidden");
+    document.getElementById('pages-delete-do').classList.add("hidden");
+}
+
+function do_delete_pages() {
+    t = document.getElementById('scans-pages');
+    var to_rm = [];
+    for(e of t.getElementsByClassName('to-rm')) {
+        s = {};
+        for(var k of ['student', 'page', 'copy']) {
+            s[k] = e.getAttribute('amc-' + k);
+        }
+        if(e.classList.contains("selected"))
+            no_page_select();
+        to_rm.push(s);
+    }
+    if(to_rm.length) {
+        socket.emit("delete-scans", to_rm);
+    }
+    stop_delete_pages();
+}
 
 function row_spc(row) {
     return [ row.getAttribute("amc-student"),

@@ -1143,6 +1143,10 @@ def x_set_thresholds():
 def get_manual_file(student, page, copy, filename):
     return send_file(f"{temp_dir}/{get_session()}/{student}/{page}/{copy}/{filename}")
     
+@app.route('/scans_page_none.html')
+def x_scans_page_none():
+    return render_template("scans_page_none.html")
+
 @app.route('/scans_page_select.html', methods=['POST'])
 def x_scans_page_select():
     student = request.json.get('student')
@@ -1223,6 +1227,14 @@ def io_add_student(student):
         emit("scans-page-select", [student, first_page, copy])
         io_adapt_menu()
 
+@socketio.on('delete-scans')
+def io_delete_scans(scans):
+    db = get_db()
+    for p in scans:
+        db.delete_scan_page_data(p["student"], p["page"], p["copy"])
+    db.commit()
+    emit("scans-report")
+        
 @app.route('/show_marks.html')
 def x_show_marks():
     db = get_db()

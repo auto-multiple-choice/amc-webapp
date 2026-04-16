@@ -6,6 +6,7 @@ import sqlite3
 from basic import *
 from command import amc_command
 
+from flask import current_app
 from flask_socketio import emit
 
 def dict_factory(cursor, row):
@@ -19,6 +20,9 @@ class Amcdb:
         self.modules = set()
         for module in modules:
             self.use_module(module)
+
+    def commit(self):
+        self.db.commit()
 
     def use_module(self, module):
         if module not in self.modules:
@@ -452,6 +456,7 @@ class Amcdb:
         
     def groupsep_available(self):
         self.use_module("scoring")
+        self.db.row_factory = None
         questions = self.db.execute(
             "SELECT title FROM scoring.scoring_title").fetchall()
         sep_ok = []
@@ -468,4 +473,50 @@ class Amcdb:
             if ok:
                 sep_ok.append(sep)
         return sep_ok
-            
+
+    def delete_scan_page_data(self, student, page, copy):
+        self.use_module("capture")
+        self.db.row_factory = None
+        files_to_rm = []
+
+        # getScanPage
+        files = self.db.execute(
+            """SELECT src
+            FROM capture.capture_page
+            WHERE student=? AND page=? AND copy=?
+            """, (student, page, copy)).fetchall()
+        files_to_rm += [ f[0] for f in files ]
+
+        # getLayout
+        files = self.db.execute(
+            """SELECT layout_image FROM capture.capture_page
+            WHERE student=? AND page=? AND copy=?
+            """, (student, page, copy)).fetchall()
+        files_to_rm += [ "%PROJET/cr/" + f[0]
+                         for f in files ]
+
+        # delete files
+        for f in project_paths_absolute(files_to_rm):
+            current_app.logger.info(f"Delete file: {f}")
+            try:
+                os.unlink(f)
+            except Exception as e:
+                current_app.logger.error(f"Can't remove file {f}: {str(e)}")
+              
+        # deletePagePositions
+        self.db.execute(
+            """DELETE FROM capture.capture_position
+            WHERE zoneid IN
+            ( SELECT zoneid FROM capture.capture_zone
+              WHERE student=? AND page=? AND copy=? )
+            """, (student, page, copy))
+        # deletePageZones
+        self.db.execute(
+            """DELETE FROM capture.capture_zone
+            WHERE student=? AND page=? AND copy=?
+            """, (student, page, copy))
+        # deletePage
+        self.db.execute(
+            """DELETE FROM capture.capture_page
+            WHERE student=? AND page=? AND copy=?
+            """, (student, page, copy))
