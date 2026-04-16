@@ -1100,12 +1100,19 @@ def u_scans_report():
 @app.route('/failed_report.html')
 def u_failed_report():
     db = get_db()
+    pdir = project_dir() + "/"
     purl = "/fs/" + get_var("project_name") + "/"
     failed = db.failed_scans()
     scans = []
     for f in failed:
         d, fn = os.path.split(f[0])
-        url = purl + f[0].replace("%PROJET/", "", 1)
+        if f[0].startswith("%PROJET/"):
+            local_f = f[0].replace("%PROJET/", "", 1)
+        elif f[0].startswith(pdir):
+            local_f = f[0].replace(pdir, "", 1)
+        else:
+            local_f = f[0]
+        url = purl + local_f
         scans.append({ "filename": f[0], "file": fn, "url": url })
     return render_template('failed_report.html',
                            scans=scans)
