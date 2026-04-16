@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-16 21:30+0200\n"
-"PO-Revision-Date: 2026-04-16 21:34+0200\n"
+"POT-Creation-Date: 2026-04-16 23:42+0200\n"
+"PO-Revision-Date: 2026-04-16 23:46+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -16,7 +16,7 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-"Generated-By: Babel 2.17.0\n"
+"Generated-By: Babel 2.18.0\n"
 "X-Generator: Poedit 3.9\n"
 
 #: server/amc.py:195
@@ -85,37 +85,44 @@ msgstr "Impression terminée !"
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1303
+#: server/amc.py:1247
+msgid "add.student.syntax"
+msgstr ""
+"L'étudiant à ajouter doit être renseigné sous la forme d'un nombre entier "
+"(version du sujet), ou de deux entiers (version du sujet et numéro de "
+"copie) séparés par deux points (\":\")."
+
+#: server/amc.py:1319
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1311
+#: server/amc.py:1327
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1476
+#: server/amc.py:1492
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "Une nouvelle identification a été détectée."
 msgstr[1] "Nouvelles identifications détectées : %(num)s"
 
-#: server/amc.py:1479
+#: server/amc.py:1495
 msgid "assoc.auto.none"
 msgstr "Aucune nouvelle identification n'a été détectée."
 
-#: server/amc.py:1588
+#: server/amc.py:1604
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1595
+#: server/amc.py:1611
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1631
+#: server/amc.py:1647
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1650
+#: server/amc.py:1666
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 

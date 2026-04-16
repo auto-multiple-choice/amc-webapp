@@ -1234,10 +1234,19 @@ def io_add_student(student):
     app.logger.info(f"Add student: {student}")
     m = lock_scans_mode()
     db = get_db()
-    first_page, copy = db.add_student(student, m)
+    student, first_page, copy = db.add_student(student, m)
     if first_page:
         emit("scans-page-select", [student, first_page, copy])
         io_adapt_menu()
+
+@socketio.on('add-student-syntax')
+def io_add_student_syntax():
+    emit("dialog",
+         render_template(
+             "warn_dialog.html",
+             err = _('add.student.syntax'),
+             warn = "",
+             info = ""))
 
 @socketio.on('delete-scans')
 def io_delete_scans(scans):

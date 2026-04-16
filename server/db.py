@@ -268,20 +268,30 @@ class Amcdb:
         self.use_module("layout")
         self.use_module("capture")
         self.db.row_factory = None
+
+        force_copy = None
+        if ":" in student:
+            student, force_copy = student.split(":", 1)
+            force_copy = int(force_copy)
+        student = int(student)
+        
         pages = [ x[0] for x in self.db.execute(
             """SELECT page FROM layout.layout_box
             WHERE role=1 AND student=? GROUP BY page""",
             (student,)).fetchall() ]
 
         if not pages:
-            return None, None
+            return student, None, None
 
         c = self.db.execute(
             """SELECT max(copy)
             FROM capture.capture_page
             WHERE student=?""",
             (student,)).fetchone()[0]
-        if photocopy:
+
+        if force_copy is not None:
+            copy = force_copy if photocopy else 0
+        elif photocopy:
             if c is not None:
                 copy = c + 1
             else:
@@ -310,7 +320,7 @@ class Amcdb:
                 (student, page, copy, time))
 
         self.db.commit()
-        return first_page, copy
+        return student, first_page, copy
 
     def codes_list(self):
         self.use_module("scoring")

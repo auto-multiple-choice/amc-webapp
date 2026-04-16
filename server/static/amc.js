@@ -1137,9 +1137,13 @@ function upload_scans() {
 }
 
 function add_student() {
-    var student = parseInt(document.getElementById('add-student-n').value);
-    socket.emit("add-student", student);
-    document.getElementById('add-student-n').value = "";
+    var student = document.getElementById('add-student-n').value;
+    if(student.match(/^[0-9]+(:[0-9]+)?$/)) {
+        socket.emit("add-student", student);
+        document.getElementById('add-student-n').value = "";
+    } else {
+        socket.emit("add-student-syntax");
+    }
 }
 
 // ----------------------- GRADING

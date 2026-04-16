@@ -8,14 +8,14 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-16 21:30+0200\n"
+"POT-Creation-Date: 2026-04-16 23:42+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.17.0\n"
+"Generated-By: Babel 2.18.0\n"
 
 #: server/amc.py:195
 msgid "t.cloning"
@@ -77,37 +77,41 @@ msgstr ""
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1303
+#: server/amc.py:1247
+msgid "add.student.syntax"
+msgstr ""
+
+#: server/amc.py:1319
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1311
+#: server/amc.py:1327
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1476
+#: server/amc.py:1492
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/amc.py:1479
+#: server/amc.py:1495
 msgid "assoc.auto.none"
 msgstr ""
 
-#: server/amc.py:1588
+#: server/amc.py:1604
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1595
+#: server/amc.py:1611
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1631
+#: server/amc.py:1647
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1650
+#: server/amc.py:1666
 msgid "files.indiv"
 msgstr ""
 
