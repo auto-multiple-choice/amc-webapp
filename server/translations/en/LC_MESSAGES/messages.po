@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-16 14:33+0200\n"
-"PO-Revision-Date: 2026-04-16 14:34+0200\n"
+"POT-Creation-Date: 2026-04-16 21:30+0200\n"
+"PO-Revision-Date: 2026-04-16 21:35+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -19,101 +19,101 @@ msgstr ""
 "Generated-By: Babel 2.17.0\n"
 "X-Generator: Poedit 3.9\n"
 
-#: server/amc.py:191
+#: server/amc.py:195
 msgid "t.cloning"
 msgstr "Cloning project…"
 
-#: server/amc.py:202
+#: server/amc.py:206
 msgid "msg.cloned"
 msgstr "Project cloned to %(name)s."
 
-#: server/amc.py:207
+#: server/amc.py:211
 msgid "msg.clone.err"
 msgstr ""
 "Errors while cloning to %(name)s: only %(n)s files copied out of %"
 "(ntotal)s."
 
-#: server/amc.py:237
+#: server/amc.py:241
 msgid "msg.rename.exists"
 msgstr "Can't rename \"%(old)s\" to \"%(new)s\": \"%(new)s\" already exists."
 
-#: server/amc.py:328
+#: server/amc.py:332
 msgid "msg.create.exists"
 msgstr ""
 "Can't create project \"%(name)s\": some file or directory already exists "
 "with this name."
 
-#: server/amc.py:386 server/amc.py:411
+#: server/amc.py:390 server/amc.py:415
 msgid "t.options"
 msgstr "Looking for the options file…"
 
-#: server/amc.py:399 server/amc.py:422
+#: server/amc.py:403 server/amc.py:426
 msgid "t.extract"
 msgstr "Extracting…"
 
-#: server/amc.py:488
+#: server/amc.py:492
 msgid "t.archive.save"
 msgstr "Saving archive…"
 
-#: server/amc.py:607
+#: server/amc.py:611
 msgid "t.scans.extract"
 msgstr "Extracting scans images…"
 
-#: server/amc.py:616
+#: server/amc.py:620
 msgid "t.automatic"
 msgstr "Automatic data capture…"
 
-#: server/amc.py:807
+#: server/amc.py:811
 msgid "t.clear"
 msgstr "Clear project data…"
 
-#: server/amc.py:832
+#: server/amc.py:836
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:906
+#: server/amc.py:910
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:924
+#: server/amc.py:928
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:935
+#: server/amc.py:939
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1298
+#: server/amc.py:1303
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1306
+#: server/amc.py:1311
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1471
+#: server/amc.py:1476
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "One new student were identified."
 msgstr[1] "New students identified: %(num)s"
 
-#: server/amc.py:1474
+#: server/amc.py:1479
 msgid "assoc.auto.none"
 msgstr "No new students were identified."
 
-#: server/amc.py:1583
+#: server/amc.py:1588
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1590
+#: server/amc.py:1595
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1626
+#: server/amc.py:1631
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1645
+#: server/amc.py:1650
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -606,50 +606,66 @@ msgid "scans.photocopy"
 msgstr "Photocopy mode"
 
 #: server/templates/tab_scans.html:11
+msgid "multi.mode.strict"
+msgstr "Strict"
+
+#: server/templates/tab_scans.html:12
+msgid "multi.mode.skip"
+msgstr "Ignore unrecognized pages"
+
+#: server/templates/tab_scans.html:13
+msgid "multi.mode.inc"
+msgstr "Increasing page number"
+
+#: server/templates/tab_scans.html:14
+msgid "multi.mode.file"
+msgstr "One student per file"
+
+#: server/templates/tab_scans.html:21
 msgid "scans.upload"
 msgstr "Add scans…"
 
-#: server/templates/tab_scans.html:15
+#: server/templates/tab_scans.html:25
 msgid "scans.thresholds"
 msgstr "Darkness thresholds:"
 
-#: server/templates/tab_scans.html:21
+#: server/templates/tab_scans.html:31
 msgid "scans.thresholds.lower"
 msgstr "lower"
 
-#: server/templates/tab_scans.html:27
+#: server/templates/tab_scans.html:37
 msgid "scans.thresholds.upper"
 msgstr "upper"
 
-#: server/templates/tab_scans.html:32
+#: server/templates/tab_scans.html:42
 msgid "scans.actions"
 msgstr "Actions"
 
-#: server/templates/tab_scans.html:36
+#: server/templates/tab_scans.html:46
 msgid "scans.add"
 msgstr "Add student"
 
-#: server/templates/tab_scans.html:40
+#: server/templates/tab_scans.html:50
 msgid "scans.delete.cancel"
 msgstr "Cancel deletion"
 
-#: server/templates/tab_scans.html:44
+#: server/templates/tab_scans.html:54
 msgid "scans.delete.go"
 msgstr "Delete selected pages"
 
-#: server/templates/tab_scans.html:48
+#: server/templates/tab_scans.html:58
 msgid "scans.delete"
 msgstr "Delete pages…"
 
-#: server/templates/tab_scans.html:53
+#: server/templates/tab_scans.html:63
 msgid "config.scans.allcols"
 msgstr "Show all columns"
 
-#: server/templates/tab_scans.html:59
+#: server/templates/tab_scans.html:69
 msgid "scans.ticked.no"
 msgstr "Not ticked"
 
-#: server/templates/tab_scans.html:62
+#: server/templates/tab_scans.html:72
 msgid "scans.ticked.yes"
 msgstr "Ticked"
 

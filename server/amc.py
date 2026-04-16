@@ -83,7 +83,11 @@ def index():
 
 @app.route('/tab/<tab_name>')
 def tab(tab_name):
-    return render_template(f"tab_{tab_name}.html")
+    vs = {}
+    if tab_name == "scans":
+        db = get_db()
+        vs["nmaxpages"] = db.npages_max()
+    return render_template(f"tab_{tab_name}.html", **vs)
 
 def serve_pil_image(pil_img):
     img_io = io.BytesIO()
@@ -999,6 +1003,7 @@ def io_scans_params():
     emit("selected-config",
          get_options(
              ["global:scanslist_allcols",
+              "multi_scan_mode",
               ]
              ))
 

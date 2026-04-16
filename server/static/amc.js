@@ -635,13 +635,23 @@ socket.on("print-to-files", function(url) {
     doc_print_finished();
 });
 
+function show_multimode(ok) {
+    mm = document.getElementById('multi-mode');
+    if(mm) {
+        if(ok) mm.classList.remove("hidden");
+        else mm.classList.add("hidden");
+    }
+}
+
 function scans_mode_change() {
     var m = document.getElementById('scans-photocopied').checked;
+    show_multimode(m);
     socket.emit("scans-mode-change", (m ? 1 : 0));
 }
 
 socket.on("scans-mode", function(m) {
     var sm = document.getElementById('scans-photocopied');
+    show_multimode(m==1);
     if(sm) {
         sm.checked = (m == 1);
     }

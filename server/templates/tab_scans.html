@@ -5,6 +5,16 @@
              name="scans-photocopied" onchange="scans_mode_change();"/>
       <label for="scans-photocopied">{{ _('scans.photocopy') }}</label>
     </div>
+    {% if nmaxpages > 1 %}
+    <div id="multi-mode" class="hidden">
+      <select id="multi_scan_mode" name="multi_scan_mode">
+        <option value="strict">{{ _('multi.mode.strict') }}</option>
+        <option value="skip-unrecognized">{{ _('multi.mode.skip') }}</option>
+        <option value="increasing">{{ _('multi.mode.inc') }}</option>
+        <option value="file">{{ _('multi.mode.file') }}</option>
+      </select>
+    </div>
+    {% endif %}
     <div>
       <input type="file" id="scans-upload" name="file" class="hidden"
              onchange="upload_scans();" multiple />

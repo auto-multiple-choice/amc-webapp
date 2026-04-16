@@ -51,6 +51,11 @@ class Amcdb:
         self.set_variable_nocommit(module, name, value)
         self.db.commit()
 
+    def npages_max(self):
+        self.use_module("layout")
+        self.db.row_factory = None
+        return self.db.execute("SELECT max(page) FROM layout.layout_page").fetchone()[0]
+
     def layout_npages(self):
         self.use_module("layout")
         self.db.row_factory = None
