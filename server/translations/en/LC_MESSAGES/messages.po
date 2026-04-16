@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-12 14:31+0200\n"
-"PO-Revision-Date: 2026-04-12 14:33+0200\n"
+"POT-Creation-Date: 2026-04-16 10:22+0200\n"
+"PO-Revision-Date: 2026-04-16 10:22+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -63,57 +63,57 @@ msgstr "Extracting scans images…"
 msgid "t.automatic"
 msgstr "Automatic data capture…"
 
-#: server/amc.py:800
+#: server/amc.py:807
 msgid "t.clear"
 msgstr "Clear project data…"
 
-#: server/amc.py:825
+#: server/amc.py:832
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:899
+#: server/amc.py:906
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:917
+#: server/amc.py:924
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:928
+#: server/amc.py:935
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1260
+#: server/amc.py:1282
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1267
+#: server/amc.py:1290
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1432
+#: server/amc.py:1455
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "One new student were identified."
 msgstr[1] "New students identified: %(num)s"
 
-#: server/amc.py:1435
+#: server/amc.py:1458
 msgid "assoc.auto.none"
 msgstr "No new students were identified."
 
-#: server/amc.py:1529
+#: server/amc.py:1567
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1536
+#: server/amc.py:1574
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1572
+#: server/amc.py:1610
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1591
+#: server/amc.py:1629
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -327,15 +327,15 @@ msgstr "Pages that could not be recognized"
 msgid "qselect.none"
 msgstr "entire page"
 
-#: server/templates/scans_report.html:30
+#: server/templates/scans_report.html:34
 msgid "scans.page"
 msgstr "page"
 
-#: server/templates/scans_report.html:31
+#: server/templates/scans_report.html:35
 msgid "scans.mse"
 msgstr "MSE"
 
-#: server/templates/scans_report.html:32
+#: server/templates/scans_report.html:36
 msgid "scans.sensitivity"
 msgstr "sens"
 
@@ -593,7 +593,7 @@ msgstr "Filename model:"
 msgid "annotate.btn"
 msgstr "Annotate"
 
-#: server/templates/tab_grading.html:115
+#: server/templates/tab_grading.html:117
 msgid "assoc.done"
 msgstr "Done"
 
@@ -617,19 +617,27 @@ msgstr "lower"
 msgid "scans.thresholds.upper"
 msgstr "upper"
 
-#: server/templates/tab_scans.html:33
+#: server/templates/tab_scans.html:32
+msgid "scans.actions"
+msgstr "Actions"
+
+#: server/templates/tab_scans.html:36
 msgid "scans.add"
 msgstr "Add student"
 
-#: server/templates/tab_scans.html:39
+#: server/templates/tab_scans.html:41
+msgid "config.scans.allcols"
+msgstr "Show all columns"
+
+#: server/templates/tab_scans.html:47
 msgid "scans.ticked.no"
 msgstr "Not ticked"
 
-#: server/templates/tab_scans.html:42
+#: server/templates/tab_scans.html:50
 msgid "scans.ticked.yes"
 msgstr "Ticked"
 
-#: server/templates/tab_scans.html:48
+#: server/templates/tab_scans.html:56
 msgid "scans.page.select"
 msgstr "Please select a page."
 

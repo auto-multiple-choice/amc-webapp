@@ -994,6 +994,14 @@ def io_scans_mode():
         app.logger.warning("Options: auto_capture_mode not found")
         emit("scans-mode", -1)
 
+@socketio.on('scans-params')
+def io_scans_params():
+    emit("selected-config",
+         get_options(
+             ["global:scanslist_allcols",
+              ]
+             ))
+
 def lock_scans_mode():
     m = int(get_option("auto_capture_mode"))
     if m is None or m < 0:
@@ -1015,17 +1023,25 @@ def discretize(value, thresholds):
 def scans_report(threshold, threshold_up):
     db = get_db()
 
+    allcols = get_option("global:scanslist_allcols")
+
     questions_textpos = db.questions_with_textpos()
 
     n_complete, n_incomplete, missing = db.counts()
     n_failed = db.n_failed()
     
     pages = db.capture_pages(threshold, threshold_up)
+    mse_max = 0
+    sens_max = 0
     for p in pages:
         p["sens-level"] = discretize(p.get("sensitivity"),
                                      [ 6, 8, 9, 9.5 ])
         p["mse-level"] = discretize(p.get("mse"),
                                     [ 4, 6, 10, 15 ])
+        if p.get("mse"):
+            mse_max = max(mse_max, p.get("mse"))
+        if p.get("sensitivity"):
+            sens_max = max(sens_max, p.get("sensitivity"))
     app.logger.info(f"Scans report: {len(pages)} pages")
     if pages:
         emit_progress("lock-photocopy")
@@ -1035,6 +1051,9 @@ def scans_report(threshold, threshold_up):
                            n_complete=n_complete, n_incomplete=n_incomplete,
                            n_failed=n_failed,
                            questions_textpos=questions_textpos,
+                           hide_mse=(mse_max <= 4),
+                           hide_sens=(sens_max <= 5),
+                           allcols=allcols,
                            pages=pages)
 
 @socketio.on('n-incomplete-details')

@@ -647,6 +647,15 @@ socket.on("scans-mode", function(m) {
     }
 });
 
+function scanslist_allcols_change(e) {
+    var t = document.getElementById('scans-pages');
+    if(t) {
+        if(e.checked) t.classList.add("all-columns");
+        else t.classList.remove("all-columns");
+    }
+    change_config_value(e);
+}
+
 socket.on("lock-photocopy", function() {
     var p = document.getElementById('scans-photocopied');
     p.disabled = true;
@@ -686,6 +695,7 @@ socket.on("scans-report", u_scans_report);
 function tab_scans() {
     show_tab("scans").then(() => {
         socket.emit("scans-mode");
+        socket.emit("scans-params");
         u_scans_report();
     });
 }

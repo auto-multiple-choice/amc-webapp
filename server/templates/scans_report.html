@@ -24,7 +24,12 @@
 </div>
 {% endif %}
 <div id="scans-pages-block">
-  <table id="scans-pages" class="lock-header">
+  <table id="scans-pages"
+         class="lock-header
+                {% if hide_mse %}hide-mse{% endif %}
+                {% if hide_sens %}hide-sens{% endif %}
+                {% if allcols %}all-columns{% endif %}
+                ">
   <thead>
     <tr>
       <th onclick="scans_report_sort('');">{{ _('scans.page') }}</th>

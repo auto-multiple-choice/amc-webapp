@@ -621,11 +621,27 @@ input.one-way:checked ~ div {
 #pages {
     display: flex;
     flex-direction: column;
+    min-width: 15em;
 }
 
 #scans-upload {
     color: transparent;
     overflow-x: clip;
+}
+
+#scans-actions-open, #scans-report {
+    padding-top: 5px;
+    margin-top: 5px;
+    border-top: #aaa dashed 2px;
+}
+#scans-actions-open:before {
+    content: "⊕ ";
+}
+#scans-actions-open.selected:before {
+    content: "⊖ ";
+}
+#scans-actions-open:not(.selected) + div {
+    display: none;
 }
 
 #scans-report, #scans-page-block {
@@ -660,8 +676,23 @@ input.one-way:checked ~ div {
     scroll-behavior: smooth;
 }
 
+#scans-pages {
+    width: 100%;
+}
+
 #scans-pages th, #scan-pages td {
     border-bottom: #bbb solid 1px;
+}
+
+#scans-pages.hide-mse:not(.all-columns) tr td:nth-child(2),
+#scans-pages.hide-mse:not(.all-columns) tr th:nth-child(2)
+{
+    display: none;
+}
+
+#scans-pages.hide-sens:not(.all-columns) tr td:nth-child(3),
+#scans-pages.hide-sens:not(.all-columns) tr th:nth-child(3) {
+    display: none;
 }
 
 #scans-pages thead th {
@@ -773,15 +804,6 @@ tr[amc-manual="0"] .manual-tag {
 .zoom-prop {
     text-align: center;
     margin-top: -5px;
-}
-
-#add-student {
-    margin-top: 5px;
-    margin-bottom: 5px;
-    padding-top: 5px;
-    padding-bottom: 5px;
-    border-top: #aaa dashed 1px;
-    border-bottom: #aaa dashed 1px;
 }
 
 #grading-tab {

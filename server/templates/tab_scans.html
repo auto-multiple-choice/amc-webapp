@@ -27,10 +27,18 @@
         <label for="threshold">{{ _('scans.thresholds.upper') }}</label>
       </div>
     </div>
-    <div id="add-student">
+    <div id="scans-actions-open"
+         onclick="this.classList.toggle('selected');"
+         >{{ _('scans.actions') }}</div>
+    <div id="scans-actions">
       <input type="text" id="add-student-n" name="add-student-n"
              size="4" placeholder="num"/>
       <span class="btn btn-ok" onclick="add_student();">{{ _('scans.add') }}</span>
+      <br/>
+      <input type="checkbox" id="global:scanslist_allcols"
+             onchange="scanslist_allcols_change(this);"
+             name="global:scanslist_allcols"/>
+      <label for="global:scanslist_allcols">{{ _('config.scans.allcols') }}</label>
     </div>
     <div id="scans-report">
     </div>
