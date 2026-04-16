@@ -494,6 +494,13 @@ li.selectable.recent {
 .message {
 }
 
+.dialog-img {
+    float: left;
+    width: 2em;
+    margin-right: 10px;
+    margin-bottom: 5px;
+}
+
 .centered {
     text-align: center;
 }
