@@ -271,26 +271,36 @@ class Amcdb:
         if not pages:
             return None, None
 
-        first_page = min(pages)
-
-        c = self.db.execute("SELECT max(copy) FROM capture.capture_page WHERE student=?",
-                            (student,)).fetchone()[0]
+        c = self.db.execute(
+            """SELECT max(copy)
+            FROM capture.capture_page
+            WHERE student=?""",
+            (student,)).fetchone()[0]
         if photocopy:
             if c is not None:
                 copy = c + 1
             else:
                 copy = 1
         else:
-            if c is not None:
-                return first_page, 0
             copy = 0
 
         # create empty manual data capture for all pages for given student
 
+        existing = [ x[0] for x in self.db.execute(
+            """SELECT page FROM capture.capture_page
+            WHERE student=? AND copy=?""",
+            (student,copy)).fetchall() ]
+
+        missing = set(pages) - set(existing)
+        if missing:
+            first_page = min(missing)
+        else:
+            first_page = min(pages)
+
         for page in pages:
             time = 1
             self.db.execute(
-                """INSERT INTO capture.capture_page(student, page, copy, timestamp_manual)
+                """INSERT OR IGNORE INTO capture.capture_page(student, page, copy, timestamp_manual)
                 VALUES (?, ?, ?, ?)""",
                 (student, page, copy, time))
 
