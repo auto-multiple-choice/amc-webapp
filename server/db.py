@@ -494,18 +494,20 @@ class Amcdb:
         self.db.row_factory = None
         files_to_rm = []
 
-        # getScanPage
+        # getScanPage+NOT NULL
         files = self.db.execute(
             """SELECT src
             FROM capture.capture_page
             WHERE student=? AND page=? AND copy=?
+            AND src IS NOT NULL
             """, (student, page, copy)).fetchall()
         files_to_rm += [ f[0] for f in files ]
 
-        # getLayout
+        # getLayout+NOT NULL
         files = self.db.execute(
             """SELECT layout_image FROM capture.capture_page
             WHERE student=? AND page=? AND copy=?
+            AND layout_image IS NOT NULL
             """, (student, page, copy)).fetchall()
         files_to_rm += [ "%PROJET/cr/" + f[0]
                          for f in files ]
