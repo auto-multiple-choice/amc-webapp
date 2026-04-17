@@ -246,10 +246,16 @@ class AMCWeb():
             f.write(r.content)
         return local_path
 
-    def upload_scans(self, *paths):
+    def upload_scans(self, *paths, **kwargs):
+        self.goto_tab("scans")
+
+        if kwargs.get('photocopy') is not None:
+            self.set_input({'scans-photocopied': kwargs.get('photocopy')})
+        if kwargs.get('multimode') is not None:
+            self.set_input({'multi_scan_mode': kwargs.get('multimode')})
+            
         print("Uploading scans…")
         txt = "\n".join([ os.path.abspath(p) for p in paths ])
-        self.goto_tab("scans")
         self.driver.find_element(By.ID, 'scans-upload').send_keys(txt)
         self.sleep(2 * len(paths))
 
@@ -416,10 +422,10 @@ class AMCWeb():
 
         self.reload()
 
-    def set_options(self, options):
-        self.goto_tab("config")
+    def set_input(self, options):
         for k,v in options.items():
             element = self.driver.find_element(By.ID, k)
+            print(f"Set {k}={v}")
             if v==True:
                 if not element.is_selected():
                     element.click()
@@ -427,9 +433,17 @@ class AMCWeb():
                 if element.is_selected():
                     element.click()
             else:
-                e.clear()
-                e.send_keys(v)
+                if element.tag_name == 'select':
+                    sel = Select(element)
+                    sel.select_by_value(v)
+                else:
+                    e.clear()
+                    e.send_keys(v)
         self.sleep(1)
+
+    def set_options(self, options):
+        self.goto_tab("config")
+        self.set_input(options)
 
     def check_text(self, eid, text):
         e = self.driver.find_element(By.ID, eid)
