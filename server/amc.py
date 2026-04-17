@@ -30,7 +30,7 @@ from db import Amcdb
 from command import amc_command
 from basic import *
 
-from flask import Flask, render_template, request, send_file, make_response, url_for
+from flask import Flask, render_template, request, send_file, make_response, url_for, g as flask_g
 from flask_socketio import SocketIO, emit
 from flask_babel import Babel, _, ngettext
 
@@ -53,20 +53,21 @@ temp_dir = tempfile.mkdtemp(prefix="amcapp")
 app.logger.info(f"Temp dir: {temp_dir}")
 
 def get_db(modules=()):
-    db = get_thread_var("db", app.logger)
+    db = getattr(flask_g, '_database', None)
     if not db:
         pdir = project_dir()
         if pdir:
-            app.logger.warning(f"Create DB for thread {threading.get_ident()} ({get_session()})")
-            app.logger.debug(
-                f"Active threads: " +
-                ", ".join([str(x.ident)
-                           for x in threading.enumerate()]))
             db = Amcdb(project_dir(), modules)
-            set_thread_var("db", db)
+            flask_g._database = db
         else:
             db = None
     return db
+
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
 
 @socketio.on('sid')
 def io_id(sid):

@@ -5,7 +5,7 @@ from lxml import etree
 from filelock import FileLock
 import threading
 
-from flask import request, current_app
+from flask import request, current_app, g as flask_g
 from flask_socketio import emit
 
 users = {}
@@ -38,32 +38,6 @@ def emit_progress(*data):
     else:
         current_app.logger.error(f"Can't find socket ID to send signal! session={request.cookies.get('amcsession')}")
 
-def clean_thread_vars(v, logger):
-    ts = set(x.ident for x in threading.enumerate())
-    for k in list(v.keys()):
-        if k not in ts:
-            logger.warn(f"Delete DB for thread {k}")
-            del v[k]
-
-def get_thread_var(name, logger):
-    v = get_var(name)
-    if v:
-        try:
-            clean_thread_vars(v, logger)
-        except Exception as e:
-            logger.error(e)
-    else:
-        v = {}
-        set_var(name, v)
-    return v.get(threading.get_ident())
-
-def set_thread_var(name, value):
-    v = get_var(name)
-    if not v:
-        v = {}
-        set_var(name, v)
-    v[threading.get_ident()] = value
-
 def add_var(name, delta):
     uid = get_session()
     if not users.get(uid):
@@ -79,7 +53,7 @@ def set_project(name):
         name = ""
     if name != old_project:
         set_var("project_name", name)
-        set_thread_var("db", None)
+        flask_g._database = None
     return name, old_project != name
 
 def user_confdir():
