@@ -41,6 +41,8 @@ tests:
     - /venv/bin/python3 archive.py
     - /venv/bin/python3 txt.py
     - /venv/bin/python3 pdfform.py
+    - /venv/bin/python3 multiple.py
+    - /venv/bin/python3 i18n.py
   artifacts:
     when: always
     paths:
