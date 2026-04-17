@@ -572,12 +572,14 @@ def file_upload(dest):
             emit_progress("end-command")
             return { "error": f"Can't create project {name}: already used" }
 
-    elif dest=="project":
+    elif dest=="project" or dest=="source":
         rep = project_dir();
         emit_progress("end-command");
         fn, ext = upload_file_parts(request_files[0])
         if rep:
             request_files[0].save(f"{rep}/{fn}");
+            if dest=="source":
+                emit_progress("source-saved")
             return { "ok": True }
         else:
             return { "error": f"Project unknown" }
@@ -691,12 +693,6 @@ def io_source_code(filename):
         with open(fn, "r") as f:
             filecontent = f.read()
     emit("source-code", [mode, filecontent])
-
-@socketio_name('source-save')
-def io_source_save(filename, code):
-    with open(project_dir() + "/" + filename, "w") as f:
-        f.write(code)
-    emit("source-saved");
 
 def file_level(base, main_source, f):
     ff = f"{base}/{f}"

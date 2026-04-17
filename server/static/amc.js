@@ -237,8 +237,12 @@ function upload_files(url, files,
                       message,
                       params={}, callback=null) {
     const formData = new FormData();
-    for(var f of files)
-        formData.append('file', f);
+    for(var f of files) {
+        if(f instanceof Array) 
+            formData.append('file', ...f);
+        else
+            formData.append('file', f);
+    }
     for(var k of Object.keys(params)) {
         formData.append(k, params[k]);
     }
@@ -424,9 +428,12 @@ function source_revert() {
 
 function source_save() {
     var cn = document.getElementById('source-name');
-    if(cn && editor) {
-        socket_emit("source-save", cn.textContent, editor.getValue());
-    }
+    var fn = cn.textContent;
+    upload_files("/upload/source",
+                 [ [ new Blob([editor.getValue()],
+                              { type: 'text/plain' }),
+                     fn ] ], "Uploading…",
+                 {}, null);
 }
 
 async function source_upload() {
