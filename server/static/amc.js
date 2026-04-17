@@ -5,6 +5,12 @@ var project_name = null;
 var editor = null;
 var current_tab = null;
 
+function socket_emit(msg, ...args) {
+    x = { proj: project_name, sid: socket.id };
+    if(args.length) x["args"] = args[0];
+    socket.emit(msg, x); 
+}
+
 function is_scrolled_view(elem, frac=0.1) {
     var container = elem.offsetParent.parentElement;
     var up = container.scrollTop;
@@ -23,6 +29,9 @@ function scroll_into_view(elem) {
 
 function fetch_to_dom(id, url, opts) {
     if(!opts) opts={};
+    if(!opts["headers"]) opts["headers"] = {};
+    opts["headers"]["AMC-project"] = project_name;
+    opts["headers"]["AMC-sid"] = socket.id;
     return fetch(url, opts)
         .then(response => {
             if(!response.ok)
@@ -78,9 +87,6 @@ function adapt_menu(data) {
 socket.on("menu", adapt_menu);
 
 function connection_status(s) {
-    if(s == "online") {
-        socket.emit("sid", socket.id); 
-    }
     var cs = document.getElementById('connection-status');
     if(cs) {
         for(x of ["online", "offline"]) {
@@ -142,11 +148,11 @@ function project_rename_key(e, event) {
 }
 
 function project_do_rename(e) {
-    socket.emit("project-rename", [e.getAttribute("oldname"), e.value]);
+    socket_emit("project-rename", [e.getAttribute("oldname"), e.value]);
 }
 
 function request_project(name, reload) {
-    socket.emit("request-project", [name, reload]);
+    socket_emit("request-project", [name, reload]);
 }
 
 function project_open(data) {
@@ -155,7 +161,7 @@ function project_open(data) {
     localStorage.setItem("project-name", name)
     if(name != project_name || data[1]) {
         project_name = name;
-        socket.emit('adapt-menu')
+        socket_emit('adapt-menu')
         if(name) {
             switch(data[1]) {
             case "main":
@@ -190,7 +196,7 @@ function select_project(name) {
         if(!confirm(`Are you sure you want to delete project "${name}"? This will permanentely delete all related files.`))
             break;
     case "project-clone":
-        socket.emit(projects_action, name);
+        socket_emit(projects_action, name);
         break;
     default:
         console.log(`Unknown action: ${projects_action}.`);
@@ -213,7 +219,7 @@ function tab_main() {
 function tab_config() {
     show_tab("config")
         .then(() => {
-            socket.emit("project-config");
+            socket_emit("project-config");
         });
 }
 
@@ -236,6 +242,8 @@ function upload_files(url, files,
     for(var k of Object.keys(params)) {
         formData.append(k, params[k]);
     }
+    formData.append("project_name", project_name);
+    formData.append("sid", socket.id);
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url, true);
     xhr.upload.onprogress = e => {
@@ -279,7 +287,7 @@ function upload_file_to_project() {
 function delete_project_file(filename) {
     var all_files = document.getElementById("all-files").checked;
     if(confirm(`Are you sure you want to delete ${filename}?`)) {
-        socket.emit("project-delete-file", [filename, all_files]);
+        socket_emit("project-delete-file", [filename, all_files]);
     }
 }
 
@@ -292,7 +300,7 @@ function do_create_project() {
     }
     if(way == "empty") {
         var stype = document.getElementById('source-type').value;
-        socket.emit("create-project-empty", [name, stype]);
+        socket_emit("create-project-empty", [name, stype]);
     } else if(way == "template") {
         var tid = document.querySelector('input[name="tid"]:checked');
         if(tid === null) {
@@ -300,7 +308,7 @@ function do_create_project() {
             return;
         }
         tid = tid.value;
-        socket.emit("create-project-template", [name, tid]);
+        socket_emit("create-project-template", [name, tid]);
     } else if(way == "file") {
         var f = document.getElementById('source-file');
         if(f.files.length) {
@@ -320,7 +328,7 @@ function do_create_project() {
 function source_url() {
     var cn = document.getElementById('source-name');
     if(cn) {
-        return("/" + socket.id + "/fs/" + project_name + "/" + cn.textContent);
+        return("/fs/" + project_name + "/" + cn.textContent);
     } else {
         return(null);
     }
@@ -410,14 +418,14 @@ function source_other() {
 function source_revert() {
     var cn = document.getElementById('source-name');
     if(cn) {
-        socket.emit("source-code", cn.textContent);
+        socket_emit("source-code", cn.textContent);
     }
 }
 
 function source_save() {
     var cn = document.getElementById('source-name');
     if(cn && editor) {
-        socket.emit("source-save", cn.textContent, editor.getValue());
+        socket_emit("source-save", cn.textContent, editor.getValue());
     }
 }
 
@@ -445,15 +453,31 @@ async function source_upload() {
 function tab_source() {
     editor = null;
     show_tab("source").then(() => {
-        socket.emit("source-info");
-        socket.emit("source-code", "");
+        socket_emit("source-info");
+        socket_emit("source-code", "");
     });
+}
+
+function restore_project() {
+    if(location.hash) {
+        var pt = location.hash.split("/");
+        pt[0] = pt[0].replace("#","");
+        request_project(...pt);
+    } else {
+        project_name = localStorage.getItem("project-name");
+        if(project_name) {
+            request_project(project_name, true);
+        } else {
+            tab_main();
+        }
+    }
 }
 
 socket.on("connect", () => {
     connection_status("online");
     if(socket_creation) {
         socket_creation = false;
+        restore_project();
     } else {
         request_project(project_name, false);
     }
@@ -464,7 +488,7 @@ socket.on("disconnect", () => {
 });
 
 function change_ncopies() {
-    socket.emit("ncopies",
+    socket_emit("ncopies",
                 document.getElementById('ncopies').value);
 }
 
@@ -498,7 +522,7 @@ socket.on("document-content", function(data) {
                  })
         .then(() => {
             if(type == "calage") {
-                socket.emit("layout-init");
+                socket_emit("layout-init");
             }
         });
 });
@@ -527,7 +551,7 @@ function change_doc_type(e) {
     var upd = document.getElementById('doc-update');
     if(t == "calage") upd.classList.add("hidden");
     else upd.classList.remove("hidden");
-    socket.emit("doc-type", t);
+    socket_emit("doc-type", t);
 }
 
 function doc_update(e) {
@@ -535,7 +559,7 @@ function doc_update(e) {
         if(!confirm("Warning! Rebuilding the subject will remove all the project data. To allow the use of an already printed question, cancel!"))
             return;
     }
-    socket.emit("doc-update",
+    socket_emit("doc-update",
                 document.getElementById('doc-type').value);
 }
 
@@ -585,7 +609,7 @@ function warn_ok() {
 
 function layout_add(delta) {
     var p = document.getElementById('layout-page');
-    socket.emit("layout-add", [p.textContent, delta]);
+    socket_emit("layout-add", [p.textContent, delta]);
 }
 
 socket.on("layout-set-page", function(data) {
@@ -617,13 +641,13 @@ function print_range() {
 
 function print_to_printer() {
     var p = document.getElementById('printer').value;
-    socket.emit("print-to-printer",
+    socket_emit("print-to-printer",
                 [ ...print_range(), p]);
 }
 
 function print_to_files() {
     var b = document.getElementById('print-files-btn');
-    socket.emit("print-to-files", print_range());
+    socket_emit("print-to-files", print_range());
 }
 
 function open_file(url) {
@@ -646,7 +670,7 @@ function show_multimode(ok) {
 function scans_mode_change() {
     var m = document.getElementById('scans-photocopied').checked;
     show_multimode(m);
-    socket.emit("scans-mode-change", (m ? 1 : 0));
+    socket_emit("scans-mode-change", (m ? 1 : 0));
 }
 
 socket.on("scans-mode", function(m) {
@@ -704,8 +728,8 @@ socket.on("scans-report", u_scans_report);
 
 function tab_scans() {
     show_tab("scans").then(() => {
-        socket.emit("scans-mode");
-        socket.emit("scans-params");
+        socket_emit("scans-mode");
+        socket_emit("scans-params");
         u_scans_report();
     });
 }
@@ -766,12 +790,12 @@ socket.on("failed-pp-url", function(url) {
 
 function failed_pre_process() {
     fn = failed_selected_filename();
-    if(fn) socket.emit("failed-pre-process", fn);
+    if(fn) socket_emit("failed-pre-process", fn);
 }
 
 function failed_delete() {
     fn = failed_selected_filename();
-    if(fn) socket.emit("failed-delete", fn);
+    if(fn) socket_emit("failed-delete", fn);
 }
 
 function update_zoom_ticked(question, answer) {
@@ -823,7 +847,7 @@ socket.on("disallow-revert", ()=> allow_manual_revert(false));
 
 function revert_manual() {
     var v = document.getElementById('manual-view');
-    socket.emit(
+    socket_emit(
         "revert-manual",
         [ v.getAttribute("amc-student"),
           v.getAttribute("amc-page"),
@@ -951,7 +975,7 @@ function do_delete_pages() {
         to_rm.push(s);
     }
     if(to_rm.length) {
-        socket.emit("delete-scans", to_rm);
+        socket_emit("delete-scans", to_rm);
     }
     stop_delete_pages();
 }
@@ -1092,7 +1116,9 @@ function q_select_change(e) {
     var question_number = e.value;
     if(question_number) {
         // Download list of pages with this question
-        fetch(`/pages/${question_number}`)
+        fetch(`/pages/${question_number}`,
+              { headers: { "AMC-Project": project_name,
+                           "AMC-sid": socket.id }})
             .then(function(response) {
                 return response.json();
             })
@@ -1113,7 +1139,7 @@ function clickBox(question, answer) {
         console.log(`Click on box(${question}/${answer})`);
         var all_page = (q_select() == null);
         var ticked = !b.classList.contains("ticked");
-        socket.emit("set-manual",
+        socket_emit("set-manual",
                     [ mv.getAttribute("amc-student"),
                       mv.getAttribute("amc-page"),
                       mv.getAttribute("amc-copy"),
@@ -1123,7 +1149,7 @@ function clickBox(question, answer) {
 
 function upload_scans_done(r) {
     console.log("Scans uploaded: start data capture");
-    socket.emit("data-capture", r["list"]);
+    socket_emit("data-capture", r["list"]);
 }
 
 function upload_scans() {
@@ -1139,10 +1165,10 @@ function upload_scans() {
 function add_student() {
     var student = document.getElementById('add-student-n').value;
     if(student.match(/^[0-9]+(:[0-9]+)?$/)) {
-        socket.emit("add-student", student);
+        socket_emit("add-student", student);
         document.getElementById('add-student-n').value = "";
     } else {
-        socket.emit("add-student-syntax");
+        socket_emit("add-student-syntax");
     }
 }
 
@@ -1182,7 +1208,7 @@ socket.on("export-available", function(a) {
 });
 
 function n_incomplete_details() {
-    socket.emit("n-incomplete-details");
+    socket_emit("n-incomplete-details");
 }
 
 function upload_students_done() {
@@ -1223,36 +1249,36 @@ function tab_grading() {
     show_tab("grading").then(() => {
         u_marks();
         u_identification();
-        socket.emit("export-config");
+        socket_emit("export-config");
         u_exported_files(null);
-        socket.emit("annotation-config");
+        socket_emit("annotation-config");
         u_annotated_files(null);
     });
 }
 
 function do_mark() {
     var u = document.getElementById('extract-scale').checked;
-    socket.emit("do-mark", u);
+    socket_emit("do-mark", u);
 }
 
 function change_lkey(e, fixed) {
     if(fixed) {
         if(confirm("Do you really want to change this key? This will cancel all the papers/students associations!")) {
-            socket.emit("change-lkey", [e.value, true]);
+            socket_emit("change-lkey", [e.value, true]);
         } else {
             e.value = fixed;
         }
     } else {
-        socket.emit("change-lkey", [e.value, false]);
+        socket_emit("change-lkey", [e.value, false]);
     }
 }
 
 function change_acode(e) {
-    socket.emit("change-acode", e.value);
+    socket_emit("change-acode", e.value);
 }
 
 function association_auto() {
-    socket.emit("association-auto");
+    socket_emit("association-auto");
 }
 
 function association_manual() {
@@ -1274,7 +1300,7 @@ function association_manual_done() {
 
 function association_clear() {
     if(confirm("Are you sure you want to delete all association data?")) {
-        socket.emit("association-clear");
+        socket_emit("association-clear");
     }
 }
 
@@ -1328,7 +1354,7 @@ function first_not_associated() {
 
 function select_student_name(e) {
     var student_id = e.getAttribute("amc-id");
-    socket.emit("associate", [...assoc_sheet, student_id]);
+    socket_emit("associate", [...assoc_sheet, student_id]);
 }
 
 function set_association_student(student_id, associated) {
@@ -1399,7 +1425,7 @@ function change_config_value(e) {
         console.log("Unknown type: " + e.type);
         return;
     }
-    socket.emit("set-config", [e.getAttribute("id"), value]);
+    socket_emit("set-config", [e.getAttribute("id"), value]);
 }
 
 socket.on("selected-config", function(data) {
@@ -1445,11 +1471,11 @@ function flash_files(e) {
 }
 
 function do_export() {
-    socket.emit("do-export");
+    socket_emit("do-export");
 }
 
 function do_annotate() {
-    socket.emit("do-annotate");
+    socket_emit("do-annotate");
 }
 
 function u_annotated_files(t) {
@@ -1483,17 +1509,7 @@ function key_up(event) {
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById("app-body").addEventListener("keyup", key_up);
     connection_status(socket.connected ? "online" : "offline");
-    if(location.hash) {
-        var pt = location.hash.split("/");
-        pt[0] = pt[0].replace("#","");
-        request_project(...pt);
-    } else {
-        project_name = localStorage.getItem("project-name");
-        if(project_name) {
-            request_project(project_name, true);
-        } else {
-            tab_main();
-        }
-    }
+    if(!socket_creation)
+        restore_project();
 });
 

@@ -19,40 +19,19 @@ def get_session():
         raise RuntimeError("No session")
     return session
 
-def set_var(name, value):
-    uid = get_session()
-    if not users.get(uid):
-        users[uid] = {}
-    users[uid][name] = value
-
-def get_var(name):
-    uid = get_session()
-    if not users.get(uid):
-        users[uid] = {}
-    return users[uid].get(name)
-
 def emit_progress(*data):
-    sid = get_var("sid")
+    sid = flask_g._sid
     if sid:
         current_app.socketio.emit(*data, to=sid)
     else:
         current_app.logger.error(f"Can't find socket ID to send signal! session={request.cookies.get('amcsession')}")
 
-def add_var(name, delta):
-    uid = get_session()
-    if not users.get(uid):
-        users[uid] = {}
-    if not users[uid].get(name):
-        users[uid][name] = 0
-    users[uid][name] += delta
-    return users[uid][name]
-
 def set_project(name):
-    old_project = get_var("project_name")
+    old_project = flask_g.project_name
     if not project_exists(name):
         name = ""
     if name != old_project:
-        set_var("project_name", name)
+        flask_g.project_name = name
         flask_g._database = None
     return name, old_project != name
 
@@ -73,7 +52,7 @@ def projects_dir():
 
 def project_dir(p=None):
     if not p:
-        p = get_var("project_name")
+        p = flask_g.project_name
     if p:
         return projects_dir() + "/" + p
     else:
