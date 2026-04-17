@@ -20,7 +20,8 @@ cmd_ctrl = Keys.COMMAND if sys.platform == 'darwin' else Keys.CONTROL
 
 class AMCWeb():
 
-    def __init__(self):
+    def __init__(self, lang=None):
+        self.lang = lang
         self.project = None
         self.tab = None
         self.base_url = os.environ.get('AMCWEB_BASEURL', "http://127.0.0.1:5000")
@@ -44,15 +45,22 @@ class AMCWeb():
             chrome_options.add_argument("--headless=new")
         if os.environ.get('AMC_TESTS_NO_SANDBOX'):
             chrome_options.add_argument("--no-sandbox")
+
         # Allow all downloads from server:
         chrome_options.add_argument(
             f"--unsafely-treat-insecure-origin-as-secure={self.base_url}")
-        chrome_options.add_experimental_option("prefs", {
+        prefs = {
             "download.default_directory": self.temp_dir,
             "download.prompt_for_download": False,
             "download.directory_upgrade": True,
             "safebrowsing.enabled": True
-        })
+        }
+        
+        if self.lang:
+            chrome_options.add_argument(f"--lang={self.lang}")
+            prefs["intl.accept_languages"] = self.lang
+
+        chrome_options.add_experimental_option("prefs", prefs)
 
         svc = selenium.webdriver.ChromeService(
             executable_path="/usr/bin/chromedriver")
@@ -120,7 +128,7 @@ class AMCWeb():
         self.sleep(.5)
 
         create = self.driver.find_element(
-            By.XPATH,"//span[ contains (text(), 'Create new' ) ]")
+            By.ID, "do-create-project")
 
         if test_emptyname:
             create.click()
@@ -156,7 +164,7 @@ class AMCWeb():
         sel.select_by_value(format)
         self.sleep(.5)
         self.driver.find_element(
-            By.XPATH,"//span[ contains (text(), 'Create new' ) ]").click()
+            By.ID, "do-create-project").click()
         self.sleep(2)
 
         self.project_name = project_name
@@ -170,7 +178,7 @@ class AMCWeb():
         self.driver.find_element(By.ID, 'way-file').click()
         self.driver.find_element(By.ID, 'source-file').send_keys(os.path.abspath(archive_path))
         self.driver.find_element(
-            By.XPATH,"//span[ contains (text(), 'Create new' ) ]").click()
+            By.ID, "do-create-project").click()
         self.sleep(2)
 
         self.project_name = project_name
@@ -275,6 +283,16 @@ class AMCWeb():
         if pages_to_check:
             raise RuntimeError(f"Scanned pages not found: {pages_to_check}")
 
+    def read_dialog(self, ok=True, **check):
+        w = self.driver.find_element(By.ID, 'warn-panel')
+        for k in ('err', 'warn', 'dialog'):
+            if check.get(k):
+                txt = w.find_element(By.ID, f"warn-{k}-text")
+                assert check[k] in txt.text
+                print(f"Dialog [{k}]: {check[k]}")
+        if ok:
+            w.find_element(By.CLASS_NAME, "btn").click()
+
     def do_grading(self):
         print("Grading…")
         self.goto_tab("grading")
@@ -284,8 +302,7 @@ class AMCWeb():
     def do_association_auto(self):
         self.click_on('do-association-auto')
         self.sleep(1)
-        w = self.driver.find_element(By.ID, 'warn-panel')
-        w.find_element(By.CLASS_NAME, "btn").click()
+        self.read_dialog()
 
     def do_association_manual(self, assoc):
         self.goto_tab("grading")
@@ -413,3 +430,8 @@ class AMCWeb():
                 e.clear()
                 e.send_keys(v)
         self.sleep(1)
+
+    def check_text(self, eid, text):
+        e = self.driver.find_element(By.ID, eid)
+        assert e.text == text
+        print(f"Text[{eid}]={text}")
