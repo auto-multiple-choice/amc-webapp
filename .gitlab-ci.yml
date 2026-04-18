@@ -27,6 +27,7 @@ tests:
   variables:
     CI_DEBUG_SERVICES: "true"
     AMCWEB_BASEURL: "http://amc:8080"
+    AMC_SERVER_LOGGING: DEBUG
     AMC_TESTS_HEADLESS: 1
     AMC_TESTS_NO_SANDBOX: 1
     AMC_TESTS_DIR: "$CI_PROJECT_DIR/tests-results"

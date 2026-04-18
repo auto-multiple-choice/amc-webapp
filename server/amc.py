@@ -30,6 +30,7 @@ from db import Amcdb
 from command import amc_command
 from basic import *
 
+import logging
 from flask import Flask, render_template, request, send_file, make_response, url_for, g as flask_g
 from flask_socketio import SocketIO, emit
 from flask_babel import Babel, _, ngettext
@@ -47,6 +48,16 @@ socketio = SocketIO(app, async_mode='gevent')
 app.socketio = socketio
 
 babel = Babel(app, locale_selector=get_locale)
+
+log_level = os.environ.get('AMC_SERVER_LOGGING')
+if log_level=='ERROR':
+    app.logger.setLevel(logging.ERROR)
+elif log_level=='WARNING':
+    app.logger.setLevel(logging.WARNING)
+elif log_level=='INFO':
+    app.logger.setLevel(logging.INFO)
+elif log_level=='DEBUG':
+    app.logger.setLevel(logging.DEBUG)
 
 temp_dir = tempfile.mkdtemp(prefix="amcapp")
 
