@@ -1,4 +1,5 @@
 
+import re
 import os
 from pathlib import Path
 from lxml import etree
@@ -7,6 +8,9 @@ import threading
 
 from flask import request, current_app, g as flask_g
 from flask_socketio import emit
+
+def lstrip_text(s, prefix, replace=''):
+    return re.sub('^' + re.escape(prefix), replace, s)
 
 def get_locale():
     return request.accept_languages.best_match(['fr', 'en'])
@@ -99,6 +103,7 @@ def option_file_from_name(name):
         name = name.replace("global:", "", 1)
         options_file = user_confdir() + "/cf.default.xml"
     else:
+        name = re.sub(r'^project:', '', name)
         options_file = project_dir() + "/options.xml"
     return options_file, name
 

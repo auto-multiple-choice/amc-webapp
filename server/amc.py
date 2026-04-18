@@ -199,7 +199,7 @@ def copy_files_progress(src_folder, dst_folder):
     os.mkdir(dst_folder)
     n = 0
     for root, dirs, files in os.walk(src_folder):
-        dst_root = root.replace(src_folder, dst_folder, 1)
+        dst_root = lstrip_text(root, src_folder, dst_folder)
         for d in dirs:
             os.mkdir(f"{dst_root}/{d}")
         for f in files:
@@ -615,7 +615,7 @@ def file_upload(dest):
                 print(p, file=f)
 
         return { 'ok': True,
-                 'list': list_path.replace(rep, "%SCANS", 1) }
+                 'list': lstrip_text(list_path, rep, "%SCANS") }
 
     else:
         emit_progress("end-command")
@@ -624,7 +624,7 @@ def file_upload(dest):
 @socketio_name('data-capture')
 def io_data_capture(list_path):
     rep = f"{temp_dir}/{get_session()}/scans"
-    list_path = list_path.replace("%SCANS", rep, 1)
+    list_path = lstrip_text(list_path, "%SCANS", rep)
     db = get_db()
     orientation = db.orientation()
     lock_scans_mode()
@@ -874,7 +874,7 @@ def io_doc_update(t):
 
         for k,v in variables.items():
             if k.startswith("project:"):
-                change_option(k.replace("project:","",1), v)
+                change_option(k, v)
         v = variables.get("pgfseed:subject")
         if v is not None:
             db.set_variable("layout", "build:pgfseed", v)
@@ -997,7 +997,7 @@ def send_dir_as_zip(path, name=None, recursive=True,
     with zipfile.ZipFile(data, mode='w') as z:
         if recursive:
             for root, dirs, files in os.walk(path):
-                subroot = root.replace(path, ".", 1)
+                subroot = lstrip_text(root, path, ".")
                 for f in files:
                     if f not in exclude_files:
                         z.write(f"{root}/{f}", arcname=f"{subroot}/{f}")
@@ -1142,9 +1142,9 @@ def u_failed_report():
     for f in failed:
         d, fn = os.path.split(f[0])
         if f[0].startswith("%PROJET/"):
-            local_f = f[0].replace("%PROJET/", "", 1)
+            local_f = lstrip_text(f[0], "%PROJET/", "")
         elif f[0].startswith(pdir):
-            local_f = f[0].replace(pdir, "", 1)
+            local_f = lstrip_text(f[0], pdir, "")
         else:
             local_f = f[0]
         url = purl + local_f
@@ -1164,7 +1164,7 @@ def io_failed_delete(filename):
 @socketio_name('failed-pre-process')
 def io_failed_pre_process(filename):
     pdir = project_dir()
-    orig_path = filename.replace("%PROJET", pdir, 1)
+    orig_path = lstrip_text(filename, "%PROJET", pdir)
     d, fn = os.path.split(orig_path)
     pp_file = "/cr/diagnostic/" + fn + ".png"
     pp_path = pdir + pp_file
@@ -1381,8 +1381,8 @@ def students_list_file():
     path = get_option("listeetudiants")
     pdir = project_dir()
     if path:
-        path = path.replace('%PROJETS/', projects_dir() + "/", 1)
-        path = path.replace('%PROJET/', pdir + "/", 1)
+        path = lstrip_text(path, '%PROJETS/', projects_dir() + "/")
+        path = lstrip_text(path, '%PROJET/', pdir + "/")
 
         if not os.path.isfile(path):
             path = None
