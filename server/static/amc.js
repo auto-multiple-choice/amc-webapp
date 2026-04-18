@@ -482,6 +482,7 @@ function restore_project() {
 
 socket.on("connect", () => {
     connection_status("online");
+    socket_emit("is-online");
     if(socket_creation) {
         socket_creation = false;
         restore_project();
