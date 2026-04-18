@@ -59,6 +59,20 @@ elif log_level=='INFO':
 elif log_level=='DEBUG':
     app.logger.setLevel(logging.DEBUG)
 
+proxy_level = os.environ.get('AMC_SERVER_PROXYLEVEL')
+if proxy_level:
+    cfg = {}
+    for d in proxy_level.split(","):
+        kv = d.split("=")
+        if len(kv) == 2:
+            cfg[kv[0]] = int(kv[1])
+
+    app.logger.info(f"PROXY_LEVEL: {cfg}")
+
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    app.wsgi_app = ProxyFix(app.wsgi_app, **cfg)
+
 temp_dir = tempfile.mkdtemp(prefix="amcapp")
 
 app.logger.info(f"Temp dir: {temp_dir}")
