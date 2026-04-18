@@ -66,14 +66,14 @@ def amc_command(*args,
                 prop=0
             if prop > 1:
                 prop = 1
-            emit_progress("p", prop)
+            emit_msg("p", prop)
         avance = re.match(r'===<(.*)>=T\((.*)\)$', line)
         if avance:
             aid = avance[1]
             text = avance[2]
             prop = 0
-            emit_progress("t", text)
-            emit_progress("p", prop)
+            emit_msg("t", text)
+            emit_msg("p", prop)
         m = re.match(r'^(ERR|INFO|WARN)[:>]\s*(.*)', line)
         if m:
             messages[m[1]].append(m[2])

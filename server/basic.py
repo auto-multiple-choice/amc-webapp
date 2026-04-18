@@ -21,12 +21,17 @@ def get_session():
         raise RuntimeError("No session")
     return session
 
-def emit_progress(*data):
-    sid = flask_g._sid
-    if sid:
-        current_app.socketio.emit(*data, to=sid)
+def emit_msg(*data):
+    if getattr(request, 'sid', None):
+        # socket.io context, use direct emit
+        emit(*data)
     else:
-        current_app.logger.error(f"Can't find socket ID to send signal! session={request.cookies.get('amcsession')}")
+        # HTTP request context, get sid to use from request
+        sid = flask_g._sid
+        if sid:
+            current_app.socketio.emit(*data, to=sid)
+        else:
+            current_app.logger.error(f"Can't find socket ID to send signal! session={request.cookies.get('amcsession')}")
 
 def set_project(name):
     old_project = flask_g.project_name

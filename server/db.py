@@ -7,7 +7,6 @@ from basic import *
 from command import amc_command
 
 from flask import current_app
-from flask_socketio import emit
 
 def dict_factory(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
@@ -213,7 +212,7 @@ class Amcdb:
             )
             if messages["ERR"]:
                 return
-            emit("allow-revert")
+            emit_msg("allow-revert")
         zoneid = self.get_zoneid(student, page, copy, question, answer)
         self.db.execute("UPDATE capture.capture_zone SET manual=? WHERE zoneid=?",
                         ((1 if ticked else 0), zoneid))
