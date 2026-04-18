@@ -200,7 +200,7 @@ class AMCWeb():
         self.sleep(2)
         if build:
             self.driver.find_element(By.ID, 'doc-update').click()
-            self.sleep(2)
+            self.sleep(5 if doc_type=="sujet" else 2.5)
         
     def layout_page(self, action):
         self.click_on('layout-page-' + action)
