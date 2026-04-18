@@ -24,14 +24,17 @@ def get_session():
 def emit_msg(*data):
     if getattr(request, 'sid', None):
         # socket.io context, use direct emit
+        flask_g._sid = request.sid
         emit(*data)
     else:
         # HTTP request context, get sid to use from request
-        sid = flask_g._sid
+        sid = getattr(flask_g, '_sid', None)
         if sid:
             current_app.socketio.emit(*data, to=sid)
         else:
             current_app.logger.error(f"Can't find socket ID to send signal! session={request.cookies.get('amcsession')}")
+            flask_g._sid = None
+    current_app.logger.debug(f"📢 msg {data[0]} to {flask_g._sid}")
 
 def set_project(name):
     old_project = flask_g.project_name

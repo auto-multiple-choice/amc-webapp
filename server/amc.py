@@ -43,7 +43,7 @@ app = Flask(__name__)
 app.config.from_mapping(
     SECRET_KEY='dev',
 )
-socketio = SocketIO(app, logger=True, async_mode='gevent')
+socketio = SocketIO(app, async_mode='gevent')
 app.socketio = socketio
 
 babel = Babel(app, locale_selector=get_locale)
@@ -61,6 +61,7 @@ def socketio_name(name):
             flask_g.project_name = message.get('proj')
             flask_g._sid = message.get('sid')
             a = message.get('args')
+            current_app.logger.debug(f"⬇️  msg {name} from {flask_g._sid}")
             if a is not None:
                 func(a)
             else:
@@ -221,16 +222,16 @@ def io_project_clone(name):
     emit_msg("begin-command")
     n, ntotal = copy_files_progress(source, dest)
     emit_msg("end-command")
-    emit("u-projects-list")
+    emit_msg("u-projects-list")
     if n==ntotal:
-        emit("dialog",
+        emit_msg("dialog",
              render_template(
                  "warn_dialog.html",
                  err = "",
                  warn = "",
                  info = _('msg.cloned', name=clone_name)))
     else:
-        emit("dialog",
+        emit_msg("dialog",
              render_template(
                  "warn_dialog.html",
                  err = _('msg.clone.err', name=clone_name, n=n, ntotal=ntotal),
@@ -243,9 +244,9 @@ def io_project_clone(name):
     shutil.rmtree(rep)
     if flask_g.project_name == name:
         set_project("")
-        emit("project-open", ["", False])
+        emit_msg("project-open", ["", False])
     else:
-        emit("u-projects-list")
+        emit_msg("u-projects-list")
 
 @socketio_name('project-rename')
 def io_project_rename(data):
@@ -254,13 +255,13 @@ def io_project_rename(data):
 
     if new == old:
         app.logger.info(f"Project {old} not renamed")
-        emit("u-projects-list")
+        emit_msg("u-projects-list")
         return
 
     src = project_dir(p=old)
     dst = project_dir(p=new)
     if(os.path.exists(dst)):
-        emit("dialog",
+        emit_msg("dialog",
              render_template(
                  "warn_dialog.html",
                  err = _('msg.rename.exists', old=old, new=new),
@@ -272,9 +273,9 @@ def io_project_rename(data):
 
         if old == flask_g.project_name:
             new, chg = set_project(new)
-            emit("project-open", [new, True])
+            emit_msg("project-open", [new, True])
         else:
-            emit("u-projects-list")
+            emit_msg("u-projects-list")
 
 def template_group_info(g):
     f = f"{TEMPLATES_DIR}/{g}/directory.xml"
@@ -393,7 +394,7 @@ def io_create_project_empty(data):
         create_options_file(rep, f, filt=stype)
         name, chg = set_project(name)
         amc_command("db", "upgrade", app=app)
-        emit("project-open", [name, True])
+        emit_msg("project-open", [name, True])
 
 def info_remove_root(m, root):
     flask_g.files_n += 1
@@ -505,7 +506,7 @@ def io_create_project_template(data):
         create_project_dirs(rep)
         name, chg = set_project(name)
         amc_command("db", "upgrade", app=app)
-        emit("project-open", [name, True])
+        emit_msg("project-open", [name, True])
 
 def create_from_source_file(name, rep, f, fn):
     create_project_dirs(rep)
@@ -675,7 +676,7 @@ def io_source_code(filename):
     if not filename:
         filename = default_source_file()
         change_option("texsrc", filename)
-    emit("source-name", filename)
+    emit_msg("source-name", filename)
 
     mode = "plain_text"
     if re.match(r'.*\.(tex|latex)$', filename, re.IGNORECASE):
@@ -692,7 +693,7 @@ def io_source_code(filename):
     if os.path.exists(fn):
         with open(fn, "r") as f:
             filecontent = f.read()
-    emit("source-code", [mode, filecontent])
+    emit_msg("source-code", [mode, filecontent])
 
 def file_level(base, main_source, f):
     ff = f"{base}/{f}"
@@ -707,7 +708,7 @@ def file_level(base, main_source, f):
 
 @socketio_name('project-config')
 def io_project_config():
-    emit("selected-config",
+    emit_msg("selected-config",
          get_options(
              ["moteur_latex_b",
               "note_null", "note_max", "note_grain", "note_arrondi",
@@ -952,9 +953,9 @@ def io_print_to_printer(data):
     log_messages(messages)
     emit_msg("end-command")
     n = show_messages(messages)
-    emit("print-done")
+    emit_msg("print-done")
     if n==0:
-        emit("dialog",
+        emit_msg("dialog",
              render_template(
                  "warn_dialog.html",
                  err = "", warn = "",
@@ -984,8 +985,8 @@ def io_print_to_files(data):
     emit_msg("end-command")
     n = show_messages(messages)
     if n==0:
-        emit("print-done")
-        emit("print-to-files",
+        emit_msg("print-done")
+        emit_msg("print-to-files",
              f"/printed/{flask_g.project_name}/printed.zip")
 
 def send_dir_as_zip(path, name=None, recursive=True,
@@ -1026,14 +1027,14 @@ def io_scans_mode_change(m):
 def io_scans_mode():
     m = get_option("auto_capture_mode")
     if m is not None:
-        emit("scans-mode", m)
+        emit_msg("scans-mode", m)
     else:
         app.logger.warning("Options: auto_capture_mode not found")
-        emit("scans-mode", -1)
+        emit_msg("scans-mode", -1)
 
 @socketio_name('scans-params')
 def io_scans_params():
-    emit("selected-config",
+    emit_msg("selected-config",
          get_options(
              ["global:scanslist_allcols",
               "multi_scan_mode",
@@ -1114,7 +1115,7 @@ def io_incomplete_details():
             { "sc": sc_text,
               "pages": ", ".join([str(x) for x in sorted(miss[sc])]) })
         
-    emit("dialog",
+    emit_msg("dialog",
          render_template(
              "warn_dialog.html",
              err = "",
@@ -1157,9 +1158,9 @@ def io_failed_delete(filename):
     db = get_db()
     n = db.failed_delete(filename)
     if n:
-        emit("failed-report")
+        emit_msg("failed-report")
     else:
-        emit("tab-scans")
+        emit_msg("tab-scans")
 
 @socketio_name('failed-pre-process')
 def io_failed_pre_process(filename):
@@ -1176,7 +1177,7 @@ def io_failed_pre_process(filename):
         "--no-tag-overwritten",
         orig_path)
         
-    emit("failed-pp-url", pp_url)
+    emit_msg("failed-pp-url", pp_url)
 
 @app.route('/set_thresholds.html', methods=['POST'])
 def x_set_thresholds():
@@ -1245,7 +1246,7 @@ def io_set_manual(data):
     db = get_db()
     db.set_manual(student, page, copy, question, answer, ticked, all_page,
                   app=app)
-    emit("tick-box", [question, answer, ticked])
+    emit_msg("tick-box", [question, answer, ticked])
 
 @socketio_name('revert-manual')
 def io_revert_manual(data):
@@ -1257,10 +1258,10 @@ def io_revert_manual(data):
                                 threshold, threshold_up)
     db.revert_manual(student, page, copy)
     # update view
-    emit("disallow-revert")
+    emit_msg("disallow-revert")
     for b in boxes:
         if b["auto_ticked"] != b["manual"]:
-            emit("tick-box", [ b["question"], b["answer"], b["auto_ticked"] ])
+            emit_msg("tick-box", [ b["question"], b["answer"], b["auto_ticked"] ])
 
 @app.route('/pages/<question>')
 def j_pages_with_question(question):
@@ -1276,12 +1277,12 @@ def io_add_student(student):
     db = get_db()
     student, first_page, copy = db.add_student(student, m)
     if first_page:
-        emit("scans-page-select", [student, first_page, copy])
+        emit_msg("scans-page-select", [student, first_page, copy])
         io_adapt_menu()
 
 @socketio_name('add-student-syntax')
 def io_add_student_syntax():
-    emit("dialog",
+    emit_msg("dialog",
          render_template(
              "warn_dialog.html",
              err = _('add.student.syntax'),
@@ -1294,7 +1295,7 @@ def io_delete_scans(scans):
     for p in scans:
         db.delete_scan_page_data(p["student"], p["page"], p["copy"])
     db.commit()
-    emit("scans-report")
+    emit_msg("scans-report")
         
 @app.route('/show_marks.html')
 def x_show_marks():
@@ -1589,7 +1590,7 @@ def io_associate(data):
 
     to_rm = db.associate(student, copy, student_id)
     app.logger.info(f"Associated: [{student},{copy}] <-> \"{student_id}\" | {to_rm}")
-    emit("update-association",
+    emit_msg("update-association",
          [ student, copy, student_id, to_rm ])
 
 def u_exports_available():
@@ -1609,7 +1610,7 @@ def u_exports_available():
 @socketio_name('export-config')
 def io_export_config():
     u_exports_available()
-    emit("selected-config",
+    emit_msg("selected-config",
          get_options(["format_export", "export_include_abs", "export_ods_stats",
                       "export_ods_statsindic", "export_ods_group", "export_ods_groupsep",
                       "export_csv_ticked"]))
@@ -1670,7 +1671,7 @@ def io_do_export():
         
 @socketio_name('annotation-config')
 def io_annotation_config():
-    emit("selected-config",
+    emit_msg("selected-config",
          get_options(
              ["regroupement_type", "regroupement_compose",
               "add_corrected", "modele_regroupement"]))
