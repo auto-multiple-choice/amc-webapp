@@ -8,8 +8,6 @@ import threading
 from flask import request, current_app, g as flask_g
 from flask_socketio import emit
 
-users = {}
-
 def get_locale():
     return request.accept_languages.best_match(['fr', 'en'])
 
