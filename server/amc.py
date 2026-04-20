@@ -138,15 +138,20 @@ def version():
     except Exception as e:
         app.logger.error("App version not found: " + str(e))
 
-    process = subprocess.Popen(
-        [ "/usr/bin/auto-multiple-choice", "version" ],
-        stdout=subprocess.PIPE, text=True)
-    amc_version = process.stdout.readline().strip()
-    process.wait(1)
+    amc_version = subprocess.check_output(
+        ["auto-multiple-choice", "version"], shell=False
+    ).decode("utf-8").strip()
 
     return render_template('version.html',
                            amc_version=amc_version,
                            amcweb_version=amcweb_version)
+
+@app.route('/tex/automultiplechoice.sty')
+def request_sty_file():
+    sty_path = subprocess.check_output(
+        ["kpsewhich", "automultiplechoice.sty"]
+    ).decode("utf-8").strip()
+    return send_file(sty_path, as_attachment=True, mimetype='text/x-tex')
 
 @socketio_name('is-online')
 def io_is_online():
