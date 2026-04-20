@@ -19,6 +19,7 @@ import tarfile
 import base64
 import csv
 import uuid
+import subprocess
 from urllib.parse import quote
 from unidecode import unidecode
 from lxml import etree
@@ -127,6 +128,25 @@ def index():
         app.logger.info(f"New session: {session}")
         resp.set_cookie('amcsession', session)
     return resp
+
+@app.route('/version')
+def version():
+    amcweb_version = "Unknown"
+    try:
+        import version
+        amcweb_version = version.APP_VERSION
+    except Exception as e:
+        app.logger.error("App version not found: " + str(e))
+
+    process = subprocess.Popen(
+        [ "/usr/bin/auto-multiple-choice", "version" ],
+        stdout=subprocess.PIPE, text=True)
+    amc_version = process.stdout.readline().strip()
+    process.wait(1)
+
+    return render_template('version.html',
+                           amc_version=amc_version,
+                           amcweb_version=amcweb_version)
 
 @socketio_name('is-online')
 def io_is_online():

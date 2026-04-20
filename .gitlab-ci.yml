@@ -9,8 +9,8 @@ build:
   before_script:
     - docker info
   script:
-    - apk add git
-    - echo 'APP_VERSION="'`git describe --tags`'"' > server/version.py
+    - apk add make git
+    - make version
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     - docker build -t amc-webapp .
     - docker image tag amc-webapp $CI_REGISTRY_IMAGE/test:$CI_COMMIT_SHORT_SHA

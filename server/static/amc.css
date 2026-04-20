@@ -1072,3 +1072,10 @@ table.hist {
 .ace_filename {
     color: #8200af;
 }
+
+.version {
+    font-family: monospace;
+}
+#info-body {
+    margin: 2em;
+}

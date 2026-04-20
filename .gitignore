@@ -16,3 +16,4 @@ server/ace-src/mode-amc_txt.js
 
 server/static/ace/mode-amc_txt.js
 
+server/version.py

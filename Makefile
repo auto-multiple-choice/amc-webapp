@@ -23,4 +23,7 @@ messages.pot: server/*.py server/templates/*.html
 server/translations/%/LC_MESSAGES/messages.mo: server/translations/%/LC_MESSAGES/messages.po
 	pybabel compile -l $* -d server/translations
 
+version: FORCE
+	-echo 'APP_VERSION="'`git describe --tags`'"' > server/version.py
+
 FORCE: ;

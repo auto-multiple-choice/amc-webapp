@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AMC - version</title>
+    <link rel="stylesheet" href="/static/amc.css">
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="{{ url_for('static', filename='menu-amc.svg') }}">
+</head>
+<body id="info-body">
+
+  <h1>Versions</h1>
+  <p>
+    AMC-webapp: <span class="version">{{amcweb_version}}</span>. <br/>
+    AMC: <span class="version">{{amc_version}}</span>.
+  </p>
+</body>
+</html>
