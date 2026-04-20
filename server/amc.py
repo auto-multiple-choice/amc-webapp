@@ -210,7 +210,7 @@ def u_projects_list():
 def u_open_project(name, to_reload=True):
     name, change = set_project(name)
     if change and name:
-        amc_command("db", "upgrade", app=app)
+        amc_command("db", "upgrade")
     emit_msg("project-open", [name, to_reload])
 
 @socketio_name('request-project')
@@ -447,7 +447,7 @@ def io_create_project_empty(data):
             source_file.write("\n")
         create_options_file(rep, f, filt=stype)
         name, chg = set_project(name)
-        amc_command("db", "upgrade", app=app)
+        amc_command("db", "upgrade")
         emit_msg("project-open", [name, True])
 
 def info_remove_root(m, root):
@@ -559,7 +559,7 @@ def io_create_project_template(data):
                 return
         create_project_dirs(rep)
         name, chg = set_project(name)
-        amc_command("db", "upgrade", app=app)
+        amc_command("db", "upgrade")
         emit_msg("project-open", [name, True])
 
 def create_from_source_file(name, rep, f, fn):
@@ -693,7 +693,7 @@ def io_data_capture(list_path):
             "read-pdfform",
             "progression-id", "PDF",
             "--list", list_path,
-            messages=messages, variables=variables, app=app)
+            messages=messages, variables=variables)
     
     emit_msg("t", _('t.scans.extract'))
     amc_command(
@@ -702,7 +702,7 @@ def io_data_capture(list_path):
         "--orientation", orientation,
         "--copy-to", project_dir() + "/scans",
         "--progression-id", "GETI",
-        messages=messages, variables=variables, app=app
+        messages=messages, variables=variables
     )
     emit_msg("t", _('t.automatic'))
     amc_command(
@@ -711,7 +711,7 @@ def io_data_capture(list_path):
         "--unlink-on-global-err",
         "--progression-id", "SCAN",
         "--progression", "1",
-        messages=messages, variables=variables, app=app
+        messages=messages, variables=variables
     )
     emit_msg("end-command")
     emit_msg("scans-report")
@@ -884,7 +884,7 @@ def log_messages(messages):
 
 def clear_data(steps):
     app.logger.info(f"Clear data: {steps}")
-    amc_command("db", "clear", steps, app=app)
+    amc_command("db", "clear", steps)
     io_adapt_menu()
 
 @socketio_name("doc-update")
@@ -913,7 +913,7 @@ def io_doc_update(t):
 
     messages, variables = amc_command("prepare",
                                       "--mode", mode,
-                                      "--progression-id", "MAJ", app=app)
+                                      "--progression-id", "MAJ")
     app.logger.info(f"Variables: {variables}")
 
     e = len(messages["ERR"])
@@ -925,7 +925,7 @@ def io_doc_update(t):
                     "--store-defects",
                     "--progression-id", "MEP",
                     "--progression", "1",
-                    messages=messages, variables=variables, app=app)
+                    messages=messages, variables=variables)
 
         for k,v in variables.items():
             if k.startswith("project:"):
@@ -952,8 +952,7 @@ def layout_set_page(student, page):
         "db", "layout-image",
         f"{student}/{page}",
         "--dest-file", f"{rep}/layout",
-        "--css-url", "/static/svg.css",
-        app=app)
+        "--css-url", "/static/svg.css")
     log_messages(messages)
     url = f"/layout/{student}/{page}/layout.svg"
     emit_msg("layout-set-page", [f"{student}/{page}", url])
@@ -1002,7 +1001,6 @@ def io_print_to_printer(data):
         "--imprimante", printer,
         "--student-min", student1,
         "--student-max", student2,
-        app=app
     )
     log_messages(messages)
     emit_msg("end-command")
@@ -1033,7 +1031,6 @@ def io_print_to_files(data):
         "--progression-id", "PRT",
         "--progression", "1",
         "--output", rep,
-        app=app
     )
     log_messages(messages)
     emit_msg("end-command")
@@ -1271,8 +1268,7 @@ def x_scans_page_select():
         params += ["--question-number", str(question) ]
     messages, variables = amc_command(
         "db", "layout-image",
-        *params,
-        app=app)
+        *params)
     log_messages(messages)
     url = f"/manual/{student}/{page}/{copy}/manual.svg"
 
@@ -1298,8 +1294,7 @@ def scans_page_zooms(student, page, copy):
 def io_set_manual(data):
     student, page, copy, question, answer, ticked, all_page = data
     db = get_db()
-    db.set_manual(student, page, copy, question, answer, ticked, all_page,
-                  app=app)
+    db.set_manual(student, page, copy, question, answer, ticked, all_page)
     emit_msg("tick-box", [question, answer, ticked])
 
 @socketio_name('revert-manual')
@@ -1417,7 +1412,7 @@ def io_do_mark(update):
             "prepare",
             "--mode", "b",
             "--progression-id", "MAJ", "--progression", "1",
-            messages=messages, variables=variables, app=app
+            messages=messages, variables=variables
         )
         u_exports_available()
     emit_msg("t", _('t.mark.compute'))
@@ -1425,7 +1420,7 @@ def io_do_mark(update):
         "note",
         "--progression-id", "GRD",
         "--progression", "1",
-        messages=messages, variables=variables, app=app
+        messages=messages, variables=variables
     )
     emit_msg("end-command")
     show_messages(messages)
@@ -1582,7 +1577,6 @@ def io_association_auto():
     n_before = db.n_identifications(manual=False)
     messages, variables = amc_command(
             "association-auto",
-            app=app
     )
     n_after = db.n_identifications(manual=False)
     if n_after > n_before:
@@ -1717,7 +1711,6 @@ def io_do_export():
         "--module", module,
         "--output", path,
         "--export-ods-filter",
-        app=app
     )
     emit_msg("end-command")
     emit_msg("update-exported-files", t)
@@ -1753,7 +1746,6 @@ def io_do_annotate():
         *args,
         "--progression-id", "ANNOT",
         "--progression", "1",
-        app=app
     )
     emit_msg("end-command")
     emit_msg("update-annotated-files", t)

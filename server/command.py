@@ -4,14 +4,15 @@ import subprocess
 
 from basic import *
 
+from flask import current_app
+
 def command_str(command):
     return " ".join([ '"'+str(x)+'"' if (x=="" or " " in  x)
                       else str(x)
                       for x in command ])
 
 def amc_command(*args,
-                messages=None, variables=None,
-                app=None):
+                messages=None, variables=None):
 
     env = os.environ.copy()
     env["AMC_USERCONFDIR"] = user_confdir()
@@ -33,8 +34,7 @@ def amc_command(*args,
                 *args ]
     command += ["--profile", "default"]
     command += ["--project-dir", project_dir()]
-    if app:
-        app.logger.info("c-cmd> " + command_str(command))
+    current_app.logger.info("c-cmd> " + command_str(command))
 
     try:
         process = subprocess.Popen(
@@ -55,8 +55,7 @@ def amc_command(*args,
         if not line:
             break  # Reached the end of stdout
         line = line.strip()
-        if app:
-            app.logger.debug("c-out> " + line)
+        current_app.logger.debug("c-out> " + line)
         avance = re.match(r'===<(.*)>=\+([0-9,.]+(?:e[+-]?[0-9]+)?)', line)
         if avance:
             aid = avance[1]

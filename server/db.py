@@ -202,8 +202,7 @@ class Amcdb:
               (student, page, copy, 4, question, answer)).fetchone()[0]
 
     def set_manual(self, student, page, copy, question, answer, ticked,
-                   all_page=True,
-                   app=None):
+                   all_page=True):
         self.use_module("capture")
         if all_page and self.page_t_manual(student, page, copy)==0:
             messages, variables = amc_command(
