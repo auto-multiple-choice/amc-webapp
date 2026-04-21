@@ -54,7 +54,8 @@ def user_confdir():
 def projects_dir(root=False):
     pdir = os.environ.get("AMC_PROJECTSDIR",
                           os.path.expanduser('~') + "/MC-Projects")
-    if k := os.environ.get("AMC_USERHEADER") and not root:
+    k = os.environ.get("AMC_USERHEADER")
+    if k and not root:
         if subdir := request.headers.get(k):
             pdir += ("/" + subdir)
     Path(pdir).mkdir(parents=True, exist_ok=True)
