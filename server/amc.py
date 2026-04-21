@@ -32,7 +32,7 @@ from command import amc_command
 from basic import *
 
 import logging
-from flask import Flask, render_template, request, send_file, make_response, url_for, g as flask_g
+from flask import Flask, Response, abort, render_template, request, send_file, make_response, url_for, g as flask_g
 from flask_socketio import SocketIO, emit
 from flask_babel import Babel, _, ngettext
 
@@ -153,6 +153,29 @@ def request_sty_file():
     ).decode("utf-8").strip()
     return send_file(sty_path, as_attachment=True, mimetype='text/x-tex')
 
+@app.route('/public/<uuids>/marks.csv')
+def marks_csv(uuids):
+    csv_content = "id,mark,total\n"
+
+    for uuid in uuids.split(":"):
+        pdirs = find_projects_by_uuid(uuid, check_option="app_public_marks")
+        if len(pdirs) == 0:
+            app.logger.warning(f"Project not found: UUID={uuid}")
+            abort(404)
+        elif len(pdirs) > 1:
+            app.logger.error(f"Multiple projects with UUID={uuid}")
+            for d in pdirs:
+                app.logger.error("* " + d)
+            abort(500)
+
+        app.logger.debug(f"🔍 {uuid} → {pdirs[0]}")
+        db = Amcdb(pdirs[0])
+        for m in db.associated_marks():
+            csv_content += f"\"{m[0]}\",{m[1]},{m[2]}\n"
+
+    return Response(csv_content, mimetype='text/csv')
+        
+
 @socketio_name('is-online')
 def io_is_online():
     app.logger.debug(f"📶 {flask_g._sid} is online from {request.remote_addr}")
@@ -164,6 +187,9 @@ def tab(tab_name):
     if tab_name == "scans":
         db = get_db()
         vs["nmaxpages"] = db.npages_max()
+    if tab_name == "grading":
+        u = project_uuid()
+        vs["public_marks_link"] = f"{request.root_url}public/{u}/marks.csv"
     return render_template(f"tab_{tab_name}.html", **vs)
 
 def serve_pil_image(pil_img):
@@ -275,6 +301,7 @@ def io_project_clone(name):
     emit_msg("t", _('t.cloning'))
     emit_msg("begin-command")
     n, ntotal = copy_files_progress(source, dest)
+    remove_uuid(clone_name)
     emit_msg("end-command")
     emit_msg("u-projects-list")
     if n==ntotal:
@@ -431,6 +458,43 @@ def create_options_file(rep, source_file, filt=None):
 </project>
 """
             )
+
+def remove_uuid(project_name=None):
+    change_option("uuid", "", p=project_name)
+
+def project_uuid(project_name=None):
+    u = get_option("uuid", p=project_name)
+    if not u:
+        u = str(uuid.uuid4())
+        change_option("uuid", u, p=project_name)
+    return u
+
+def check_uuid(options_file, u, check_option=None):
+    o = [ "uuid" ]
+    if check_option:
+        o.append(check_option)
+    v = get_options_from_xml(options_file, o)
+    ok = (v[ "uuid" ] == u)
+    if check_option:
+        ok = ok and (
+            v.get(check_option)
+            and v[check_option].lower() not in ("0", "false"))
+    return ok
+
+def find_projects_by_uuid(u, check_option=None):
+
+    if not u:
+        return []
+    
+    psdir = projects_dir(root=True)
+    ok_dirs = []
+    for root, dirs, files in os.walk(psdir):
+        for f in files:
+            if f == "options.xml":
+                if check_uuid(os.path.join(root, f), u,
+                              check_option=check_option):
+                    ok_dirs.append(root)
+    return ok_dirs 
             
 @socketio_name('create-project-empty')
 def io_create_project_empty(data):
@@ -448,6 +512,7 @@ def io_create_project_empty(data):
         create_options_file(rep, f, filt=stype)
         name, chg = set_project(name)
         amc_command("db", "upgrade")
+        remove_uuid(name)
         emit_msg("project-open", [name, True])
 
 def info_remove_root(m, root):
@@ -560,6 +625,7 @@ def io_create_project_template(data):
         create_project_dirs(rep)
         name, chg = set_project(name)
         amc_command("db", "upgrade")
+        remove_uuid(name)
         emit_msg("project-open", [name, True])
 
 def create_from_source_file(name, rep, f, fn):
@@ -584,6 +650,7 @@ def create_from_archive(name, rep, f):
     else:
         app.logger.error("Archive type unknown")
     create_project_dirs(rep)
+    remove_uuid(name)
     emit_msg("end-command")
     u_open_project(name)
     return { "ok": ok }
@@ -1661,7 +1728,9 @@ def io_export_config():
     emit_msg("selected-config",
          get_options(["format_export", "export_include_abs", "export_ods_stats",
                       "export_ods_statsindic", "export_ods_group", "export_ods_groupsep",
-                      "export_csv_ticked"]))
+                      "export_csv_ticked",
+                      "app_public_marks"
+                      ]))
 
 @socketio_name('set-config')
 def io_set_config(data):

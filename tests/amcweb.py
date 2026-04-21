@@ -10,6 +10,8 @@ import time
 import tempfile
 import requests
 import os
+import re
+import io
 import sys
 import subprocess
 import csv
@@ -191,6 +193,7 @@ class AMCWeb():
             print(f"Go to tab {tab_name}…")
             self.driver.find_element(By.ID, 'menu-' + tab_name).click()
             self.tab = tab_name
+            self.sleep(1)
 
     def document_view(self, doc_type, build=False):
         print(f"Looking at document {doc_type}…")
@@ -437,8 +440,8 @@ class AMCWeb():
                     sel = Select(element)
                     sel.select_by_value(v)
                 else:
-                    e.clear()
-                    e.send_keys(v)
+                    element.clear()
+                    element.send_keys(v)
         self.sleep(1)
 
     def set_options(self, options):
@@ -449,3 +452,47 @@ class AMCWeb():
         e = self.driver.find_element(By.ID, eid)
         assert e.text == text
         print(f"Text[{eid}]={text}")
+
+    def public_marks(self, activate=True):
+        self.goto_tab("grading")
+        self.set_input({"app_public_marks": activate})
+        if activate:
+            links = []
+            for k in ('marks', 'totals'):
+                s = self.driver.find_element(
+                    By.ID, "public-marks-link-" + k)
+                links.append(s.get_attribute("public-link"))
+            return links
+
+    def check_from_public(self, marks, and_disable=True):
+        marks_link, totals_link = self.public_marks(True)
+        url, column = marks_link.split("#")
+        column = int(column)
+        r = requests.get(url)
+        assert r.status_code == 200
+        reader = csv.reader(io.StringIO(r.content.decode("utf-8")),
+                            delimiter=',', quotechar='"')
+        for row in reader:
+            student_id = row[0]
+            student_mark = row[column-1]
+            try:
+                student_mark = float(student_mark)
+            except ValueError:
+                student_mark = None
+            if marks.get(student_id):
+                if marks[student_id] == student_mark:
+                    print(f"Public mark OK for student {student_id}: {student_mark}")
+                    del marks[student_id]
+                else:
+                    raise RuntimeError(
+                        f"Wrong mark for student {student_id}: expected {marks[student_id]}, got {student_mark}")
+        if marks:
+            for k in marks.keys():
+                print(f"Missing public mark for student {k}")
+            raise RuntimeError("Public marks not complete")
+
+        if and_disable:
+            print("Test disabling public marks…")
+            self.public_marks(False)
+            r = requests.get(url)
+            assert r.status_code == 404

@@ -45,4 +45,3 @@ aw.check_marks(
     },
     export=True)
 aw.check_annotated_files("0004.pdf", "0005.pdf", "0006.pdf", annotate=True)
-

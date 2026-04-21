@@ -339,6 +339,22 @@ class Amcdb:
             "SELECT DISTINCT max FROM scoring.scoring_mark").fetchall()
         return [ x[0] for x in marks ], [ x[0] for x in maxis ]
 
+    def associated_marks(self):
+        self.use_module("association")
+        self.use_module("scoring")
+        self.db.row_factory = None
+        return self.db.execute(
+            """SELECT studentid, mark, total
+            FROM ( SELECT student, copy,
+                       CASE WHEN manual IS NOT NULL THEN manual
+                            ELSE auto END
+                       AS studentid
+                   FROM association.association_association ) AS a,
+                 scoring.scoring_mark AS m
+            ON a.student=m.student AND a.copy=m.copy
+            WHERE studentid IS NOT NULL
+            """).fetchall()
+
     def n_graded_students(self):
         self.use_module("scoring")
         self.db.row_factory = None

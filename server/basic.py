@@ -51,10 +51,10 @@ def user_confdir():
     else:
         return os.path.expanduser('~') + "/.AMC.d"
 
-def projects_dir():
+def projects_dir(root=False):
     pdir = os.environ.get("AMC_PROJECTSDIR",
                           os.path.expanduser('~') + "/MC-Projects")
-    if k := os.environ.get("AMC_USERHEADER"):
+    if k := os.environ.get("AMC_USERHEADER") and not root:
         if subdir := request.headers.get(k):
             pdir += ("/" + subdir)
     Path(pdir).mkdir(parents=True, exist_ok=True)
@@ -106,17 +106,17 @@ def first_or_none(l):
     else:
         return None
 
-def option_file_from_name(name):
+def option_file_from_name(name, p=None):
     if name.startswith("global:"):
         name = name.replace("global:", "", 1)
         options_file = user_confdir() + "/cf.default.xml"
     else:
         name = re.sub(r'^project:', '', name)
-        options_file = project_dir() + "/options.xml"
+        options_file = project_dir(p) + "/options.xml"
     return options_file, name
 
-def change_option(name, value):
-    options_file, name = option_file_from_name(name)
+def change_option(name, value, p=None):
+    options_file, name = option_file_from_name(name, p=p)
     options = etree.parse(options_file)
     x = first_or_none(options.xpath("/*/" + name))
     if x is None:
@@ -130,17 +130,27 @@ def change_option(name, value):
     with lock:
         options.write(options_file)
 
-def get_option(name):
-    options_file, name = option_file_from_name(name)
-    options = etree.parse(options_file)
+def get_option_from_xml(xml_file, name):
+    options = etree.parse(xml_file)
     return first_or_none(options.xpath(f"/*/{name}/text()"))
 
-def get_options(names_list):
+def get_options_from_xml(xml_file, names):
+    v = {}
+    options = etree.parse(xml_file)
+    for n in names:
+        v[n] = first_or_none(options.xpath(f"/*/{n}/text()"))
+    return v
+
+def get_option(name, p=None):
+    options_file, name = option_file_from_name(name, p=p)
+    return get_option_from_xml(options_file, name)
+
+def get_options(names_list, p=None):
     o = {}
     options = {}
 
     for name in names_list:
-        options_file, short_name = option_file_from_name(name)
+        options_file, short_name = option_file_from_name(name, p=p)
         if not options.get(options_file):
             options[options_file] = etree.parse(options_file)
         e = first_or_none(

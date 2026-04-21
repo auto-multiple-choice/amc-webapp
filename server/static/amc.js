@@ -55,6 +55,21 @@ function fetch_to_dom(id, url, opts) {
         });
 }
 
+function link_to_clipboard(element) {
+    setTimeout(()=>{
+        element.style.transition = "none";
+        var orig_color = element.style.backgroundColor;
+        element.style.backgroundColor = "#00e462";
+        navigator.clipboard.writeText(element.getAttribute("public-link"));
+        setTimeout(()=>{
+            element.style.transition = "background-color 3.5s linear";
+            element.style.backgroundColor = orig_color; },
+                   1500);
+    });
+}
+
+// -----------------------------------------------------------------
+
 function show_tab(tab_name) {
     return fetch_to_dom('tab', `/tab/${tab_name}`, {})
         .then(()=> { set_current_tab(tab_name); });
@@ -1234,7 +1249,14 @@ function upload_students() {
 }
 
 function u_identification() {
-    fetch_to_dom("identification", "/identification.html", {});
+    fetch_to_dom("identification", "/identification.html", {})
+        .then( () => {
+            var nid = document.getElementById("n-identifications");
+            var n = parseInt(nid.getAttribute("n-ok"));
+            var pm = document.getElementById("public-marks");
+            if(n>0) pm.classList.remove("hidden");
+            else pm.classList.add("hidden");
+        });
 }
 socket.on("update-identification", u_identification);
 
@@ -1252,6 +1274,17 @@ function u_exported_files(t) {
         });
 }
 socket.on("update-exported-files", u_exported_files);
+
+function change_public_marks(e) {
+    change_config_value(e);
+    update_public_marks(e);
+}
+
+function update_public_marks(e) {
+    var links = document.getElementById("public-marks-links");
+    if(e.checked) links.classList.remove("hidden");
+    else links.classList.add("hidden");
+}
 
 function tab_grading() {
     show_tab("grading").then(() => {
@@ -1411,6 +1444,11 @@ socket.on("update-association", function(data) {
 function change_export_module(e) {
     if(!e) e = document.getElementById("format_export");
     change_config_value(e);
+    update_export_module(e);
+}
+
+function update_export_module(e) {
+    if(!e) e = document.getElementById("format_export");
     var module = e.value;
     for(const m of ["ods", "CSV"]) {
         var x = document.getElementById("export-" + m);
@@ -1453,7 +1491,8 @@ socket.on("selected-config", function(data) {
             if(!e.getAttribute("onchange"))
                 e.setAttribute("onchange", "change_config_value(this);");
 
-            if(k=="format_export") change_export_module();
+            if(k=="format_export") update_export_module(e);
+            if(k=="app_public_marks") update_public_marks(e);
         }
     }
 });
@@ -1469,8 +1508,9 @@ function flash_files(e) {
             var orig_color = panel.style.backgroundColor;
             panel.style.transition = "none";
             panel.style.backgroundColor = color;
-            panel.style.transition = "background-color 1.5s linear";
-            setTimeout(()=>{ panel.style.backgroundColor = orig_color; },
+            setTimeout(()=>{
+                panel.style.transition = "background-color 1.5s linear";
+                panel.style.backgroundColor = orig_color; },
                        1500);
         } else {
             console.log("Flash files not found…");

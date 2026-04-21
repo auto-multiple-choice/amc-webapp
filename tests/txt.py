@@ -34,6 +34,9 @@ aw.upload_scans("txt/scans.pdf")
 aw.check_scanned_pages(
     [ (2, 1, 0), (3, 1, 0) ]
 )
+aw.set_options({ "note_max": "100",
+                 "note_grain": "0.1",
+                 "note_arrondi": "normal" })
 aw.do_grading()
 aw.do_association_auto()
 aw.check_marks(
@@ -48,3 +51,7 @@ aw.check_annotated_files("BOULIX_Jojo.pdf", "GLOBIS_Andre.pdf")
 aw.set_options({"global:ascii_filenames": False})
 aw.do_annotate(model="(N)-(nom)")
 aw.check_annotated_files("0002-BOULIX.pdf", "0003-GŁOBIŚ.pdf")
+
+aw.check_from_public(
+    { "1024": 33.3, "2048": 66.7 }
+)

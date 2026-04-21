@@ -82,6 +82,25 @@
       </div>
       <div id="exported-files">
       </div>
+      <div id="public-marks">
+        <div id="public-marks-option">
+          <input type="checkbox" id="app_public_marks" name="app_public_marks"
+                 onchange="change_public_marks(this);"/>
+          <label for="app_public_marks">{{ _('export.public') }}</label>
+        </div>
+        <div id="public-marks-links" class="hidden">
+          {{ _('export.public.marks') }}
+          <span id="public-marks-link-marks" class="btn btn-neutral"
+                public-link="{{ public_marks_link }}#2"
+                onclick="link_to_clipboard(this);"
+                title="{{ _('clipboard.to') }}">📋</span>
+          {{ _('export.public.total') }}
+          <span id="public-marks-link-totals" class="btn btn-neutral"
+                public-link="{{ public_marks_link }}#3"
+                onclick="link_to_clipboard(this);"
+                title="{{ _('clipboard.to') }}">📋</span>
+        </div>
+      </div>
     </div>
     <div id="block-annotate" class="blockview">
       <div class="part-title">

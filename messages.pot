@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-16 23:42+0200\n"
+"POT-Creation-Date: 2026-04-21 10:35+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,101 +17,101 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: server/amc.py:195
+#: server/amc.py:301
 msgid "t.cloning"
 msgstr ""
 
-#: server/amc.py:206
+#: server/amc.py:313
 msgid "msg.cloned"
 msgstr ""
 
-#: server/amc.py:211
+#: server/amc.py:318
 msgid "msg.clone.err"
 msgstr ""
 
-#: server/amc.py:241
+#: server/amc.py:348
 msgid "msg.rename.exists"
 msgstr ""
 
-#: server/amc.py:332
+#: server/amc.py:440
 msgid "msg.create.exists"
 msgstr ""
 
-#: server/amc.py:390 server/amc.py:415
+#: server/amc.py:537 server/amc.py:562
 msgid "t.options"
 msgstr ""
 
-#: server/amc.py:403 server/amc.py:426
+#: server/amc.py:550 server/amc.py:573
 msgid "t.extract"
 msgstr ""
 
-#: server/amc.py:492
+#: server/amc.py:640
 msgid "t.archive.save"
 msgstr ""
 
-#: server/amc.py:611
+#: server/amc.py:765
 msgid "t.scans.extract"
 msgstr ""
 
-#: server/amc.py:620
+#: server/amc.py:774
 msgid "t.automatic"
 msgstr ""
 
-#: server/amc.py:811
+#: server/amc.py:965
 msgid "t.clear"
 msgstr ""
 
-#: server/amc.py:836
+#: server/amc.py:990
 msgid "t.layouts"
 msgstr ""
 
-#: server/amc.py:910
+#: server/amc.py:1064
 msgid "t.print_to"
 msgstr ""
 
-#: server/amc.py:928
+#: server/amc.py:1081
 msgid "msg.printing.done"
 msgstr ""
 
-#: server/amc.py:939
+#: server/amc.py:1092
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1247
+#: server/amc.py:1404
 msgid "add.student.syntax"
 msgstr ""
 
-#: server/amc.py:1319
+#: server/amc.py:1477
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1327
+#: server/amc.py:1485
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1492
+#: server/amc.py:1650
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/amc.py:1495
+#: server/amc.py:1653
 msgid "assoc.auto.none"
 msgstr ""
 
-#: server/amc.py:1604
+#: server/amc.py:1768
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1611
+#: server/amc.py:1775
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1647
+#: server/amc.py:1810
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1666
+#: server/amc.py:1829
 msgid "files.indiv"
 msgstr ""
 
@@ -285,7 +285,7 @@ msgstr ""
 msgid "newproject.template.allgroups"
 msgstr ""
 
-#: server/templates/project_new.html:59
+#: server/templates/project_new.html:60
 msgid "newproject.create"
 msgstr ""
 
@@ -563,35 +563,51 @@ msgstr ""
 msgid "export.btn"
 msgstr ""
 
-#: server/templates/tab_grading.html:88
-msgid "annotate.title"
+#: server/templates/tab_grading.html:89
+msgid "export.public"
 msgstr ""
 
 #: server/templates/tab_grading.html:92
+msgid "export.public.marks"
+msgstr ""
+
+#: server/templates/tab_grading.html:95 server/templates/tab_grading.html:99
+msgid "clipboard.to"
+msgstr ""
+
+#: server/templates/tab_grading.html:96
+msgid "export.public.total"
+msgstr ""
+
+#: server/templates/tab_grading.html:105
+msgid "annotate.title"
+msgstr ""
+
+#: server/templates/tab_grading.html:109
 msgid "annotate.students"
 msgstr ""
 
-#: server/templates/tab_grading.html:93
+#: server/templates/tab_grading.html:110
 msgid "annotate.all"
 msgstr ""
 
-#: server/templates/tab_grading.html:97
+#: server/templates/tab_grading.html:114
 msgid "annotate.compose"
 msgstr ""
 
-#: server/templates/tab_grading.html:100
+#: server/templates/tab_grading.html:117
 msgid "annotate.corrected"
 msgstr ""
 
-#: server/templates/tab_grading.html:102
+#: server/templates/tab_grading.html:119
 msgid "annotate.model"
 msgstr ""
 
-#: server/templates/tab_grading.html:106
+#: server/templates/tab_grading.html:123
 msgid "annotate.btn"
 msgstr ""
 
-#: server/templates/tab_grading.html:117
+#: server/templates/tab_grading.html:134
 msgid "assoc.done"
 msgstr ""
 
@@ -675,64 +691,56 @@ msgstr ""
 msgid "failed.delete"
 msgstr ""
 
-#: server/templates/tab_source.html:9
+#: server/templates/tab_source.html:11
 msgid "btn.revert"
 msgstr ""
 
-#: server/templates/tab_source.html:10
+#: server/templates/tab_source.html:12
 msgid "btn.save"
 msgstr ""
 
-#: server/templates/tab_source.html:16
+#: server/templates/tab_source.html:18
 msgid "btn.allfiles"
 msgstr ""
 
-#: server/templates/tab_source.html:20
+#: server/templates/tab_source.html:22
 msgid "btn.upload"
 msgstr ""
 
-#: server/templates/tab_source.html:32
+#: server/templates/tab_source.html:34
 msgid "number.copies"
 msgstr ""
 
-#: server/templates/tab_source.html:35
+#: server/templates/tab_source.html:37
 msgid "option.choose"
 msgstr ""
 
-#: server/templates/tab_source.html:36
+#: server/templates/tab_source.html:38
 msgid "doc.subject"
 msgstr ""
 
-#: server/templates/tab_source.html:37
+#: server/templates/tab_source.html:39
 msgid "doc.layout"
 msgstr ""
 
-#: server/templates/tab_source.html:38
+#: server/templates/tab_source.html:40
 msgid "doc.catalog"
 msgstr ""
 
-#: server/templates/tab_source.html:39
+#: server/templates/tab_source.html:41
 msgid "doc.answers"
 msgstr ""
 
-#: server/templates/tab_source.html:40
+#: server/templates/tab_source.html:42
 msgid "doc.corrected"
 msgstr ""
 
-#: server/templates/tab_source.html:42
+#: server/templates/tab_source.html:44
 msgid "btn.update"
 msgstr ""
 
-#: server/templates/tab_source.html:43
+#: server/templates/tab_source.html:45
 msgid "btn.print"
-msgstr ""
-
-#: server/templates/warn_dialog.html:3
-msgid "dialog.errors"
-msgstr ""
-
-#: server/templates/warn_dialog.html:11
-msgid "dialog.warnings"
 msgstr ""
 
 #: server/templates/warn_dialog.html:25
