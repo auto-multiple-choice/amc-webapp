@@ -22,13 +22,17 @@ cmd_ctrl = Keys.COMMAND if sys.platform == 'darwin' else Keys.CONTROL
 
 class AMCWeb():
 
-    def __init__(self, lang=None):
+    def __init__(self, lang=None, user_header=None):
         self.lang = lang
         self.project = None
         self.tab = None
+        self.user_header = user_header
         self.base_url = os.environ.get('AMCWEB_BASEURL', "http://127.0.0.1:5000")
         self.sleep_factor = float(os.environ.get(
             'AMC_TESTS_SLEEP_FACTOR', 1))
+        self.renew_temp_dir()
+
+    def renew_temp_dir(self):
         if d := os.environ.get('AMC_TESTS_DIR'):
             date = datetime.datetime.now().strftime("%s")
             test = os.path.basename(sys.argv[0])
@@ -37,6 +41,15 @@ class AMCWeb():
         else:
             self.temp_dir = tempfile.mkdtemp(prefix="amcweb-test-")
         print(f"TEMPDIR: {self.temp_dir}")
+
+    def set_user(self, user_name):
+        assert self.user_header is not None
+        print(f"* switch to user {user_name}")
+        self.driver.execute_cdp_cmd(
+            'Network.setExtraHTTPHeaders',
+            { "headers": { self.user_header: user_name } }
+        )
+        self.goto_home()
 
     def sleep(self, t):
         time.sleep(t * self.sleep_factor)
@@ -71,6 +84,9 @@ class AMCWeb():
             service=svc)
         self.driver.implicitly_wait(5)
 
+        if self.user_header:
+            self.driver.execute_cdp_cmd('Network.enable', {})
+
         self.tab = "main"
 
         return self
@@ -81,7 +97,13 @@ class AMCWeb():
     def click_on(self, element_id):
         self.driver.find_element(By.ID, element_id).click()
 
+    def projects_list(self):
+        self.goto_tab("main")
+        return [ p.text for p in
+                 self.driver.find_elements(By.CSS_SELECTOR, "li.project-name") ]
+
     def delete_project_if_exists(self, project_name):
+        self.goto_tab("main")
         olds = self.driver.find_elements(By.CSS_SELECTOR, "li.project-name")
         old = [ p for p in olds if p.text == project_name ]
         if old:
@@ -154,7 +176,9 @@ class AMCWeb():
     def upload_project_file(self, path):
         self.goto_tab("source")
         self.driver.find_element(By.ID, "source-name").click()
+        self.sleep(.5)
         self.driver.find_element(By.ID, 'project-upload-file').send_keys(os.path.abspath(path))
+        self.sleep(.5)
         self.driver.find_element(By.ID, "source-name").click()
         self.sleep(1)
 
@@ -279,16 +303,18 @@ class AMCWeb():
             pages.append(p)
         return pages
 
-    def check_scanned_pages(self, pages_to_check):
+    def check_scanned_pages(self, pages_to_check, pages_must_be_missing=[]):
         print(f"Checking for scanned pages {pages_to_check}…")
         pages = self.scanned_pages_list()
         for p in pages:
             print(f"Page: {p}")
-            pages_to_check.remove(
-                (int(p.get("student",0)),
-                 int(p.get("page"),0),
-                 int(p.get("copy"),0))
-            )
+            pid = (int(p.get("student",0)),
+                   int(p.get("page"),0),
+                   int(p.get("copy"),0))
+            pages_to_check.remove(pid)
+            if pid in pages_must_be_missing:
+                raise RuntimeError(f"Scanned page present: {pid}")
+            
         if pages_to_check:
             raise RuntimeError(f"Scanned pages not found: {pages_to_check}")
 

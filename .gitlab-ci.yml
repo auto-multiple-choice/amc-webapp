@@ -16,7 +16,7 @@ build:
     - docker image tag amc-webapp $CI_REGISTRY_IMAGE/test:$CI_COMMIT_SHORT_SHA
     - docker push $CI_REGISTRY_IMAGE/test:$CI_COMMIT_SHORT_SHA
 
-tests:
+tests-single:
   stage: test
   needs:
     - job: build
@@ -30,7 +30,7 @@ tests:
     AMC_SERVER_LOGGING: DEBUG
     AMC_TESTS_HEADLESS: 1
     AMC_TESTS_NO_SANDBOX: 1
-    AMC_TESTS_DIR: "$CI_PROJECT_DIR/tests-results"
+    AMC_TESTS_DIR: "$CI_PROJECT_DIR/tests-single"
     AMC_TESTS_SLEEP_FACTOR: 2
   script:
     - apk add chromium-chromedriver py3-pip ghostscript imagemagick
@@ -49,12 +49,40 @@ tests:
     paths:
       - $AMC_TESTS_DIR/
 
+tests-multi:
+  stage: test
+  needs:
+    - job: build
+  image: python:3-alpine
+  services:
+    - name: $CI_REGISTRY_IMAGE/test:$CI_COMMIT_SHORT_SHA
+      alias: amc
+  variables:
+    CI_DEBUG_SERVICES: "true"
+    AMCWEB_BASEURL: "http://amc:8080"
+    AMC_SERVER_LOGGING: DEBUG
+    AMC_TESTS_HEADLESS: 1
+    AMC_TESTS_NO_SANDBOX: 1
+    AMC_TESTS_DIR: "$CI_PROJECT_DIR/tests-multi"
+    AMC_TESTS_SLEEP_FACTOR: 2
+    AMC_USERHEADER: "X-AMC-User"
+  script:
+    - apk add chromium-chromedriver py3-pip ghostscript imagemagick
+    - python3 -m venv /venv
+    - cd tests
+    - /venv/bin/pip3 install -r requirements.txt
+    - mkdir -p $AMC_TESTS_DIR
+    - /venv/bin/python3 user.py
+  artifacts:
+    when: always
+    paths:
+      - $AMC_TESTS_DIR/
+
 docker:
   stage: deploy
   rules:
     - if: $CI_COMMIT_TAG =~ /^v/
-  needs:
-    - job: tests
+  needs: ["tests-single", "tests-multi"]
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     - docker image tag $CI_REGISTRY_IMAGE/test:$CI_COMMIT_SHORT_SHA $CI_REGISTRY_IMAGE/main:$CI_COMMIT_TAG

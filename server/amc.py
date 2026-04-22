@@ -178,7 +178,7 @@ def marks_csv(uuids):
 
 @socketio_name('is-online')
 def io_is_online():
-    app.logger.debug(f"📶 {flask_g._sid} is online from {request.remote_addr}")
+    app.logger.debug(f"📶 {flask_g._sid} (u={username()}) is online from {request.remote_addr}")
 
 @app.route('/tab/<tab_name>')
 def tab(tab_name):
