@@ -1104,6 +1104,8 @@ def io_print_to_printer(data):
         "--imprimante", printer,
         "--student-min", student1,
         "--student-max", student2,
+        "--progression", "1",
+        "--progression-id", "print",
     )
     log_messages(messages)
     emit_msg("end-command")
