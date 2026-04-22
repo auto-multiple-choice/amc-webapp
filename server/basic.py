@@ -58,6 +58,8 @@ def projects_dir(root=False):
     if k and not root:
         if subdir := request.headers.get(k):
             pdir += ("/" + subdir)
+        else:
+            pdir += "/_all"
     Path(pdir).mkdir(parents=True, exist_ok=True)
     return pdir
 
