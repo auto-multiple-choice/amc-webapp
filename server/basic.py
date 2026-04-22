@@ -53,6 +53,7 @@ def user_confdir():
             default_ucd = projects_dir(root=True) + "/_default_config"
             if os.path.isdir(default_ucd):
                 shutil.copytree(default_ucd, ucd, symlinks=True)
+        return ucd
     else:
         return os.path.expanduser('~') + "/.AMC.d"
 
