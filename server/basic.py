@@ -47,7 +47,7 @@ def set_project(name):
 
 def user_confdir():
     if os.environ.get("AMC_USERHEADER"):
-        return projects_dir() + "/config"
+        return projects_dir() + "/_config"
     else:
         return os.path.expanduser('~') + "/.AMC.d"
 
