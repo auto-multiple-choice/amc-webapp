@@ -1,6 +1,7 @@
 
 import re
 import os
+import shutil
 from pathlib import Path
 from lxml import etree
 from filelock import FileLock
@@ -47,7 +48,11 @@ def set_project(name):
 
 def user_confdir():
     if os.environ.get("AMC_USERHEADER"):
-        return projects_dir() + "/_config"
+        ucd = projects_dir() + "/_config"
+        if not os.path.exists(ucd):
+            default_ucd = projects_dir(root=True) + "/_default_config"
+            if os.path.isdir(default_ucd):
+                shutil.copytree(default_ucd, ucd, symlinks=True)
     else:
         return os.path.expanduser('~') + "/.AMC.d"
 
