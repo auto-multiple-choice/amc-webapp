@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-21 10:35+0200\n"
+"POT-Creation-Date: 2026-04-22 11:43+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -65,53 +65,53 @@ msgstr ""
 msgid "t.layouts"
 msgstr ""
 
-#: server/amc.py:1064
+#: server/amc.py:1097
 msgid "t.print_to"
 msgstr ""
 
-#: server/amc.py:1081
+#: server/amc.py:1117
 msgid "msg.printing.done"
 msgstr ""
 
-#: server/amc.py:1092
+#: server/amc.py:1128
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1404
+#: server/amc.py:1440
 msgid "add.student.syntax"
 msgstr ""
 
-#: server/amc.py:1477
+#: server/amc.py:1513
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1485
+#: server/amc.py:1521
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1650
+#: server/amc.py:1686
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/amc.py:1653
+#: server/amc.py:1689
 msgid "assoc.auto.none"
 msgstr ""
 
-#: server/amc.py:1768
+#: server/amc.py:1804
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1775
+#: server/amc.py:1811
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1810
+#: server/amc.py:1846
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1829
+#: server/amc.py:1865
 msgid "files.indiv"
 msgstr ""
 
@@ -571,43 +571,43 @@ msgstr ""
 msgid "export.public.marks"
 msgstr ""
 
-#: server/templates/tab_grading.html:95 server/templates/tab_grading.html:99
+#: server/templates/tab_grading.html:96 server/templates/tab_grading.html:101
 msgid "clipboard.to"
 msgstr ""
 
-#: server/templates/tab_grading.html:96
+#: server/templates/tab_grading.html:97
 msgid "export.public.total"
 msgstr ""
 
-#: server/templates/tab_grading.html:105
+#: server/templates/tab_grading.html:107
 msgid "annotate.title"
 msgstr ""
 
-#: server/templates/tab_grading.html:109
+#: server/templates/tab_grading.html:111
 msgid "annotate.students"
 msgstr ""
 
-#: server/templates/tab_grading.html:110
+#: server/templates/tab_grading.html:112
 msgid "annotate.all"
 msgstr ""
 
-#: server/templates/tab_grading.html:114
+#: server/templates/tab_grading.html:116
 msgid "annotate.compose"
 msgstr ""
 
-#: server/templates/tab_grading.html:117
+#: server/templates/tab_grading.html:119
 msgid "annotate.corrected"
 msgstr ""
 
-#: server/templates/tab_grading.html:119
+#: server/templates/tab_grading.html:121
 msgid "annotate.model"
 msgstr ""
 
-#: server/templates/tab_grading.html:123
+#: server/templates/tab_grading.html:125
 msgid "annotate.btn"
 msgstr ""
 
-#: server/templates/tab_grading.html:134
+#: server/templates/tab_grading.html:136
 msgid "assoc.done"
 msgstr ""
 
@@ -699,47 +699,51 @@ msgstr ""
 msgid "btn.save"
 msgstr ""
 
-#: server/templates/tab_source.html:18
+#: server/templates/tab_source.html:13
+msgid "print.cancel"
+msgstr ""
+
+#: server/templates/tab_source.html:19
 msgid "btn.allfiles"
 msgstr ""
 
-#: server/templates/tab_source.html:22
+#: server/templates/tab_source.html:23
 msgid "btn.upload"
 msgstr ""
 
-#: server/templates/tab_source.html:34
+#: server/templates/tab_source.html:35
 msgid "number.copies"
 msgstr ""
 
-#: server/templates/tab_source.html:37
+#: server/templates/tab_source.html:38
 msgid "option.choose"
 msgstr ""
 
-#: server/templates/tab_source.html:38
+#: server/templates/tab_source.html:39
 msgid "doc.subject"
 msgstr ""
 
-#: server/templates/tab_source.html:39
+#: server/templates/tab_source.html:40
 msgid "doc.layout"
 msgstr ""
 
-#: server/templates/tab_source.html:40
+#: server/templates/tab_source.html:41
 msgid "doc.catalog"
 msgstr ""
 
-#: server/templates/tab_source.html:41
+#: server/templates/tab_source.html:42
 msgid "doc.answers"
 msgstr ""
 
-#: server/templates/tab_source.html:42
+#: server/templates/tab_source.html:43
 msgid "doc.corrected"
 msgstr ""
 
-#: server/templates/tab_source.html:44
+#: server/templates/tab_source.html:45
 msgid "btn.update"
 msgstr ""
 
-#: server/templates/tab_source.html:45
+#: server/templates/tab_source.html:46
 msgid "btn.print"
 msgstr ""
 

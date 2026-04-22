@@ -56,6 +56,14 @@ def user_confdir():
     else:
         return os.path.expanduser('~') + "/.AMC.d"
 
+def username():
+    u = None
+    if k := os.environ.get("AMC_USERHEADER"):
+        u = request.headers.get(k)
+    if u is None:
+        u = "AMC"
+    return u
+
 def projects_dir(root=False):
     pdir = os.environ.get("AMC_PROJECTSDIR",
                           os.path.expanduser('~') + "/MC-Projects")

@@ -1057,11 +1057,47 @@ def io_print_dialog():
                            printers=printers,
                            student_min=student_min, student_max=student_max)
 
+def n_waiting_print(cancel=False):
+    prefix = get_option("job_prefix")
+    if not prefix:
+        return 0
+
+    try:
+        conn = cups.Connection()
+        js = conn.getJobs()
+    except Exception as e:
+        app.logger.error(f"Cannot connect to CUPS ({os.environ.get('CUPS_SERVER')}): " + str(e))
+        return 0
+    n = 0
+
+    for j in js.keys():
+        job_name = conn.getJobAttributes(
+            j, requested_attributes=["job-name"]
+        ).get("job-name", "")
+        if job_name.startswith(prefix):
+            if cancel:
+                conn.cancelJob(j, purge_job=True)
+            else:
+                n += 1
+    return n
+
+@socketio_name("n-waiting-print")
+def io_n_waiting_print():
+    emit_msg("n-waiting-print", n_waiting_print())
+
+@socketio_name("cancel-printing")
+def io_cancel_printing():
+    emit_msg("n-waiting-print", n_waiting_print(cancel=True))
+    
+
 @socketio_name("print-to-printer")
 def io_print_to_printer(data):
     student1, student2, printer = data
     emit_msg("begin-command")
     emit_msg("t", _('t.print_to', printer=printer))
+
+    prefix = username() + ":" + unidecode(flask_g.project_name) + ":"
+    change_option("job_prefix", prefix)
     messages, variables = amc_command(
         "imprime",
         "--methode", "cups",

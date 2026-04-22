@@ -10,6 +10,7 @@
             onclick="source_revert();"
             title="{{ _('btn.revert') }}">↩</span>
       <span id="source-save" class="btn btn-ok disabled" onclick="source_save();">{{ _('btn.save') }}</span>
+      <span id="printing-status" class="hidden badge">🖨️ <span id="printing-status-n"></span> <span onclick="cancel_printing();" class="sub-badge" title="{{ _('print.cancel') }}">🛑</span></span>
     </div>
     <div id="files-list" class="hidden">
       <div class="bandeau">

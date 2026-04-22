@@ -477,6 +477,7 @@ function tab_source() {
     show_tab("source").then(() => {
         socket_emit("source-info");
         socket_emit("source-code", "");
+        update_printing();
     });
 }
 
@@ -655,6 +656,7 @@ function doc_print_finished() {
 
 socket.on("print-done", function(data) {
     doc_print_finished();
+    setTimeout(update_printing, 1000);
 });
 
 function print_range() {
@@ -666,6 +668,25 @@ function print_to_printer() {
     var p = document.getElementById('printer').value;
     socket_emit("print-to-printer",
                 [ ...print_range(), p]);
+}
+
+function update_printing() {
+    socket_emit("n-waiting-print");
+}
+
+socket.on("n-waiting-print", function(data) {
+    var n = parseInt(data);
+    var ps = document.getElementById("printing-status");
+    if(ps) {
+        if(n>0) ps.classList.remove("hidden");
+        else ps.classList.add("hidden");
+        document.getElementById("printing-status-n").textContent = data;
+    }
+    if(n>0) setTimeout(update_printing, 2000);
+});
+
+function cancel_printing() {
+    socket_emit("cancel-printing");
 }
 
 function print_to_files() {

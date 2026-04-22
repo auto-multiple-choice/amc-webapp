@@ -85,6 +85,27 @@ img.menu {
     width: 2.5rem;
 }
 
+.badge {
+    border-radius: 12px;
+    padding-left: 7px;
+    padding-right: 7px;
+    background: #ffac29;
+}
+
+.sub-badge {
+    margin-left: 5px;
+    cursor: pointer;
+}
+.badge:has(.sub-badge:hover) {
+    background: repeating-linear-gradient(
+        -45deg,
+        #eee,
+        #eee 5px,
+        #ffac29 5px,
+        #ffac29 10px);
+    
+}
+
 .btn {
     padding: 2px;
     border-radius: 5px;

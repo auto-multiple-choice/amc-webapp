@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-21 10:35+0200\n"
-"PO-Revision-Date: 2026-04-21 10:37+0200\n"
+"POT-Creation-Date: 2026-04-22 11:43+0200\n"
+"PO-Revision-Date: 2026-04-22 11:43+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -71,55 +71,55 @@ msgstr "Clear project data…"
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:1064
+#: server/amc.py:1097
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:1081
+#: server/amc.py:1117
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:1092
+#: server/amc.py:1128
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1404
+#: server/amc.py:1440
 msgid "add.student.syntax"
 msgstr ""
 "The student to be added must be given as an integer (student sheet number) "
 "or two integers (student sheet number and copy) separated by a colon."
 
-#: server/amc.py:1477
+#: server/amc.py:1513
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1485
+#: server/amc.py:1521
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1650
+#: server/amc.py:1686
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "One new student were identified."
 msgstr[1] "New students identified: %(num)s"
 
-#: server/amc.py:1653
+#: server/amc.py:1689
 msgid "assoc.auto.none"
 msgstr "No new students were identified."
 
-#: server/amc.py:1768
+#: server/amc.py:1804
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1775
+#: server/amc.py:1811
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1810
+#: server/amc.py:1846
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1829
+#: server/amc.py:1865
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -583,43 +583,43 @@ msgstr "Dynamic public export"
 msgid "export.public.marks"
 msgstr "Marks:"
 
-#: server/templates/tab_grading.html:95 server/templates/tab_grading.html:99
+#: server/templates/tab_grading.html:96 server/templates/tab_grading.html:101
 msgid "clipboard.to"
 msgstr "Copy link to clipboard"
 
-#: server/templates/tab_grading.html:96
+#: server/templates/tab_grading.html:97
 msgid "export.public.total"
 msgstr "Total scores:"
 
-#: server/templates/tab_grading.html:105
+#: server/templates/tab_grading.html:107
 msgid "annotate.title"
 msgstr "Annotation"
 
-#: server/templates/tab_grading.html:109
+#: server/templates/tab_grading.html:111
 msgid "annotate.students"
 msgstr "One file per student"
 
-#: server/templates/tab_grading.html:110
+#: server/templates/tab_grading.html:112
 msgid "annotate.all"
 msgstr "One file for all students"
 
-#: server/templates/tab_grading.html:114
+#: server/templates/tab_grading.html:116
 msgid "annotate.compose"
 msgstr "Insert pages from the subject when needed"
 
-#: server/templates/tab_grading.html:117
+#: server/templates/tab_grading.html:119
 msgid "annotate.corrected"
 msgstr "Append the corrected subject"
 
-#: server/templates/tab_grading.html:119
+#: server/templates/tab_grading.html:121
 msgid "annotate.model"
 msgstr "Filename model:"
 
-#: server/templates/tab_grading.html:123
+#: server/templates/tab_grading.html:125
 msgid "annotate.btn"
 msgstr "Annotate"
 
-#: server/templates/tab_grading.html:134
+#: server/templates/tab_grading.html:136
 msgid "assoc.done"
 msgstr "Done"
 
@@ -711,47 +711,51 @@ msgstr "Revert"
 msgid "btn.save"
 msgstr "Save"
 
-#: server/templates/tab_source.html:18
+#: server/templates/tab_source.html:13
+msgid "print.cancel"
+msgstr "Cancel printing"
+
+#: server/templates/tab_source.html:19
 msgid "btn.allfiles"
 msgstr "All"
 
-#: server/templates/tab_source.html:22
+#: server/templates/tab_source.html:23
 msgid "btn.upload"
 msgstr "Upload"
 
-#: server/templates/tab_source.html:34
+#: server/templates/tab_source.html:35
 msgid "number.copies"
 msgstr "#copies:"
 
-#: server/templates/tab_source.html:37
+#: server/templates/tab_source.html:38
 msgid "option.choose"
 msgstr "choose"
 
-#: server/templates/tab_source.html:38
+#: server/templates/tab_source.html:39
 msgid "doc.subject"
 msgstr "Subject"
 
-#: server/templates/tab_source.html:39
+#: server/templates/tab_source.html:40
 msgid "doc.layout"
 msgstr "Layout"
 
-#: server/templates/tab_source.html:40
+#: server/templates/tab_source.html:41
 msgid "doc.catalog"
 msgstr "Catalog"
 
-#: server/templates/tab_source.html:41
+#: server/templates/tab_source.html:42
 msgid "doc.answers"
 msgstr "Answers"
 
-#: server/templates/tab_source.html:42
+#: server/templates/tab_source.html:43
 msgid "doc.corrected"
 msgstr "Corrected"
 
-#: server/templates/tab_source.html:44
+#: server/templates/tab_source.html:45
 msgid "btn.update"
 msgstr "Update"
 
-#: server/templates/tab_source.html:45
+#: server/templates/tab_source.html:46
 msgid "btn.print"
 msgstr "Print"
 
