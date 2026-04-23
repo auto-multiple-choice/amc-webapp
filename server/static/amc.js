@@ -1,12 +1,13 @@
 var socket = io();
 var socket_creation = true;
 
+var fake_user = null;
 var project_name = null;
 var editor = null;
 var current_tab = null;
 
 function socket_emit(msg, ...args) {
-    x = { proj: project_name, sid: socket.id };
+    x = { fake_user: fake_user, proj: project_name, sid: socket.id };
     if(args.length) x["args"] = args[0];
     socket.emit(msg, x); 
 }
@@ -30,6 +31,7 @@ function scroll_into_view(elem) {
 function fetch_to_dom(id, url, opts) {
     if(!opts) opts={};
     if(!opts["headers"]) opts["headers"] = {};
+    if(fake_user) opts["headers"]["AMC-fake-user"] = fake_user;
     opts["headers"]["AMC-project"] = project_name;
     opts["headers"]["AMC-sid"] = socket.id;
     return fetch(url, opts)
@@ -92,7 +94,7 @@ function set_current_tab(tab_name) {
 }
 
 function adapt_menu(data) {
-    for(var e of document.getElementsByClassName("menubtn")) {
+    for(var e of document.getElementsByClassName("adapt-menu")) {
         var name = e.id.substring(5);
         if(data[name]) e.classList.remove("hidden");
         else e.classList.add("hidden");
@@ -120,37 +122,27 @@ function select_action(e) {
     for(x of document.getElementsByClassName("project-action")) {
         x.classList.remove("selected");
     }
-    pul = document.getElementById("projects-ul");
-    for(c of ["ok", "neutral", "danger"]) {
-        pul.classList.remove(c);
-    }
-    for(c of ["ok", "neutral", "danger"]) {
-        if(e.classList.contains(c))
-            pul.classList.add(c);
+    for(var pul of document.getElementsByClassName("projects-ul")) {
+        for(c of ["ok", "neutral", "danger"]) {
+            if(e.classList.contains(c)) pul.classList.add(c);
+            else pul.classList.remove(c);
+        }
     }
     e.classList.add("selected");
 }
 
-function project_rename(name) {
-    var li = null;
-    for(i of document.getElementsByClassName("project-name")) {
-        if(i.textContent == name) {
-            li = i;
-        }
-    }
-    if(li != null) {
-        inp = document.createElement("input");
-        inp.setAttribute("type", "text");
-        inp.setAttribute("id", "project-rename");
-        inp.setAttribute("name", "project-rename");
-        inp.setAttribute("onchange", "project_do_rename(this);");
-        inp.setAttribute("onkeyup", "project_rename_key(this, event);");
-        inp.setAttribute("oldname", name);
-        inp.setAttribute("class", "project-change-name");
-        inp.value = name;
-        li.textContent = "";
-        li.appendChild(inp);
-    }
+function project_rename(element, name) {
+    inp = document.createElement("input");
+    inp.setAttribute("type", "text");
+    inp.setAttribute("id", "project-rename");
+    inp.setAttribute("name", "project-rename");
+    inp.setAttribute("onchange", "project_do_rename(this);");
+    inp.setAttribute("onkeyup", "project_rename_key(this, event);");
+    inp.setAttribute("oldname", name);
+    inp.setAttribute("class", "project-change-name");
+    inp.value = name;
+    element.textContent = "";
+    element.appendChild(inp);
 }
 
 function project_rename_key(e, event) {
@@ -173,10 +165,10 @@ function request_project(name, reload) {
 function project_open(data) {
     var name = data[0];
     document.getElementById('project-name').innerHTML = name;
-    localStorage.setItem("project-name", name)
+    localStorage.setItem("project-name", name);
     if(name != project_name || data[1]) {
         project_name = name;
-        socket_emit('adapt-menu')
+        socket_emit('adapt-menu');
         if(name) {
             switch(data[1]) {
             case "main":
@@ -199,32 +191,57 @@ function project_open(data) {
 }
 socket.on("project-open", project_open );
 
-function select_project(name) {
-    switch(projects_action) {
-    case "project-open":
-        request_project(name, true);
-        break;
-    case "project-rename":
-        project_rename(name);
-        break;
-    case "project-delete":
-        if(!confirm(`Are you sure you want to delete project "${name}"? This will permanentely delete all related files.`))
+function do_fake_user(u) {
+    fake_user = u;
+    document.getElementById("menu-admin-back").setAttribute("title", u);
+}
+
+function select_project(element, name, user=null) {
+
+    if(user) do_fake_user(user);
+    
+    if(name) {
+        switch(projects_action) {
+        case "project-open":
+            request_project(name, true);
             break;
-    case "project-clone":
-        socket_emit(projects_action, name);
-        break;
-    default:
-        console.log(`Unknown action: ${projects_action}.`);
+        case "project-rename":
+            project_rename(element, name);
+            break;
+        case "project-delete":
+            if(!confirm(`Are you sure you want to delete project "${name}"? This will permanentely delete all related files.`))
+                break;
+        case "project-clone":
+            socket_emit(projects_action, name);
+            break;
+        default:
+            console.log(`Unknown action: ${projects_action}.`);
+        }
+    } else {
+        socket_emit('adapt-menu');
+        tab_main();
+    }
+}
+
+function admin_back() {
+    do_fake_user(null);
+    request_project("", true);
+}
+
+function admin_search() {
+    if(current_tab == "main") {
+        projects_action = "project-open";
+        fetch_to_dom('projects-list', "/projects_list.html?all=1", {});
     }
 }
 
 function u_projects_list() {
+    projects_action = "project-open";
     fetch_to_dom('projects-list', "/projects_list.html", {});
 }
 socket.on("u-projects-list", u_projects_list);
 
 function tab_main() {
-    projects_action = "project-open";
     show_tab("main").then(() => {
         u_projects_list();
         fetch_to_dom('project-new' , "/project_new.html", {});
@@ -261,10 +278,12 @@ function upload_files(url, files,
     for(var k of Object.keys(params)) {
         formData.append(k, params[k]);
     }
-    formData.append("project_name", project_name);
-    formData.append("sid", socket.id);
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url, true);
+    xhr.setRequestHeader("AMC-project", project_name);
+    if(fake_user)
+        xhr.setRequestHeader("AMC-fake-user", fake_user);
+    xhr.setRequestHeader("AMC-sid", socket.id);
     xhr.upload.onprogress = e => {
         if (e.lengthComputable) {
             set_p(e.loaded / e.total);
@@ -344,25 +363,12 @@ function do_create_project() {
     }
 }
 
-function source_url() {
-    var cn = document.getElementById('source-name');
-    if(cn) {
-        return("/fs/" + project_name + "/" + cn.textContent);
-    } else {
-        return(null);
-    }
-}
-
 socket.on("source-name", function(name) {
     var cn = document.getElementById('source-name');
     if(cn) {
         cn.textContent = name;
     } else {
         alert("source-name not found");
-    }
-    var dl = document.getElementById('source-download');
-    if(dl) {
-        dl.setAttribute("href", source_url());
     }
 });
 
@@ -451,27 +457,6 @@ function source_save() {
                  {}, null);
 }
 
-async function source_upload() {
-  const formData = new FormData();
-
-  const selection = await window.showOpenFilePicker();
-  if (selection.length > 0) {
-      const file = await selection[0].getFile();
-      formData.append("file", file);
-  }
-    
-    try {
-        const response = await fetch(source_url(), {
-            method: "POST",
-            body: formData,
-        });
-        source_revert();
-        console.log(await response.json());
-    } catch (e) {
-        console.error(e);
-    }
-}
-
 function tab_source() {
     editor = null;
     show_tab("source").then(() => {
@@ -491,7 +476,7 @@ function restore_project() {
         if(project_name) {
             request_project(project_name, true);
         } else {
-            tab_main();
+            request_project("", true);
         }
     }
 }
@@ -539,7 +524,7 @@ socket.on("document-content", function(data) {
     fetch_to_dom("document-view", `/document/${type}`,
                  { method: 'POST',
                    headers: {
-                       'Content-Type': 'application/json'
+                       'Content-Type': 'application/json',
                    },
                    body: JSON.stringify({
                        url: url })
@@ -1273,7 +1258,8 @@ function u_identification() {
     fetch_to_dom("identification", "/identification.html", {})
         .then( () => {
             var nid = document.getElementById("n-identifications");
-            var n = parseInt(nid.getAttribute("n-ok"));
+            var n = 0;
+            if(nid) n = parseInt(nid.getAttribute("n-ok"));
             var pm = document.getElementById("public-marks");
             if(n>0) pm.classList.remove("hidden");
             else pm.classList.add("hidden");

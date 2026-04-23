@@ -6,7 +6,7 @@
   </thead>
   <tbody>
     {% for s in scans %}
-    <tr amc-scan-url="{{ s["url"] }}?attach=0"
+    <tr amc-scan-url="{{ s["url"] }}"
         amc-filename="{{ s["filename"] }}"
         class="scan-file failed-scan"
         onclick="failed_scan_view(this);">

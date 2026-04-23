@@ -78,6 +78,26 @@ temp_dir = tempfile.mkdtemp(prefix="amcapp")
 
 app.logger.info(f"Temp dir: {temp_dir}")
 
+def set_user(fake_user):
+    header_name = os.environ.get("AMC_USERHEADER")
+    if not header_name:
+        # single-user mode
+        flask_g._is_admin = False
+        flask_g._user = None
+        flask_g._real_user = None
+
+    flask_g._real_user = request.headers.get(header_name)
+    
+    admins = os.environ.get("AMC_ADMINS", "").split(",")
+    is_admin = bool(flask_g._real_user) and (flask_g._real_user in admins)
+
+    flask_g._is_admin = is_admin
+    
+    if is_admin:
+        flask_g._user = fake_user or flask_g._real_user
+    else:
+        flask_g._user = flask_g._real_user
+
 def socketio_name(name):
 
     def socketio_name_(func):
@@ -86,8 +106,9 @@ def socketio_name(name):
         def wrapper_ion(message):
             flask_g.project_name = message.get('proj')
             flask_g._sid = message.get('sid')
+            set_user(message.get('fake_user'))
             a = message.get('args')
-            current_app.logger.debug(f"⬇️  msg {name} from {flask_g._sid}")
+            current_app.logger.debug(f"⬇️  msg {name} from {flask_g._sid}: {message}")
             if a is not None:
                 func(a)
             else:
@@ -97,11 +118,24 @@ def socketio_name(name):
 
     return socketio_name_
 
+def amc_headers():
+    return { k: v for k, v in request.headers.items()
+             if k.lower().startswith('amc-') }
+
 def headers_info():
+    log = f"🏷️  {amc_headers()}"
     flask_g._sid = request.headers.get('AMC-sid')
     pn = request.headers.get('AMC-project')
     if pn:
         flask_g.project_name = pn
+    if request.values.get('user'):
+        log += f" 👤 {request.values.get('user')}"
+    set_user(request.headers.get('AMC-fake-user')
+             or request.values.get('user'))
+    log += f" U={flask_g._user} R={flask_g._real_user}"
+    if flask_g._is_admin:
+        log += " 👑"
+    app.logger.debug(log)
 
 def get_db(modules=()):
     db = getattr(flask_g, '_database', None)
@@ -178,7 +212,7 @@ def marks_csv(uuids):
 
 @socketio_name('is-online')
 def io_is_online():
-    app.logger.debug(f"📶 {flask_g._sid} (u={username()}) is online from {request.remote_addr}")
+    app.logger.debug(f"📶 {flask_g._sid} (u={flask_g._real_user}) is online from {request.remote_addr}")
 
 @app.route('/tab/<tab_name>')
 def tab(tab_name):
@@ -200,6 +234,7 @@ def serve_pil_image(pil_img):
 
 @app.route('/fs/<path:path>', methods=['GET', 'POST'])
 def fs_file(path):
+    headers_info()
     path = path.replace("..", "")
     path = projects_dir() + "/" + path
     if request.method == 'POST':
@@ -230,8 +265,15 @@ def fs_file(path):
 @app.route('/projects_list.html')
 def u_projects_list():
     headers_info()
-    projects = projects_list()
-    return render_template("projects_list.html", projects=projects)
+    all_users = bool(request.args.get('all'))
+    if all_users:
+        projects = all_projects_list()
+    else:
+        projects = projects_list()
+        if projects:
+            projects = [ (None, projects) ]
+    return render_template("projects_list.html",
+                           projects=projects)
 
 def u_open_project(name, to_reload=True):
     name, change = set_project(name)
@@ -269,6 +311,12 @@ def io_adapt_menu():
                     menus["grading"] = True
     else:
         menus = { "main": True }
+
+    if flask_g._is_admin:
+        if flask_g._user != flask_g._real_user:
+            menus["admin-back"] = True
+        else:
+            menus["admin-search"] = True
         
     emit_msg("menu", menus)
 
@@ -664,16 +712,14 @@ def upload_file_parts(f):
 
 @app.route('/upload/<dest>', methods=['POST'])
 def file_upload(dest):
-
+    headers_info()
+    
     request_files = request.files.getlist("file")
     if not request_files:
         return { 'error': 'Empty upload' }
 
     if request_files[0].filename == '':
         return { 'error': 'Empty file' }
-
-    flask_g._sid = request.form['sid']
-    flask_g.project_name = request.form['project_name']
 
     app.logger.info(f"Upload to {dest}: {len(request_files)} file(s)")
 
@@ -841,6 +887,15 @@ def io_project_config():
              ]
          ))
 
+def context_args(args = None):
+    if args is None:
+        args = dict()
+    if flask_g._user != flask_g._real_user:
+        args["user"] = flask_g._user
+    s = "?" + "&".join([ f"{k}={v}"
+                         for k,v in args.items() ])
+    return s
+
 @app.route('/files_list.html')
 def u_files_list():
     headers_info()
@@ -851,9 +906,11 @@ def u_files_list():
               for f in os.listdir(base) ]
     if not all_files:
         files = [ x for x in files if x[0]<=0 ]
+
     return render_template(
         "files_list.html",
         files=sorted(files),
+        suffix=context_args(),
         base_url=f"/fs/{flask_g.project_name}")
 
 @app.route('/defects_list.html')
@@ -883,6 +940,8 @@ def io_project_delete_file(data):
 def u_document_type(doc_type):
     headers_info()
     url = request.json.get('url')
+    if url:
+        url = url + context_args({"attach": "0"})
     return render_template(f"document_{doc_type}.html",
                            url=url)
 
@@ -1304,7 +1363,7 @@ def u_failed_report():
             local_f = lstrip_text(f[0], pdir, "")
         else:
             local_f = f[0]
-        url = purl + local_f
+        url = purl + local_f + context_args({"attach": "0"})
         scans.append({ "filename": f[0], "file": fn, "url": url })
     return render_template('failed_report.html',
                            scans=scans)
@@ -1325,7 +1384,7 @@ def io_failed_pre_process(filename):
     d, fn = os.path.split(orig_path)
     pp_file = "/cr/diagnostic/" + fn + ".png"
     pp_path = pdir + pp_file
-    pp_url  = "/fs/" + flask_g.project_name + pp_file
+    pp_url  = "/fs/" + flask_g.project_name + pp_file + context_args()
 
     amc_command(
         "analyse",
@@ -1724,7 +1783,7 @@ def x_namefield(student, copy):
     db = get_db()
     path = db.get_namefield_image(student, copy)
     if path and not path.startswith("text:"):
-        path = f"/fs/{flask_g.project_name}/cr/{path}"
+        path = f"/fs/{flask_g.project_name}/cr/{path}{context_args()}"
     return render_template("namefield.html",
                            student=student, copy=copy,
                            path=path)
@@ -1785,16 +1844,17 @@ def send_dir_list(t, subdir,
     rep = project_dir() + "/" + subdir
     fsdir = f"/fs/{flask_g.project_name}/{subdir}"
     files = [ (f,
-              f"{fsdir}/{quote(f)}",
+              f"{fsdir}/{quote(f)}{context_args()}",
               os.path.getmtime(f"{rep}/{f}") > t)
              for f in os.listdir(rep)
              if os.path.isfile(f"{rep}/{f}") ]
     files.sort()
-    args = []
-    if filename: args.append(f"filename={filename}")
-    if exclude: args.append(f"exclude={exclude}")
-    return render_template("files.html", files=files, fsdir=fsdir,
-                           args="&".join(args),
+    archive_args = {}
+    if filename: archive_args["filename"] = filename
+    if exclude: archive_args["exclude"] = exclude
+    app.logger.debug(f"context: {context_args()}")
+    return render_template("files.html", files=files,
+                           fsdir_url=fsdir + context_args(args=archive_args),
                            zip_text=zip_text)
 
 @app.route("/exported_files.html", methods=['POST'])

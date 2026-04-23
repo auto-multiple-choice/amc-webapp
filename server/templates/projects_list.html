@@ -5,11 +5,23 @@
   <div id="project-clone" class="project-action neutral" onclick="select_action(this);">{{ _('project.clone') }}</div>
   <div id="project-delete" class="project-action danger" onclick="select_action(this);">{{ _('project.delete') }}</div>
 </div>
-<div class="espace overy">
-  <ul id="projects-ul" class="projects-list selectable">
-    {% for p in projects %}
-    <li class="project-name selectable direct" onclick="select_project('{{p}}');">{{ p }}</li>
+<div class="overy">
+  {% for user,plist in projects %}
+  {% if user %}
+  <div class="espace">
+    <span class="user-name selectable"
+          amc-user="{{ user }}"
+          onclick="select_project(this, null, '{{ user }}');"
+          >{{ user }}</span>
+  </div>
+  {% endif %}
+  {% if plist %}
+  <ul amc-user="{% if user %}{{user}}{% endif %}" class="projects-ul espace projects-list selectable">
+    {% for p in plist %}
+    <li class="selectable direct" onclick="select_project(this, '{{p}}' {% if user %}, '{{user}}'{% endif %});">{{ p }}</li>
     {% endfor %}
   </ul>
+  {% endif %}
+  {% endfor %}
 </div>
 {% endif %}

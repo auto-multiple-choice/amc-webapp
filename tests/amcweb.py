@@ -91,20 +91,34 @@ class AMCWeb():
 
         return self
 
+    def quit(self):
+        self.driver.quit()
+        self.sleep(1)
+
     def session_id(self):
         return self.driver.get_cookie("amcsession")["value"]
 
     def click_on(self, element_id):
         self.driver.find_element(By.ID, element_id).click()
 
-    def projects_list(self):
+    def projects_list_element(self, user=""):
+        return self.driver.find_elements(
+            By.XPATH, f'//ul[@amc-user="{user}"]')
+
+    def projects_elements(self, user=""):
+        projects = []
+        for ple in self.projects_list_element(user=user):
+            projects += ple.find_elements(By.CSS_SELECTOR, "li")
+        return projects
+
+    def projects_list(self, user=""):
         self.goto_tab("main")
         return [ p.text for p in
-                 self.driver.find_elements(By.CSS_SELECTOR, "li.project-name") ]
+                 self.projects_elements(user=user) ]
 
-    def delete_project_if_exists(self, project_name):
+    def delete_project_if_exists(self, project_name, user=""):
         self.goto_tab("main")
-        olds = self.driver.find_elements(By.CSS_SELECTOR, "li.project-name")
+        olds = self.projects_elements(user=user)
         old = [ p for p in olds if p.text == project_name ]
         if old:
             print(f"Delete project {project_name}…")
@@ -349,7 +363,7 @@ class AMCWeb():
             print(f'Click on student {student["student"]}')
             tr = sheets.find_element(By.XPATH, f'//tr[@amc-student="{student["student"]}"]')
             tr.click()
-            self.sleep(1)
+            self.sleep(1.5)
             if student.get("name"):
                 text = sheets.find_element(By.XPATH, '//div[@class="sheetnum"]/div').text
                 print(f"Found {text}")
@@ -470,6 +484,18 @@ class AMCWeb():
                     element.send_keys(v)
         self.sleep(1)
 
+    def get_input(self, option):
+        element = self.driver.find_element(By.ID, option)
+        if element.get_attribute("type") == 'checkbox':
+            return element.is_selected()
+        else:
+            return element.get_attribute("value")
+
+    def check_options(self, options):
+        self.goto_tab("config")
+        for k,v in options.items():
+            assert self.get_input(k) == v
+
     def set_options(self, options):
         self.goto_tab("config")
         self.set_input(options)
@@ -522,3 +548,26 @@ class AMCWeb():
             self.public_marks(False)
             r = requests.get(url)
             assert r.status_code == 404
+
+    def check_admin_search(self, status=True):
+        disp = self.driver.find_element(
+            By.ID, "menu-admin-search").is_displayed()
+        print(f"admin-search displayed: {disp}")
+        assert disp == status
+
+    def switch_user(self, user, project=None):
+        self.goto_tab("main")
+        self.driver.find_element(
+            By.ID, "menu-admin-search").click()
+        if project:
+            self.driver.find_element(
+                By.XPATH,
+                f'//ul[@amc-user="{user}"]/li[text()="{project}"]').click()
+        else:
+            self.driver.find_element(
+                By.XPATH,
+                f'//span[@amc-user="{user}"]').click()
+        self.sleep(1)
+
+    def admin_back(self):
+        self.driver.find_element(By.ID, "menu-admin-back").click()

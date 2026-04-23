@@ -15,20 +15,26 @@
   <div id="app">
     
     <div id="menu">
-      <span id="connection-status" class="offline centered">⬤</span>
-      <div id="menu-main" class="menubtn" onclick="tab_main();"
+      <div class="centered">
+        <span id="connection-status" class="offline">⬤</span>
+        <span id="menu-admin-search" class="hidden admin-action adapt-menu"
+              onclick="admin_search();">👑</span>
+        <span id="menu-admin-back" class="hidden admin-action adapt-menu"
+              onclick="admin_back();">🫅</span>
+      </div>
+      <div id="menu-main" class="menubtn adapt-menu" onclick="tab_main();"
            title="{{ _('menu.main') }}"
            ><img src="/static/menu-amc.svg" class="menu"></div>
-      <div id="menu-source" class="menubtn hidden" onclick="tab_source();"
+      <div id="menu-source" class="menubtn hidden adapt-menu" onclick="tab_source();"
            title="{{ _('menu.source') }}"
            ><img src="/static/menu-source.svg" class="menu"></div>
-      <div id="menu-scans" class="menubtn hidden" onclick="tab_scans();"
+      <div id="menu-scans" class="menubtn hidden adapt-menu" onclick="tab_scans();"
            title="{{ _('menu.scans') }}"
            ><img src="/static/menu-scans.svg" class="menu"></div>
-      <div id="menu-grading" class="menubtn hidden" onclick="tab_grading();"
+      <div id="menu-grading" class="menubtn hidden adapt-menu" onclick="tab_grading();"
            title="{{ _('menu.grading') }}"
            ><img src="/static/menu-grading.svg" class="menu"></div>
-      <div id="menu-config" class="menubtn hidden" onclick="tab_config();"
+      <div id="menu-config" class="menubtn hidden adapt-menu" onclick="tab_config();"
            title="{{ _('menu.config') }}"
            ><img src="/static/menu-config.svg" class="menu"></div>
       <div id="project-name" onclick="tab_main();"></div>

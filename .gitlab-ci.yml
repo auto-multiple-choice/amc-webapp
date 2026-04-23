@@ -66,6 +66,7 @@ tests-multi:
     AMC_TESTS_DIR: "$CI_PROJECT_DIR/tests-multi"
     AMC_TESTS_SLEEP_FACTOR: 2
     AMC_USERHEADER: "X-AMC-User"
+    AMC_ADMINS: chloe
   script:
     - apk add chromium-chromedriver py3-pip ghostscript imagemagick
     - python3 -m venv /venv

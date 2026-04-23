@@ -35,7 +35,7 @@ def emit_msg(*data):
         else:
             current_app.logger.error(f"Can't find socket ID to send signal! session={request.cookies.get('amcsession')}")
             flask_g._sid = None
-    current_app.logger.debug(f"📢 msg {data[0]} to {flask_g._sid}")
+    current_app.logger.debug(f"📢 msg {data[0]} to {flask_g._sid}: {data}")
 
 def set_project(name):
     old_project = flask_g.project_name
@@ -65,17 +65,27 @@ def username():
         u = "AMC"
     return u
 
-def projects_dir(root=False):
+def projects_dir(root=False, user=None):
     pdir = os.environ.get("AMC_PROJECTSDIR",
                           os.path.expanduser('~') + "/MC-Projects")
     k = os.environ.get("AMC_USERHEADER")
     if k and not root:
-        if subdir := request.headers.get(k):
-            pdir += ("/" + subdir)
+        if user is None or not flask_g._is_admin:
+            user = flask_g._user
+        if user:
+            pdir += ("/" + user)
         else:
             pdir += "/_all"
     Path(pdir).mkdir(parents=True, exist_ok=True)
     return pdir
+
+def users_list():
+    if not flask_g._is_admin:
+        return [ flask_g._user ]
+
+    base = projects_dir(root=True)
+    return [ x for x in os.listdir(base)
+             if not x.startswith("_") ]
 
 def project_dir(p=None):
     if not p:
@@ -95,10 +105,17 @@ def project_paths_absolute(paths):
 def is_project_dir(path):
     return os.path.isdir(path) and os.path.isfile(path + "/options.xml")
 
-def projects_list():
-    pdir = projects_dir()
+def projects_list(user=None):
+    pdir = projects_dir(user=user)
     return sorted([ path for path in os.listdir(pdir)
              if is_project_dir(pdir + "/" + path) ])
+
+def all_projects_list():
+    p = []
+    for user in sorted(users_list()):
+        up = projects_list(user=user)
+        p.append( (user, up) )
+    return p
 
 def project_exists(name):
     if name:

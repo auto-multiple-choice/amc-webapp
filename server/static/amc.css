@@ -182,6 +182,27 @@ img.menu {
     overflow-y: auto;
 }
 
+.admin-action {
+    cursor: pointer;
+}
+
+.user-name {
+    font-weight: bold;
+    margin: 5px;
+    padding: 5px;
+    border-radius: 10px;
+    background: #eee;
+    border: #0027a3 solid 2px;
+    margin: 5px;
+    display: block;
+}
+.user-name:hover {
+    background: #9bbedf;
+}
+.user-name.selectable {
+    cursor: pointer;
+}
+
 ul.selectable {
     list-style-type: none;
     margin: 0;
