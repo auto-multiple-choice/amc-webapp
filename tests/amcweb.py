@@ -26,7 +26,7 @@ class AMCWeb():
     def __init__(self, lang=None, user_header=None,
                  random_delay=False, prefix=""):
         self.lang = lang
-        self.project = None
+        self.project_name = None
         self.tab = None
         self.user_name = None
         self.fake_user = None
@@ -56,7 +56,7 @@ class AMCWeb():
 
     def set_user(self, user_name):
         assert self.user_header is not None
-        self.log(f"* switch to user {user_name}")
+        self.log(f"* set user {user_name}")
         self.driver.execute_cdp_cmd(
             'Network.setExtraHTTPHeaders',
             { "headers": { self.user_header: user_name } }
@@ -151,6 +151,8 @@ class AMCWeb():
         self.driver.get(self.base_url)
         self.tab = None
         self.sleep(1)
+        if self.fake_user:
+            self.switch_user(self.fake_user, self.project_name)
         return self
 
     def reload(self, tab_name=None):
@@ -310,6 +312,7 @@ class AMCWeb():
         local_path = self.temp_dir + "/" + local_filename
         with open(local_path, "wb") as f:
             f.write(r.content)
+        self.log(f"-> {local_path}")
         return local_path
 
     def upload_scans(self, *paths, **kwargs):
@@ -581,6 +584,7 @@ class AMCWeb():
         assert disp == status
 
     def switch_user(self, user, project=None):
+        self.log(f"fake user {user}")
         self.goto_tab("main")
         self.driver.find_element(
             By.ID, "menu-admin-search").click()
@@ -592,6 +596,9 @@ class AMCWeb():
             self.driver.find_element(
                 By.XPATH,
                 f'//span[@amc-user="{user}"]').click()
+        self.fake_user = user
+        back = self.driver.find_element(By.ID, "menu-admin-back")
+        assert back.get_attribute("title") == user
         self.sleep(1)
 
     def admin_back(self):

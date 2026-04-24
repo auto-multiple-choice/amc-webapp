@@ -9,17 +9,34 @@ import random
 
 n_users = 10
 
-def one_user(u):
-
+def launch_u(u):
     aw = AMCWeb(
         user_header=os.environ.get("AMC_USERHEADER", "Test-User"),
         random_delay=True, prefix=f"{u}> ",
     )
-    aw.extend_sleep_factor(2.5)
+    aw.extend_sleep_factor(3)
     aw.sleep(5 * random.random())
-    aw.launch().set_user(f"jojo{u}")
+    aw.launch()
+
+    return aw
+
+def one_user(u):
+
+    aw = launch_u(u)
+
+    aw.set_user(f"jojo{u}")
     aw.goto_home()
-    
+
+    if u % 4 == 0:
+        aw.quit()
+
+        aw = launch_u(u)
+        
+        aw.set_user("chloe")
+        aw.goto_home()
+        aw.sleep(1)
+        aw.switch_user(f"jojo{u}")
+
     project_name = "test-meeting"
     if u >= 5:
         project_name += str(u)
