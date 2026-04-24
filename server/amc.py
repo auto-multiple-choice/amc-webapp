@@ -138,14 +138,16 @@ def headers_info():
     app.logger.debug(log)
 
 def get_db(modules=()):
-    db = getattr(flask_g, '_database', None)
-    if not db:
-        pdir = project_dir()
-        if pdir:
+    pdir = project_dir()
+    if pdir:
+        db = getattr(flask_g, '_database', None)
+        if db and db.project_dir != pdir:
+            db = None
+        if not db:
             db = Amcdb(project_dir(), modules)
             flask_g._database = db
-        else:
-            db = None
+    else:
+        db = None
     return db
 
 @app.teardown_appcontext
