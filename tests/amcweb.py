@@ -16,21 +16,33 @@ import sys
 import subprocess
 import csv
 import datetime
+import random
 from pathlib import Path
 
 cmd_ctrl = Keys.COMMAND if sys.platform == 'darwin' else Keys.CONTROL
 
 class AMCWeb():
 
-    def __init__(self, lang=None, user_header=None):
+    def __init__(self, lang=None, user_header=None,
+                 random_delay=False, prefix=""):
         self.lang = lang
         self.project = None
         self.tab = None
+        self.user_name = None
+        self.fake_user = None
+        self.random_delay = random_delay
+        self.prefix = prefix
         self.user_header = user_header
         self.base_url = os.environ.get('AMCWEB_BASEURL', "http://127.0.0.1:5000")
         self.sleep_factor = float(os.environ.get(
             'AMC_TESTS_SLEEP_FACTOR', 1))
         self.renew_temp_dir()
+
+    def extend_sleep_factor(self, mult):
+        self.sleep_factor *= mult
+
+    def log(self, text):
+        print(self.prefix + text)
 
     def renew_temp_dir(self):
         if d := os.environ.get('AMC_TESTS_DIR'):
@@ -40,19 +52,23 @@ class AMCWeb():
             Path(self.temp_dir).mkdir(parents=True, exist_ok=True)
         else:
             self.temp_dir = tempfile.mkdtemp(prefix="amcweb-test-")
-        print(f"TEMPDIR: {self.temp_dir}")
+        self.log(f"TEMPDIR: {self.temp_dir}")
 
     def set_user(self, user_name):
         assert self.user_header is not None
-        print(f"* switch to user {user_name}")
+        self.log(f"* switch to user {user_name}")
         self.driver.execute_cdp_cmd(
             'Network.setExtraHTTPHeaders',
             { "headers": { self.user_header: user_name } }
         )
+        self.user_name = user_name
         self.goto_home()
 
     def sleep(self, t):
-        time.sleep(t * self.sleep_factor)
+        dt = t * self.sleep_factor
+        if self.random_delay:
+            dt = dt * (1 + 0.25 * random.random())
+        time.sleep(dt)
 
     def launch(self):
         chrome_options = Options()
@@ -121,7 +137,7 @@ class AMCWeb():
         olds = self.projects_elements(user=user)
         old = [ p for p in olds if p.text == project_name ]
         if old:
-            print(f"Delete project {project_name}…")
+            self.log(f"Delete project {project_name}…")
             self.driver.find_element(By.ID, 'project-delete').click()
             self.sleep(0.5)
             old[0].click()
@@ -154,7 +170,7 @@ class AMCWeb():
 
     def new_project_from_template(self, project_name, template,
                                   group=True, test_emptyname=False):
-        print(f"Create project {project_name} from template {template}…")
+        self.log(f"Create project {project_name} from template {template}…")
         group_name = template.split(":")[0]
         self.driver.find_element(By.ID, 'way-template').click()
         self.sleep(.5)
@@ -197,7 +213,7 @@ class AMCWeb():
         self.sleep(1)
 
     def new_project_from_source_content(self, project_name, format="plain", content=""):
-        print(f"Create project {project_name} ({format})…")
+        self.log(f"Create project {project_name} ({format})…")
         self.driver.find_element(By.ID,'new-project-name').send_keys(project_name)
         self.driver.find_element(By.ID, 'way-empty').click()
         sel = Select(self.driver.find_element(By.ID, 'source-type'))
@@ -213,7 +229,7 @@ class AMCWeb():
         self.set_source_content(content)
 
     def new_project_from_file(self, project_name, archive_path):
-        print(f"Create project {project_name} from {archive_path}…")
+        self.log(f"Create project {project_name} from {archive_path}…")
         self.driver.find_element(By.ID,'new-project-name').send_keys(project_name)
         self.driver.find_element(By.ID, 'way-file').click()
         self.driver.find_element(By.ID, 'source-file').send_keys(os.path.abspath(archive_path))
@@ -226,15 +242,15 @@ class AMCWeb():
         
     def goto_tab(self, tab_name, force=False):
         if self.tab == tab_name and not force:
-            print(f"Already on tab {tab_name}")
+            self.log(f"Already on tab {tab_name}")
         else:
-            print(f"Go to tab {tab_name}…")
+            self.log(f"Go to tab {tab_name}…")
             self.driver.find_element(By.ID, 'menu-' + tab_name).click()
             self.tab = tab_name
             self.sleep(1)
 
     def document_view(self, doc_type, build=False):
-        print(f"Looking at document {doc_type}…")
+        self.log(f"Looking at document {doc_type}…")
         self.goto_tab("source")
         sel = Select(self.driver.find_element(By.ID, 'doc-type'))
         sel.select_by_value(doc_type)
@@ -248,7 +264,7 @@ class AMCWeb():
         self.sleep(2)
 
     def print_menu(self):
-        print("Open print menu…")
+        self.log("Open print menu…")
         self.document_view("sujet")
         self.click_on('doc-print-btn')
         self.sleep(.5)
@@ -259,7 +275,7 @@ class AMCWeb():
         return path
 
     def print_to_files(self, first_page=1, last_page=None):
-        print("Print to files…")
+        self.log("Print to files…")
         self.print_menu()
         if first_page:
             val = self.driver.find_element(By.ID, 'student1')
@@ -276,11 +292,20 @@ class AMCWeb():
         return path
         
     def get_fs_file(self, path, local_filename=None):
-        print(f"Download {path}…")
+        self.log(f"Download {path}…")
         if local_filename is None:
             local_filename = path
-        r = requests.get(f"{self.base_url}/fs/{self.project_name}/{path}",
-                         cookies={ "amcsession": self.session_id() })
+        url = f"{self.base_url}/fs/{self.project_name}/{path}"
+        headers = {}
+        if self.user_name:
+            headers[self.user_header] = self.user_name
+            if self.fake_user:
+                url += f"?user={self.fake_user}"
+        r = requests.get(url,
+                         headers=headers,
+                         cookies={
+                             "amcsession": self.session_id()
+                         })
         assert r.status_code == 200
         local_path = self.temp_dir + "/" + local_filename
         with open(local_path, "wb") as f:
@@ -295,13 +320,13 @@ class AMCWeb():
         if kwargs.get('multimode') is not None:
             self.set_input({'multi_scan_mode': kwargs.get('multimode')})
             
-        print("Uploading scans…")
+        self.log("Uploading scans…")
         txt = "\n".join([ os.path.abspath(p) for p in paths ])
         self.driver.find_element(By.ID, 'scans-upload').send_keys(txt)
         self.sleep(2 * len(paths))
 
     def upload_list(self, path):
-        print("Uploading students list…")
+        self.log("Uploading students list…")
         self.goto_tab("grading")
         self.driver.find_element(By.ID, 'students-upload').send_keys(os.path.abspath(path))
         self.sleep(2)
@@ -318,10 +343,10 @@ class AMCWeb():
         return pages
 
     def check_scanned_pages(self, pages_to_check, pages_must_be_missing=[]):
-        print(f"Checking for scanned pages {pages_to_check}…")
+        self.log(f"Checking for scanned pages {pages_to_check}…")
         pages = self.scanned_pages_list()
         for p in pages:
-            print(f"Page: {p}")
+            self.log(f"Page: {p}")
             pid = (int(p.get("student",0)),
                    int(p.get("page"),0),
                    int(p.get("copy"),0))
@@ -338,12 +363,12 @@ class AMCWeb():
             if check.get(k):
                 txt = w.find_element(By.ID, f"warn-{k}-text")
                 assert check[k] in txt.text
-                print(f"Dialog [{k}]: {check[k]}")
+                self.log(f"Dialog [{k}]: {check[k]}")
         if ok:
             w.find_element(By.CLASS_NAME, "btn").click()
 
     def do_grading(self):
-        print("Grading…")
+        self.log("Grading…")
         self.goto_tab("grading")
         self.click_on("do-mark")
         self.sleep(2)
@@ -360,13 +385,13 @@ class AMCWeb():
         sheets = self.driver.find_element(By.ID, 'assoc-sheets')
         slist = self.driver.find_element(By.ID, 'students-list')
         for student in assoc:
-            print(f'Click on student {student["student"]}')
+            self.log(f'Click on student {student["student"]}')
             tr = sheets.find_element(By.XPATH, f'//tr[@amc-student="{student["student"]}"]')
             tr.click()
             self.sleep(1.5)
             if student.get("name"):
                 text = sheets.find_element(By.XPATH, '//div[@class="sheetnum"]/div').text
-                print(f"Found {text}")
+                self.log(f"Found {text}")
                 if text != student["name"]:
                     raise RuntimeError(f'Can\'t see name {student["name"]} (instead: {text})')
             slist.find_element(By.XPATH, f'//li[@amc-id="{student["id"]}"]').click()
@@ -374,7 +399,7 @@ class AMCWeb():
         self.driver.find_element(By.ID, 'assoc-manual-done').click()
 
     def do_export(self, **options):
-        print("Export marks…")
+        self.log("Export marks…")
         self.goto_tab("grading")
 
         sel = Select(self.driver.find_element(By.ID, 'format_export'))
@@ -416,7 +441,7 @@ class AMCWeb():
                         expected = float(expected)
                         computed = None if computed is None else float(computed) 
                     if expected == computed:
-                        print(f"Right mark: for student {student}: {k} = {v}")
+                        self.log(f"Right mark: for student {student}: {k} = {v}")
                     else:
                         errors.append(
                             f"{v}\nWrong mark for student {student}: {k} = {computed} but should be {expected}")
@@ -424,13 +449,13 @@ class AMCWeb():
         for k,v in marks.items():
             errors.append(f"Missing grades for {k}, should be {v}")
         if errors:
-            print(f"Wrong marks from {filename}:")
+            self.log(f"Wrong marks from {filename}:")
             for e in errors:
-                print(e)
+                self.log(e)
             raise RuntimeError("Wrong marks")
 
     def do_annotate(self, **options):
-        print("Annotating…")
+        self.log("Annotating…")
         self.goto_tab("grading")
 
         sel = Select(self.driver.find_element(By.ID, 'regroupement_type'))
@@ -456,7 +481,7 @@ class AMCWeb():
         missing = set(files) - set(annotated_files.keys())
         if missing:
             raise RuntimeError(f"Missing annotated files: {missing}")
-        print(f"Annotated files: {list(annotated_files.keys())}")
+        self.log(f"Annotated files: {list(annotated_files.keys())}")
 
         for filename in files:
             annotated_files[filename].click()
@@ -468,7 +493,7 @@ class AMCWeb():
     def set_input(self, options):
         for k,v in options.items():
             element = self.driver.find_element(By.ID, k)
-            print(f"Set {k}={v}")
+            self.log(f"Set {k}={v}")
             if v==True:
                 if not element.is_selected():
                     element.click()
@@ -503,7 +528,7 @@ class AMCWeb():
     def check_text(self, eid, text):
         e = self.driver.find_element(By.ID, eid)
         assert e.text == text
-        print(f"Text[{eid}]={text}")
+        self.log(f"Text[{eid}]={text}")
 
     def public_marks(self, activate=True):
         self.goto_tab("grading")
@@ -533,18 +558,18 @@ class AMCWeb():
                 student_mark = None
             if marks.get(student_id):
                 if marks[student_id] == student_mark:
-                    print(f"Public mark OK for student {student_id}: {student_mark}")
+                    self.log(f"Public mark OK for student {student_id}: {student_mark}")
                     del marks[student_id]
                 else:
                     raise RuntimeError(
                         f"Wrong mark for student {student_id}: expected {marks[student_id]}, got {student_mark}")
         if marks:
             for k in marks.keys():
-                print(f"Missing public mark for student {k}")
+                self.log(f"Missing public mark for student {k}")
             raise RuntimeError("Public marks not complete")
 
         if and_disable:
-            print("Test disabling public marks…")
+            self.log("Test disabling public marks…")
             self.public_marks(False)
             r = requests.get(url)
             assert r.status_code == 404
@@ -552,7 +577,7 @@ class AMCWeb():
     def check_admin_search(self, status=True):
         disp = self.driver.find_element(
             By.ID, "menu-admin-search").is_displayed()
-        print(f"admin-search displayed: {disp}")
+        self.log(f"admin-search displayed: {disp}")
         assert disp == status
 
     def switch_user(self, user, project=None):

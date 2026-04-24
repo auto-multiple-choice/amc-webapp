@@ -38,7 +38,7 @@ def emit_msg(*data):
     current_app.logger.debug(f"📢 msg {data[0]} to {flask_g._sid}: {data}")
 
 def set_project(name):
-    old_project = flask_g.project_name
+    old_project = getattr(flask_g, 'project_name', None)
     if not project_exists(name):
         name = ""
     if name != old_project:

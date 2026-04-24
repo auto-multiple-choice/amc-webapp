@@ -483,6 +483,7 @@ def create_project_dirs(rep):
 def check_unused_name(name, warn=True):
     rep = project_dir(p=name)
     if os.path.exists(rep):
+        app.logger.warn(f"Project already exists: {rep}")
         if warn:
             emit_msg("dialog",
                      render_template(

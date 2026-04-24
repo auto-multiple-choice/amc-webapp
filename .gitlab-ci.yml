@@ -74,6 +74,7 @@ tests-multi:
     - /venv/bin/pip3 install -r requirements.txt
     - mkdir -p $AMC_TESTS_DIR
     - /venv/bin/python3 user.py
+    - /venv/bin/python3 meeting.py
   artifacts:
     when: always
     paths:
