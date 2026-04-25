@@ -28,7 +28,7 @@ function scroll_into_view(elem) {
         elem.scrollIntoView({block: "center"});
 }
 
-function fetch_to_dom(id, url, opts) {
+function fetch_content(url, opts) {
     if(!opts) opts={};
     if(!opts["headers"]) opts["headers"] = {};
     if(fake_user) opts["headers"]["AMC-fake-user"] = fake_user;
@@ -39,7 +39,11 @@ function fetch_to_dom(id, url, opts) {
             if(!response.ok)
                 throw new Error(`Request failed to ${url}`);
             return response.text();
-        })
+        });
+}
+
+function fetch_to_dom(id, url, opts) {
+    return fetch_content(url, opts)
         .then(html => {
             if(!( id instanceof Array )) {
                 id = [ id ];
@@ -363,12 +367,37 @@ function do_create_project() {
     }
 }
 
-socket.on("source-name", function(name) {
-    var cn = document.getElementById('source-name');
-    if(cn) {
-        cn.textContent = name;
-    } else {
-        alert("source-name not found");
+socket.on("source-name", function(data) {
+    var name = data[0];
+    var mode = data[1];
+    var url = data[2];
+    var cc = document.getElementById('code-code');
+    if(cc) {
+        if(!editor) {
+            editor = ace.edit("code-code");
+            editor.setTheme("ace/theme/textmate");
+            editor.session.on('change', function(delta) {
+                source_modified(true);
+            });
+        }
+        editor.session.setMode("ace/mode/" + mode);
+        fetch_content(url, {})
+            .then(code_text => {
+                editor.session.setValue(code_text, -1);
+            })
+            .then(() => {
+                source_modified(false);
+                fl = document.getElementById("files-list");
+                if(fl) {
+                    fl.classList.add("hidden");
+                }
+                var cn = document.getElementById('source-name');
+                if(cn) {
+                    cn.textContent = name;
+                } else {
+                    console.log("Warning: source-name not found");
+                }
+            });
     }
 });
 
@@ -388,26 +417,6 @@ function source_modified(t) {
         }
     }
 }
-
-socket.on("source-code", function(data) {
-    var cc = document.getElementById('code-code');
-    if(cc) {
-        if(!editor) {
-            editor = ace.edit("code-code");
-            editor.setTheme("ace/theme/textmate");
-            editor.session.on('change', function(delta) {
-                source_modified(true);
-            });
-        }
-        editor.session.setMode("ace/mode/" + data[0]);
-        editor.session.setValue(data[1], -1);
-        source_modified(false);
-        fl = document.getElementById("files-list");
-        if(fl) {
-            fl.classList.add("hidden");
-        }
-    }
-});
 
 socket.on("source-saved", function() {
     source_modified(false);

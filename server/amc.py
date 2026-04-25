@@ -854,7 +854,6 @@ def io_source_code(filename):
     if not filename:
         filename = default_source_file()
         change_option("texsrc", filename)
-    emit_msg("source-name", filename)
 
     mode = "plain_text"
     if re.match(r'.*\.(tex|latex)$', filename, re.IGNORECASE):
@@ -866,12 +865,9 @@ def io_source_code(filename):
     elif re.match(r'.*\.(txt)$', filename, re.IGNORECASE):
         mode = "amc_txt"
 
-    fn = project_dir() + "/" + filename
-    filecontent = ""
-    if os.path.exists(fn):
-        with open(fn, "r") as f:
-            filecontent = f.read()
-    emit_msg("source-code", [mode, filecontent])
+    url = f"/fs/{flask_g.project_name}/{filename}"
+
+    emit_msg("source-name", [filename, mode, url])
 
 def file_level(base, main_source, f):
     ff = f"{base}/{f}"
