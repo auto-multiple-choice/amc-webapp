@@ -102,6 +102,8 @@ class AMCWeb():
             service=svc)
         self.driver.implicitly_wait(5)
 
+        self.driver.set_window_size(1400, 800)
+
         if self.user_header:
             self.driver.execute_cdp_cmd('Network.enable', {})
 
