@@ -4,7 +4,7 @@ from amcweb import AMCWeb
 import os
 import sys
 import subprocess
-from multiprocessing import Process
+from multiprocessing import Process, set_start_method
 import random
 
 n_users = 10
@@ -111,6 +111,8 @@ Presentation: Remplissez du moeix que vous pouvez
         marks = { str(student): { "Mark": maxi } },
         export=True
     )
+
+set_start_method('fork')
 
 processes = []
     
