@@ -7,7 +7,7 @@ import subprocess
 from multiprocessing import Process, set_start_method
 import random
 
-n_users = 10
+n_users = int(os.environ.get("AMC_TESTS_PROCESSES", 10))
 
 def launch_u(u):
     aw = AMCWeb(

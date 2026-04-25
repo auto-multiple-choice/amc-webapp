@@ -65,6 +65,7 @@ tests-multi:
     AMC_TESTS_NO_SANDBOX: 1
     AMC_TESTS_DIR: "$CI_PROJECT_DIR/tests-multi"
     AMC_TESTS_SLEEP_FACTOR: 2
+    AMC_TESTS_PROCESSES: 2
     AMC_USERHEADER: "X-AMC-User"
     AMC_ADMINS: chloe
   script:

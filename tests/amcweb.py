@@ -72,6 +72,8 @@ class AMCWeb():
 
     def launch(self):
         chrome_options = Options()
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
         if os.environ.get('AMC_TESTS_HEADLESS'):
             chrome_options.add_argument("--headless=new")
         if os.environ.get('AMC_TESTS_NO_SANDBOX'):
