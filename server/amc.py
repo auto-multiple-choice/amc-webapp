@@ -836,7 +836,11 @@ def io_data_capture(list_path):
     
 @socketio_name('ncopies')
 def io_ncopies(n):
-    n = int(n)
+    n = re.sub(r'[^0-9]+', '', str(n))
+    if n:
+        n = int(n)
+    else:
+        n = 0
     change_option("nombre_copies", n)
 
 @socketio_name('source-code')
