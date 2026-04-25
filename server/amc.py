@@ -268,7 +268,7 @@ def fs_file(path):
 @app.route('/projects_list.html')
 def u_projects_list():
     headers_info()
-    all_users = bool(request.args.get('all'))
+    all_users = bool(request.args.get('all')) and flask_g._is_admin
     if all_users:
         projects = all_projects_list()
     else:

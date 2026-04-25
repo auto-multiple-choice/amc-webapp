@@ -5,6 +5,7 @@ from selenium.webdriver import Keys, ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.chrome.options import Options
+from selenium.common import NoSuchElementException, ElementNotInteractableException
 
 import time
 import tempfile
@@ -100,8 +101,8 @@ class AMCWeb():
         self.driver = selenium.webdriver.Chrome(
             options=chrome_options,
             service=svc)
-        self.driver.implicitly_wait(5)
 
+        self.sleep(1)
         self.driver.set_window_size(1400, 800)
 
         if self.user_header:
@@ -118,12 +119,14 @@ class AMCWeb():
     def session_id(self):
         return self.driver.get_cookie("amcsession")["value"]
 
-    def click_on(self, element_id):
-        self.driver.find_element(By.ID, element_id).click()
+    def click_on(self, element_id, by=By.ID):
+        self.wait_for_visible(element_id, by=by)
+        self.driver.find_element(by, element_id).click()
 
     def projects_list_element(self, user=""):
-        return self.driver.find_elements(
-            By.XPATH, f'//ul[@amc-user="{user}"]')
+        x = f'//ul[@amc-user="{user}"]'
+        self.wait_for_visible(x, by=By.XPATH)
+        return self.driver.find_elements(By.XPATH, x)
 
     def projects_elements(self, user=""):
         projects = []
@@ -174,6 +177,63 @@ class AMCWeb():
         if accept:
             alert.accept()
 
+    def wait_for_name(self, kind, name):
+        eid = f"{kind}-name"
+        if name == True:
+            self.wait_for_different(eid, "")
+        else:
+            self.wait_for_equal(eid, name)
+
+    def wait_for_different(self, element, text, by=By.ID):
+        wait = WebDriverWait(self.driver,
+                             timeout=10*self.sleep_factor,
+                             poll_frequency=.2,
+                             ignored_exceptions=[NoSuchElementException])
+        wait.until(lambda _ :
+                   self.driver.find_element(by, element).text != text)
+
+    def wait_for_equal(self, element, text, by=By.ID):
+        wait = WebDriverWait(self.driver,
+                             timeout=10*self.sleep_factor,
+                             poll_frequency=.2,
+                             ignored_exceptions=[NoSuchElementException])
+        wait.until(lambda _ :
+                   self.driver.find_element(by, element).text == text)
+
+    def element_is_hidden(self, element, by=By.ID):
+        e = self.driver.find_element(by, element)
+        cl = e.get_attribute('class').split()
+        return "hidden" in cl
+
+    def wait_for_visible(self, element, total=10, by=By.ID):
+        wait = WebDriverWait(self.driver,
+                             timeout=total*self.sleep_factor,
+                             poll_frequency=.2,
+                             ignored_exceptions=[NoSuchElementException])
+        wait.until(lambda _ :
+                   not self.element_is_hidden(element, by=by))
+
+    def wait_for_hidden(self, element, total=10, by=By.ID):
+        wait = WebDriverWait(self.driver,
+                             timeout=total*self.sleep_factor,
+                             poll_frequency=.2,
+                             ignored_exceptions=[NoSuchElementException])
+        wait.until(lambda _ :
+                   self.element_is_hidden(element, by=by))
+
+    def wait_for_endcommand(self, start_delay=.5, total=10, end_delay=.5):
+        self.sleep(start_delay)
+        self.wait_for_hidden("info-panel", total=total)
+        self.sleep(end_delay)
+
+    def wait_for_downloaded(self, filename, end_delay=.5):
+        path = self.temp_dir + "/" + filename
+        wait = WebDriverWait(self.driver,
+                             timeout=10*self.sleep_factor,
+                             poll_frequency=.2)
+        wait.until(lambda _ : os.path.isfile(path))
+        self.sleep(end_delay)
+
     def new_project_from_template(self, project_name, template,
                                   group=True, test_emptyname=False):
         self.log(f"Create project {project_name} from template {template}…")
@@ -196,7 +256,9 @@ class AMCWeb():
 
         self.driver.find_element(By.ID,'new-project-name').send_keys(project_name)
         create.click()
-        self.sleep(2)
+
+        self.wait_for_name("project", project_name)
+        self.sleep(1)
 
         self.project_name = project_name
         self.tab = "source"
@@ -227,12 +289,15 @@ class AMCWeb():
         self.sleep(.5)
         self.driver.find_element(
             By.ID, "do-create-project").click()
-        self.sleep(2)
+
+        self.wait_for_name("project", project_name)
+        self.sleep(.5)
 
         self.project_name = project_name
         self.tab = "source"
 
         self.set_source_content(content)
+        self.sleep(.5)
 
     def new_project_from_file(self, project_name, archive_path):
         self.log(f"Create project {project_name} from {archive_path}…")
@@ -241,7 +306,9 @@ class AMCWeb():
         self.driver.find_element(By.ID, 'source-file').send_keys(os.path.abspath(archive_path))
         self.driver.find_element(
             By.ID, "do-create-project").click()
-        self.sleep(2)
+
+        self.wait_for_name("project", project_name)
+        self.sleep(1)
 
         self.project_name = project_name
         self.tab = "source"
@@ -253,6 +320,13 @@ class AMCWeb():
             self.log(f"Go to tab {tab_name}…")
             self.driver.find_element(By.ID, 'menu-' + tab_name).click()
             self.tab = tab_name
+
+            match tab_name:
+                case "source":
+                    self.wait_for_name("source", True)
+                case "scans":
+                    self.wait_for_visible("scans-pages")
+            
             self.sleep(1)
 
     def document_view(self, doc_type, build=False):
@@ -260,14 +334,20 @@ class AMCWeb():
         self.goto_tab("source")
         sel = Select(self.driver.find_element(By.ID, 'doc-type'))
         sel.select_by_value(doc_type)
-        self.sleep(2)
+        if doc_type == "layout":
+            self.wait_for_different("layout-page", "")
+        else:
+            self.sleep(2)
         if build:
             self.driver.find_element(By.ID, 'doc-update').click()
-            self.sleep(5 if doc_type=="sujet" else 2.5)
+            self.wait_for_endcommand()
+            self.sleep(2)
         
     def layout_page(self, action):
+        start_page = self.driver.find_element(By.ID, 'layout-page').text
         self.click_on('layout-page-' + action)
-        self.sleep(2)
+        self.wait_for_different("layout-page", start_page)
+        self.sleep(.5)
 
     def print_menu(self):
         self.log("Open print menu…")
@@ -292,7 +372,7 @@ class AMCWeb():
             val.clear()
             val.send_keys(str(last_page))
         self.click_on('print-files-btn')
-        self.sleep(3)
+        self.wait_for_endcommand()
         path = self.check_downloaded("printed.zip")
         self.goto_home()
         return path
@@ -330,13 +410,14 @@ class AMCWeb():
         self.log("Uploading scans…")
         txt = "\n".join([ os.path.abspath(p) for p in paths ])
         self.driver.find_element(By.ID, 'scans-upload').send_keys(txt)
-        self.sleep(2 * len(paths))
+        self.wait_for_endcommand( total=max(10, 2 * len(paths)) )
+        self.sleep(1)
 
     def upload_list(self, path):
         self.log("Uploading students list…")
         self.goto_tab("grading")
         self.driver.find_element(By.ID, 'students-upload').send_keys(os.path.abspath(path))
-        self.sleep(2)
+        self.wait_for_endcommand()
 
     def scanned_pages_list(self):
         tbody = self.driver.find_element(By.ID, 'scans-pages-rows')
@@ -378,11 +459,11 @@ class AMCWeb():
         self.log("Grading…")
         self.goto_tab("grading")
         self.click_on("do-mark")
-        self.sleep(2)
+        self.wait_for_endcommand()
 
     def do_association_auto(self):
         self.click_on('do-association-auto')
-        self.sleep(1)
+        self.wait_for_endcommand()
         self.read_dialog()
 
     def do_association_manual(self, assoc):
@@ -404,6 +485,7 @@ class AMCWeb():
             slist.find_element(By.XPATH, f'//li[@amc-id="{student["id"]}"]').click()
             self.sleep(.5)
         self.driver.find_element(By.ID, 'assoc-manual-done').click()
+        self.sleep(.5)
 
     def do_export(self, **options):
         self.log("Export marks…")
@@ -416,7 +498,7 @@ class AMCWeb():
         sel.select_by_value(options.get('csv_ticked', 'AB'))
 
         self.click_on("do-export")
-        self.sleep(2)
+        self.wait_for_endcommand(end_delay=1)
 
     def check_marks(self, marks={}, export=False):
         if export:
@@ -473,7 +555,7 @@ class AMCWeb():
         model.send_keys(options.get('model', ''))
 
         self.click_on("do-annotate")
-        self.sleep(2)
+        self.wait_for_endcommand()
 
     def check_annotated_files(self, *files, annotate=False):
         if annotate:
@@ -492,8 +574,7 @@ class AMCWeb():
 
         for filename in files:
             annotated_files[filename].click()
-            self.sleep(1)
-            self.check_downloaded(filename)
+            self.wait_for_downloaded(filename)
 
         self.reload()
 
@@ -593,17 +674,20 @@ class AMCWeb():
         self.driver.find_element(
             By.ID, "menu-admin-search").click()
         if project:
-            self.driver.find_element(
-                By.XPATH,
-                f'//ul[@amc-user="{user}"]/li[text()="{project}"]').click()
+            x = f'//ul[@amc-user="{user}"]/li[text()="{project}"]'
         else:
-            self.driver.find_element(
-                By.XPATH,
-                f'//span[@amc-user="{user}"]').click()
+            x = f'//span[@amc-user="{user}"]'
+        self.click_on(x, by=By.XPATH)
         self.fake_user = user
+        self.wait_for_visible("menu-admin-back")
+        if project:
+            self.wait_for_name("source", True)
+        else:
+            self.sleep(1)
         back = self.driver.find_element(By.ID, "menu-admin-back")
         assert back.get_attribute("title") == user
         self.sleep(1)
 
     def admin_back(self):
         self.driver.find_element(By.ID, "menu-admin-back").click()
+        self.sleep(1)

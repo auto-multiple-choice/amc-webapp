@@ -387,7 +387,7 @@ socket.on("source-name", function(data) {
             })
             .then(() => {
                 source_modified(false);
-                fl = document.getElementById("files-list");
+                var fl = document.getElementById("files-list");
                 if(fl) {
                     fl.classList.add("hidden");
                 }
