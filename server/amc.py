@@ -20,6 +20,7 @@ import base64
 import csv
 import uuid
 import subprocess
+from filelock import FileLock
 from urllib.parse import quote
 from unidecode import unidecode
 from lxml import etree
@@ -280,7 +281,10 @@ def u_projects_list():
 def u_open_project(name, to_reload=True):
     name, change = set_project(name)
     if change and name:
-        amc_command("db", "upgrade")
+        options_file, empty = option_file_from_name("")
+        lock = FileLock(options_file + ".lock")
+        with lock:
+            amc_command("db", "upgrade")
     emit_msg("project-open", [name, to_reload])
 
 @socketio_name('request-project')
