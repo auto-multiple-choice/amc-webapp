@@ -32,6 +32,7 @@ tests-single:
     AMC_TESTS_NO_SANDBOX: 1
     AMC_TESTS_DIR: "$CI_PROJECT_DIR/tests-single"
     AMC_TESTS_SLEEP_FACTOR: 2
+    AMC_TESTS_PROCESSES: 2
   script:
     - apk add chromium-chromedriver py3-pip ghostscript imagemagick
     - python3 -m venv /venv
@@ -44,6 +45,7 @@ tests-single:
     - /venv/bin/python3 pdfform.py
     - /venv/bin/python3 multiple.py
     - /venv/bin/python3 i18n.py
+    - /venv/bin/python3 options.py
   artifacts:
     when: always
     paths:

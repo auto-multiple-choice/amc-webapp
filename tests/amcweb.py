@@ -104,6 +104,7 @@ class AMCWeb():
 
         self.sleep(1)
         self.driver.set_window_size(1400, 800)
+        self.sleep(1)
 
         if self.user_header:
             self.driver.execute_cdp_cmd('Network.enable', {})
@@ -594,7 +595,7 @@ class AMCWeb():
                     sel.select_by_value(v)
                 else:
                     element.clear()
-                    element.send_keys(v)
+                    element.send_keys(str(v) + "\t")
         self.sleep(1)
 
     def get_input(self, option):
@@ -667,6 +668,13 @@ class AMCWeb():
             By.ID, "menu-admin-search").is_displayed()
         self.log(f"admin-search displayed: {disp}")
         assert disp == status
+
+    def open_project(self, project_name):
+        self.log(f"Open project {project_name}")
+        self.goto_tab("main")
+        self.click_on(f'//li[text()="{project_name}"]', by=By.XPATH)
+        self.wait_for_name("source", True)
+        self.sleep(1)
 
     def switch_user(self, user, project=None):
         self.log(f"fake user {user}")
