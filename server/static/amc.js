@@ -1479,10 +1479,9 @@ function change_config_value(e) {
         value = (e.checked ? "1" : "");
     else if(e.type == "select-one"
             || e.type == "text"
-            || e.type == "number")
+            || e.type == "number"
+            || e.type == "textarea")
         value = e.value;
-    else if(e.type == "textarea")
-        value = e.textContent;
     else {
         console.log("Unknown type: " + e.type);
         return;
