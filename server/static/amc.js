@@ -159,7 +159,9 @@ function project_rename(element, name) {
     inp.setAttribute("class", "project-change-name");
     inp.value = name;
     element.textContent = "";
+    element.setAttribute("onclick", "");
     element.appendChild(inp);
+    inp.focus();
 }
 
 function project_rename_key(e, event) {
