@@ -151,6 +151,19 @@ def get_db(modules=()):
         db = None
     return db
 
+def warn_dialog(**kwargs):
+    return render_template(
+        "warn_dialog.html",
+        err=kwargs.get('err', ''), warn=kwargs.get('warn', ''), info=kwargs.get('info', ''),
+        cancel_onclick=kwargs.get('cancel_onclick', ''),
+        cancel_txt=kwargs.get('cancel_txt', _('dialog.cancel')),
+        ok_onclick=kwargs.get('ok_onclick', 'warn_ok();'),
+        ok_txt=kwargs.get('ok_txt', _('dialog.ok')),
+        )
+
+def dialog_msg(**kwargs):
+    emit_msg('dialog', warn_dialog(**kwargs))
+
 @app.teardown_appcontext
 def close_connection(exception):
     db = getattr(g, '_database', None)
@@ -359,19 +372,10 @@ def io_project_clone(name):
     emit_msg("end-command")
     emit_msg("u-projects-list")
     if n==ntotal:
-        emit_msg("dialog",
-             render_template(
-                 "warn_dialog.html",
-                 err = "",
-                 warn = "",
-                 info = _('msg.cloned', name=clone_name)))
+        dialog_msg(info = _('msg.cloned', name=clone_name))
     else:
-        emit_msg("dialog",
-             render_template(
-                 "warn_dialog.html",
-                 err = _('msg.clone.err', name=clone_name, n=n, ntotal=ntotal),
-                 warn = "",
-                 info = ""))
+        dialog_msg(
+            err = _('msg.clone.err', name=clone_name, n=n, ntotal=ntotal))
 
 @socketio_name('project-delete')
 def io_project_clone(name):
@@ -396,12 +400,7 @@ def io_project_rename(data):
     src = project_dir(p=old)
     dst = project_dir(p=new)
     if(os.path.exists(dst)):
-        emit_msg("dialog",
-             render_template(
-                 "warn_dialog.html",
-                 err = _('msg.rename.exists', old=old, new=new),
-                 warn = "",
-                 info = ""))
+        dialog_msg(err = _('msg.rename.exists', old=old, new=new))
     else:
         app.logger.info(f'Project "{old}" renamed to "{new}"')
         os.rename(src, dst)
@@ -489,12 +488,7 @@ def check_unused_name(name, warn=True):
     if os.path.exists(rep):
         app.logger.warn(f"Project already exists: {rep}")
         if warn:
-            emit_msg("dialog",
-                     render_template(
-                         "warn_dialog.html",
-                         err = _('msg.create.exists', name=name),
-                         warn = "",
-                         info = ""))
+            dialog_msg(err = _('msg.create.exists', name=name))
         return None
     else:
         return rep
@@ -1003,12 +997,10 @@ def show_messages(messages, err=True, warn=True, info=False):
     if info:
         n += len(messages["INFO"])
     if n:
-        emit_msg("dialog",
-                 render_template(
-                     "warn_dialog.html",
-                     err = select_messages(messages["ERR"]) if err else "",
-                     warn = select_messages(messages["WARN"]) if warn else "",
-                     info = select_messages(messages["INFO"]) if info else ""))
+        dialog_msg(
+            err = select_messages(messages["ERR"]) if err else "",
+            warn = select_messages(messages["WARN"]) if warn else "",
+            info = select_messages(messages["INFO"]) if info else "")
     return len(messages["ERR"])
 
 def log_messages(messages):
@@ -1179,11 +1171,7 @@ def io_print_to_printer(data):
     n = show_messages(messages)
     emit_msg("print-done")
     if n==0:
-        emit_msg("dialog",
-             render_template(
-                 "warn_dialog.html",
-                 err = "", warn = "",
-                 info = _('msg.printing.done')))
+        dialog_msg(info = _('msg.printing.done'))
 
 @socketio_name("print-to-files")
 def io_print_to_files(data):
@@ -1338,14 +1326,9 @@ def io_incomplete_details():
             { "sc": sc_text,
               "pages": ", ".join([str(x) for x in sorted(miss[sc])]) })
         
-    emit_msg("dialog",
-         render_template(
-             "warn_dialog.html",
-             err = "",
-             warn = "",
-             info = render_template("incomplete_details.html",
-                                    n_incomplete=n_incomplete,
-                                    missing=miss_sorted)))
+    dialog_msg(info = render_template("incomplete_details.html",
+                                      n_incomplete=n_incomplete,
+                                      missing=miss_sorted))
 
 @app.route('/scans_report.html')
 def u_scans_report():
@@ -1503,12 +1486,7 @@ def io_add_student(student):
 
 @socketio_name('add-student-syntax')
 def io_add_student_syntax():
-    emit_msg("dialog",
-         render_template(
-             "warn_dialog.html",
-             err = _('add.student.syntax'),
-             warn = "",
-             info = ""))
+    dialog_msg(err = _('add.student.syntax'))
 
 @socketio_name('delete-scans')
 def io_delete_scans(scans):
