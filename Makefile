@@ -17,7 +17,7 @@ server/ace-src/mode-amc_txt.js: FORCE
 	$(MAKE) -C server/ace-src
 
 messages.pot: server/*.py server/templates/*.html server/static/amc.js
-	pybabel extract -F babel.cfg -k alert_msg -o messages.pot .
+	pybabel extract -F babel.cfg -k alert_msg -k confirm_msg -o messages.pot .
 	pybabel update -i messages.pot -d server/translations
 
 server/translations/%/LC_MESSAGES/messages.mo: server/translations/%/LC_MESSAGES/messages.po

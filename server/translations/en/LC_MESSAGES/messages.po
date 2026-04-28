@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-28 14:52+0200\n"
-"PO-Revision-Date: 2026-04-28 14:54+0200\n"
+"POT-Creation-Date: 2026-04-28 16:10+0200\n"
+"PO-Revision-Date: 2026-04-28 16:11+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -19,133 +19,171 @@ msgstr ""
 "Generated-By: Babel 2.18.0\n"
 "X-Generator: Poedit 3.9\n"
 
-#: server/amc.py:159
+#: extra.py:1
+msgid "btn.yes"
+msgstr "Yes"
+
+#: extra.py:2
+msgid "btn.no"
+msgstr "No"
+
+#: extra.py:3
+msgid "btn.continue"
+msgstr "Continue"
+
+#: server/amc.py:160
 msgid "dialog.cancel"
 msgstr "Cancel"
 
-#: server/amc.py:161
+#: server/amc.py:163
 msgid "dialog.ok"
 msgstr "OK"
 
-#: server/amc.py:368
+#: server/amc.py:371
 msgid "t.cloning"
 msgstr "Cloning project…"
 
-#: server/amc.py:375
+#: server/amc.py:378
 msgid "msg.cloned"
 msgstr "Project cloned to %(name)s."
 
-#: server/amc.py:378
+#: server/amc.py:381
 msgid "msg.clone.err"
 msgstr ""
 "Errors while cloning to %(name)s: only %(n)s files copied out of %"
 "(ntotal)s."
 
-#: server/amc.py:403
+#: server/amc.py:406
 msgid "msg.rename.exists"
 msgstr "Can't rename \"%(old)s\" to \"%(new)s\": \"%(new)s\" already exists."
 
-#: server/amc.py:491
+#: server/amc.py:494
 msgid "msg.create.exists"
 msgstr ""
 "Can't create project \"%(name)s\": some file or directory already exists "
 "with this name."
 
-#: server/amc.py:586 server/amc.py:611
+#: server/amc.py:589 server/amc.py:614
 msgid "t.options"
 msgstr "Looking for the options file…"
 
-#: server/amc.py:599 server/amc.py:622
+#: server/amc.py:602 server/amc.py:625
 msgid "t.extract"
 msgstr "Extracting…"
 
-#: server/amc.py:689
+#: server/amc.py:692
 msgid "t.archive.save"
 msgstr "Saving archive…"
 
-#: server/amc.py:812
+#: server/amc.py:815
 msgid "t.scans.extract"
 msgstr "Extracting scans images…"
 
-#: server/amc.py:821
+#: server/amc.py:824
 msgid "t.automatic"
 msgstr "Automatic data capture…"
 
-#: server/amc.py:1028
+#: server/amc.py:1044
 msgid "t.clear"
 msgstr "Clear project data…"
 
-#: server/amc.py:1053
+#: server/amc.py:1069
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:1160
+#: server/amc.py:1176
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:1178
+#: server/amc.py:1194
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:1189
+#: server/amc.py:1205
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1493
+#: server/amc.py:1509
 msgid "add.student.syntax"
 msgstr ""
 "The student to be added must be given as an integer (student sheet number) "
 "or two integers (student sheet number and copy) separated by a colon."
 
-#: server/amc.py:1564
+#: server/amc.py:1580
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1572
+#: server/amc.py:1588
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1676
+#: server/amc.py:1692
 msgid "student.list.number"
 msgstr "Student #{}"
 
-#: server/amc.py:1747
+#: server/amc.py:1763
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "One new student were identified."
 msgstr[1] "New students identified: %(num)s"
 
-#: server/amc.py:1750
+#: server/amc.py:1766
 msgid "assoc.auto.none"
 msgstr "No new students were identified."
 
-#: server/amc.py:1866
+#: server/amc.py:1882
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1873
+#: server/amc.py:1889
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1908
+#: server/amc.py:1924
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1927
+#: server/amc.py:1943
 msgid "files.indiv"
 msgstr "Download all individual files"
 
-#: server/static/amc.js:347
+#: server/static/amc.js:229
+msgid "confirm.deleteproject"
+msgstr ""
+"Are you sure you want to delete project \"{}\"? This will permanently "
+"delete all related files."
+
+#: server/static/amc.js:349
+msgid "confirm.deletefile"
+msgstr "Are you sure you want to delete the file {}?"
+
+#: server/static/amc.js:358
 msgid "create.project.noname"
 msgstr "You forgot to choose a name for your new project!"
 
-#: server/static/amc.js:356
+#: server/static/amc.js:367
 msgid "create.project.notemplate"
 msgstr "You forgot to choose a template!"
 
-#: server/static/amc.js:370
+#: server/static/amc.js:381
 msgid "create.project.nofile"
 msgstr "You forgot to choose a file to be sent!"
+
+#: server/static/amc.js:598
+msgid "confirm.rebuild"
+msgstr ""
+"Rebuilding the subject will remove all the project data. To allow the use "
+"of an already printed question, cancel! Are you sure you want to continue?"
+
+#: server/static/amc.js:1346
+msgid "confirm.lkey"
+msgstr ""
+"Do you really want to change this key? This will cancel all the papers/"
+"students associations!"
+
+#: server/static/amc.js:1381
+msgid "confirm.rmassociation"
+msgstr "Are you sure you want to delete all association data?"
 
 #: server/templates/document_missing.html:3
 msgid "document.missing"
@@ -804,3 +842,6 @@ msgstr "Print"
 
 #~ msgid "dialog.warnings"
 #~ msgstr "Warnings"
+
+#~ msgid "btn."
+#~ msgstr "No"

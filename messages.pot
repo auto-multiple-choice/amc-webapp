@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-28 14:52+0200\n"
+"POT-Creation-Date: 2026-04-28 16:10+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,126 +17,158 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: server/amc.py:159
+#: extra.py:1
+msgid "btn.yes"
+msgstr ""
+
+#: extra.py:2
+msgid "btn.no"
+msgstr ""
+
+#: extra.py:3
+msgid "btn.continue"
+msgstr ""
+
+#: server/amc.py:160
 msgid "dialog.cancel"
 msgstr ""
 
-#: server/amc.py:161
+#: server/amc.py:163
 msgid "dialog.ok"
 msgstr ""
 
-#: server/amc.py:368
+#: server/amc.py:371
 msgid "t.cloning"
 msgstr ""
 
-#: server/amc.py:375
+#: server/amc.py:378
 msgid "msg.cloned"
 msgstr ""
 
-#: server/amc.py:378
+#: server/amc.py:381
 msgid "msg.clone.err"
 msgstr ""
 
-#: server/amc.py:403
+#: server/amc.py:406
 msgid "msg.rename.exists"
 msgstr ""
 
-#: server/amc.py:491
+#: server/amc.py:494
 msgid "msg.create.exists"
 msgstr ""
 
-#: server/amc.py:586 server/amc.py:611
+#: server/amc.py:589 server/amc.py:614
 msgid "t.options"
 msgstr ""
 
-#: server/amc.py:599 server/amc.py:622
+#: server/amc.py:602 server/amc.py:625
 msgid "t.extract"
 msgstr ""
 
-#: server/amc.py:689
+#: server/amc.py:692
 msgid "t.archive.save"
 msgstr ""
 
-#: server/amc.py:812
+#: server/amc.py:815
 msgid "t.scans.extract"
 msgstr ""
 
-#: server/amc.py:821
+#: server/amc.py:824
 msgid "t.automatic"
 msgstr ""
 
-#: server/amc.py:1028
+#: server/amc.py:1044
 msgid "t.clear"
 msgstr ""
 
-#: server/amc.py:1053
+#: server/amc.py:1069
 msgid "t.layouts"
 msgstr ""
 
-#: server/amc.py:1160
+#: server/amc.py:1176
 msgid "t.print_to"
 msgstr ""
 
-#: server/amc.py:1178
+#: server/amc.py:1194
 msgid "msg.printing.done"
 msgstr ""
 
-#: server/amc.py:1189
+#: server/amc.py:1205
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1493
+#: server/amc.py:1509
 msgid "add.student.syntax"
 msgstr ""
 
-#: server/amc.py:1564
+#: server/amc.py:1580
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1572
+#: server/amc.py:1588
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1676
+#: server/amc.py:1692
 msgid "student.list.number"
 msgstr ""
 
-#: server/amc.py:1747
+#: server/amc.py:1763
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/amc.py:1750
+#: server/amc.py:1766
 msgid "assoc.auto.none"
 msgstr ""
 
-#: server/amc.py:1866
+#: server/amc.py:1882
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1873
+#: server/amc.py:1889
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1908
+#: server/amc.py:1924
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1927
+#: server/amc.py:1943
 msgid "files.indiv"
 msgstr ""
 
-#: server/static/amc.js:347
+#: server/static/amc.js:229
+msgid "confirm.deleteproject"
+msgstr ""
+
+#: server/static/amc.js:349
+msgid "confirm.deletefile"
+msgstr ""
+
+#: server/static/amc.js:358
 msgid "create.project.noname"
 msgstr ""
 
-#: server/static/amc.js:356
+#: server/static/amc.js:367
 msgid "create.project.notemplate"
 msgstr ""
 
-#: server/static/amc.js:370
+#: server/static/amc.js:381
 msgid "create.project.nofile"
+msgstr ""
+
+#: server/static/amc.js:598
+msgid "confirm.rebuild"
+msgstr ""
+
+#: server/static/amc.js:1346
+msgid "confirm.lkey"
+msgstr ""
+
+#: server/static/amc.js:1381
+msgid "confirm.rmassociation"
 msgstr ""
 
 #: server/templates/document_missing.html:3

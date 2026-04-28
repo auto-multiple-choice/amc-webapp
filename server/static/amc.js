@@ -16,6 +16,15 @@ function alert_msg(msg) {
     socket.emit('alert-warn', msg);
 }
 
+function confirm_msg(msg, msg_args, okmsg, cancelmsg,
+                     command, command_args) {
+    socket.emit('confirm',
+                [msg, msg_args, okmsg, cancelmsg,
+                 command + '('
+                 + JSON.stringify(command_args).slice(1,-1)
+                 + ');']);
+}
+
 function is_scrolled_view(elem, frac=0.1) {
     var container = elem.offsetParent.parentElement;
     var up = container.scrollTop;
@@ -217,8 +226,10 @@ function select_project(element, name, user=null) {
             project_rename(element, name);
             break;
         case "project-delete":
-            if(!confirm(`Are you sure you want to delete project "${name}"? This will permanentely delete all related files.`))
-                break;
+            confirm_msg('confirm.deleteproject', [name],
+                        'continue:danger', 'cancel:neutral',
+                        'socket_emit', [projects_action, name]);
+            break;
         case "project-clone":
             socket_emit(projects_action, name);
             break;
@@ -335,9 +346,9 @@ function upload_file_to_project() {
 
 function delete_project_file(filename) {
     var all_files = document.getElementById("all-files").checked;
-    if(confirm(`Are you sure you want to delete ${filename}?`)) {
-        socket_emit("project-delete-file", [filename, all_files]);
-    }
+    confirm_msg('confirm.deletefile', [filename],
+                'continue:danger', 'cancel:neutral',
+                'socket_emit', ["project-delete-file", [filename, all_files]])
 }
 
 function do_create_project() {
@@ -581,11 +592,14 @@ function change_doc_type(e) {
 
 function doc_update(e) {
     if(e.classList.contains("danger")) {
-        if(!confirm("Warning! Rebuilding the subject will remove all the project data. To allow the use of an already printed question, cancel!"))
-            return;
+        confirm_msg('confirm.rebuild', [],
+                    'continue:danger', 'cancel:neutral',
+                    'socket_emit', ["doc-update",
+                                    document.getElementById('doc-type').value]);
+    } else {
+        socket_emit("doc-update",
+                    document.getElementById('doc-type').value);
     }
-    socket_emit("doc-update",
-                document.getElementById('doc-type').value);
 }
 
 function set_t(text) {
@@ -1327,11 +1341,11 @@ function do_mark() {
 
 function change_lkey(e, fixed) {
     if(fixed) {
-        if(confirm("Do you really want to change this key? This will cancel all the papers/students associations!")) {
-            socket_emit("change-lkey", [e.value, true]);
-        } else {
-            e.value = fixed;
-        }
+        var  new_value = e.value;
+        e.value = fixed;
+        confirm_msg('confirm.lkey', [],
+                    'yes:warning', 'cancel:neutral',
+                    'socket_emit', ["change-lkey", [new_value, true]]);
     } else {
         socket_emit("change-lkey", [e.value, false]);
     }
@@ -1363,9 +1377,9 @@ function association_manual_done() {
 }
 
 function association_clear() {
-    if(confirm("Are you sure you want to delete all association data?")) {
-        socket_emit("association-clear");
-    }
+    confirm_msg('confirm.rmassociation', [],
+                'yes:warning', 'cancel:neutral',
+                'socket_emit', ["association-clear"]);
 }
 
 var assoc_sheet = [-1,-1];

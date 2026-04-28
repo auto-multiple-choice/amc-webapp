@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-28 14:52+0200\n"
-"PO-Revision-Date: 2026-04-28 14:56+0200\n"
+"POT-Creation-Date: 2026-04-28 16:10+0200\n"
+"PO-Revision-Date: 2026-04-28 16:13+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -19,136 +19,177 @@ msgstr ""
 "Generated-By: Babel 2.18.0\n"
 "X-Generator: Poedit 3.9\n"
 
-#: server/amc.py:159
+#: extra.py:1
+msgid "btn.yes"
+msgstr "Oui"
+
+#: extra.py:2
+msgid "btn.no"
+msgstr "Non"
+
+#: extra.py:3
+msgid "btn.continue"
+msgstr "Continuer"
+
+#: server/amc.py:160
 msgid "dialog.cancel"
 msgstr "Annuler"
 
-#: server/amc.py:161
+#: server/amc.py:163
 msgid "dialog.ok"
 msgstr "OK"
 
-#: server/amc.py:368
+#: server/amc.py:371
 msgid "t.cloning"
 msgstr "Clonage du projet…"
 
-#: server/amc.py:375
+#: server/amc.py:378
 msgid "msg.cloned"
 msgstr "Le projet a été cloné vers %(name)s."
 
-#: server/amc.py:378
+#: server/amc.py:381
 msgid "msg.clone.err"
 msgstr ""
 "Erreur lors de la création du clone %(name)s : %(n)s fichiers sur %"
 "(ntotal)s ont seulement été copiés."
 
-#: server/amc.py:403
+#: server/amc.py:406
 msgid "msg.rename.exists"
 msgstr ""
 "Impossible de renommer \"%(old)s\" en \"%(new)s\", car ce dernier existe "
 "déjà."
 
-#: server/amc.py:491
+#: server/amc.py:494
 msgid "msg.create.exists"
 msgstr ""
 "Impossible de créer un projet nommé \"%(name)s\", car un fichier ou "
 "répertoire existe déjà sous ce nom."
 
-#: server/amc.py:586 server/amc.py:611
+#: server/amc.py:589 server/amc.py:614
 msgid "t.options"
 msgstr "Recherche du fichier d'options…"
 
-#: server/amc.py:599 server/amc.py:622
+#: server/amc.py:602 server/amc.py:625
 msgid "t.extract"
 msgstr "Extraction…"
 
-#: server/amc.py:689
+#: server/amc.py:692
 msgid "t.archive.save"
 msgstr "Sauvegarde de l'archive…"
 
-#: server/amc.py:812
+#: server/amc.py:815
 msgid "t.scans.extract"
 msgstr "Extraction des images…"
 
-#: server/amc.py:821
+#: server/amc.py:824
 msgid "t.automatic"
 msgstr "Saisie automatique…"
 
-#: server/amc.py:1028
+#: server/amc.py:1044
 msgid "t.clear"
 msgstr "Nettoyage des données du projet…"
 
-#: server/amc.py:1053
+#: server/amc.py:1069
 msgid "t.layouts"
 msgstr "Détection des mises en page…"
 
-#: server/amc.py:1160
+#: server/amc.py:1176
 msgid "t.print_to"
 msgstr "Impression vers %(printer)s…"
 
-#: server/amc.py:1178
+#: server/amc.py:1194
 msgid "msg.printing.done"
 msgstr "Impression terminée !"
 
-#: server/amc.py:1189
+#: server/amc.py:1205
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1493
+#: server/amc.py:1509
 msgid "add.student.syntax"
 msgstr ""
 "L'étudiant à ajouter doit être renseigné sous la forme d'un nombre entier "
 "(version du sujet), ou de deux entiers (version du sujet et numéro de "
 "copie) séparés par deux points (\":\")."
 
-#: server/amc.py:1564
+#: server/amc.py:1580
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1572
+#: server/amc.py:1588
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1676
+#: server/amc.py:1692
 msgid "student.list.number"
 msgstr "Étudiant·e n°{}"
 
-#: server/amc.py:1747
+#: server/amc.py:1763
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "Une nouvelle identification a été détectée."
 msgstr[1] "Nouvelles identifications détectées : %(num)s"
 
-#: server/amc.py:1750
+#: server/amc.py:1766
 msgid "assoc.auto.none"
 msgstr "Aucune nouvelle identification n'a été détectée."
 
-#: server/amc.py:1866
+#: server/amc.py:1882
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1873
+#: server/amc.py:1889
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1908
+#: server/amc.py:1924
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1927
+#: server/amc.py:1943
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
-#: server/static/amc.js:347
+#: server/static/amc.js:229
+msgid "confirm.deleteproject"
+msgstr ""
+"Êtes-vous sûr·e de vouloir effacer le projet \"{}\" ? Cela effacera de "
+"manière permanente tous les fichiers correspondants."
+
+#: server/static/amc.js:349
+msgid "confirm.deletefile"
+msgstr "Êtes-vous sûr·e de vouloir effacer le fichier \"{}\" ?"
+
+#: server/static/amc.js:358
 msgid "create.project.noname"
 msgstr "Vous avez oublié de choisir un nom pour votre nouveau projet !"
 
-#: server/static/amc.js:356
+#: server/static/amc.js:367
 msgid "create.project.notemplate"
 msgstr "Vous avez oublié de choisir le modèle à utiliser !"
 
-#: server/static/amc.js:370
+#: server/static/amc.js:381
 msgid "create.project.nofile"
 msgstr "Vous avez oublié de choisir un fichier à envoyer !"
+
+#: server/static/amc.js:598
+msgid "confirm.rebuild"
+msgstr ""
+"Regénérer le sujet effacera toutes les données de ce projet. Si vous "
+"souhaitez utiliser des sujets déjà imprimés, annulez ! Êtes-vous sûr·e de "
+"vouloir continuer ?"
+
+#: server/static/amc.js:1346
+msgid "confirm.lkey"
+msgstr ""
+"Voulez-vous vraiment modifier la clé unique utilisée ? Cela effacera "
+"toutes les associations entre copies et étudiant·es."
+
+#: server/static/amc.js:1381
+msgid "confirm.rmassociation"
+msgstr ""
+"Voulez-vous vraiment effacer toutes les associations entre copies et "
+"étudiant·es ?"
 
 #: server/templates/document_missing.html:3
 msgid "document.missing"
@@ -809,3 +850,6 @@ msgstr "Imprimer"
 
 #~ msgid "dialog.warnings"
 #~ msgstr "Avertissements"
+
+#~ msgid "btn."
+#~ msgstr "Non"

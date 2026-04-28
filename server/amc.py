@@ -155,10 +155,13 @@ def warn_dialog(**kwargs):
     return render_template(
         "warn_dialog.html",
         err=kwargs.get('err', ''), warn=kwargs.get('warn', ''), info=kwargs.get('info', ''),
-        cancel_onclick=kwargs.get('cancel_onclick', ''),
+        cancel_btn=kwargs.get('cancel_btn', False),
+        cancel_onclick=kwargs.get('cancel_onclick', 'warn_ok();'),
         cancel_txt=kwargs.get('cancel_txt', _('dialog.cancel')),
+        cancel_class=kwargs.get('cancel_class', 'neutral'),
         ok_onclick=kwargs.get('ok_onclick', 'warn_ok();'),
         ok_txt=kwargs.get('ok_txt', _('dialog.ok')),
+        ok_class=kwargs.get('ok_class', 'neutral'),
         )
 
 def dialog_msg(**kwargs):
@@ -901,6 +904,19 @@ def context_args(args = None):
 @socketio.on('alert-warn')
 def io_alert_warn(msg):
     dialog_msg(warn=_(msg))
+
+@socketio.on('confirm')
+def io_confirm(data):
+    msg, msg_args, ok_type, cancel_type, command = data
+    okmsg, ok_class = ok_type.split(":")
+    okmsg = 'btn.' + okmsg
+    cancelmsg, cancel_class = cancel_type.split(":")
+    cancelmsg = 'btn.' + cancelmsg
+    dialog_msg(warn=_(msg).format(*msg_args),
+               ok_txt=_(okmsg), ok_class=ok_class,
+               cancel_btn=True,
+               cancel_txt=_(cancelmsg), cancel_class=cancel_class,
+               ok_onclick='warn_ok();' + command)
 
 @app.route('/files_list.html')
 def u_files_list():

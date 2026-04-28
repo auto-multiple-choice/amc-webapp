@@ -22,8 +22,8 @@
 </div>
 {% endif %}
 <div class="bandeau adroite">
-  {% if cancel_onclick %}
-  <span class="btn btn-neutral" onclick="{{ cancel_onclick }}">{{ cancel_txt }}</span>
+  {% if cancel_btn %}
+  <span class="btn btn-{{cancel_class}}" onclick="{{ cancel_onclick }}">{{ cancel_txt }}</span>
   {% endif %}
-  <span class="btn btn-neutral" onclick="{{ ok_onclick }}">{{ ok_txt }}</span>
+  <span class="btn btn-{{ok_class}}" onclick="{{ ok_onclick }}">{{ ok_txt }}</span>
 </div>
