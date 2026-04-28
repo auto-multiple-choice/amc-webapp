@@ -922,6 +922,7 @@ tr[amc-manual="0"] .manual-tag {
     display: flex;
     flex-direction: column;
     flex-wrap: wrap;
+    align-content: start;
     column-gap: 4px;
     height: 100%;
 }
