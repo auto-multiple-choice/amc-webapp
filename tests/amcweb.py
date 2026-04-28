@@ -178,6 +178,16 @@ class AMCWeb():
         if accept:
             alert.accept()
 
+    def wait_for_warning(self, check_message=None, accept=True):
+        self.wait_for_visible("warn-warn-text", total=20)
+        self.sleep(.2)
+        if check_message:
+            txt = self.driver.find_element(By.ID, "warn-warn-text").text
+            assert check_message in txt
+        if accept:
+            self.click_on("warn-dialog-ok")
+            
+
     def wait_for_name(self, kind, name):
         eid = f"{kind}-name"
         if name == True:
@@ -253,7 +263,7 @@ class AMCWeb():
 
         if test_emptyname:
             create.click()
-            self.wait_for_alert(check_message='choose a name')
+            self.wait_for_warning(check_message='choose a name')
 
         self.driver.find_element(By.ID,'new-project-name').send_keys(project_name)
         create.click()
