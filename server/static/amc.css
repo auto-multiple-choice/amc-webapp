@@ -273,19 +273,20 @@ li.selectable.recent {
     display: flex;
     flex-direction: row;
     align-items: flex-end;
+    border-bottom: #eee solid 4px;
 }
 
 #projects-action > div {
+    font-size: large;
     background: #eee;
-    border-radius: 7px;
+    border-radius: 7px 7px 0px 0px;
     padding: 7px;
-    margin: 5px;
+    margin: 5px 5px 0px 5px;
     cursor: pointer;
 }
 
 #projects-action > div.selected {
-    font-size: xx-large;
-    order: -1;
+    padding-bottom: 1.5ex;
     cursor: default;
 }
 
