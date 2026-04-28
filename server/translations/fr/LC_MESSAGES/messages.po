@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-28 10:28+0200\n"
-"PO-Revision-Date: 2026-04-28 10:29+0200\n"
+"POT-Creation-Date: 2026-04-28 14:52+0200\n"
+"PO-Revision-Date: 2026-04-28 14:56+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -19,116 +19,136 @@ msgstr ""
 "Generated-By: Babel 2.18.0\n"
 "X-Generator: Poedit 3.9\n"
 
-#: server/amc.py:355
+#: server/amc.py:159
+msgid "dialog.cancel"
+msgstr "Annuler"
+
+#: server/amc.py:161
+msgid "dialog.ok"
+msgstr "OK"
+
+#: server/amc.py:368
 msgid "t.cloning"
 msgstr "Clonage du projet…"
 
-#: server/amc.py:367
+#: server/amc.py:375
 msgid "msg.cloned"
 msgstr "Le projet a été cloné vers %(name)s."
 
-#: server/amc.py:372
+#: server/amc.py:378
 msgid "msg.clone.err"
 msgstr ""
 "Erreur lors de la création du clone %(name)s : %(n)s fichiers sur %"
 "(ntotal)s ont seulement été copiés."
 
-#: server/amc.py:402
+#: server/amc.py:403
 msgid "msg.rename.exists"
 msgstr ""
 "Impossible de renommer \"%(old)s\" en \"%(new)s\", car ce dernier existe "
 "déjà."
 
-#: server/amc.py:495
+#: server/amc.py:491
 msgid "msg.create.exists"
 msgstr ""
 "Impossible de créer un projet nommé \"%(name)s\", car un fichier ou "
 "répertoire existe déjà sous ce nom."
 
-#: server/amc.py:592 server/amc.py:617
+#: server/amc.py:586 server/amc.py:611
 msgid "t.options"
 msgstr "Recherche du fichier d'options…"
 
-#: server/amc.py:605 server/amc.py:628
+#: server/amc.py:599 server/amc.py:622
 msgid "t.extract"
 msgstr "Extraction…"
 
-#: server/amc.py:695
+#: server/amc.py:689
 msgid "t.archive.save"
 msgstr "Sauvegarde de l'archive…"
 
-#: server/amc.py:818
+#: server/amc.py:812
 msgid "t.scans.extract"
 msgstr "Extraction des images…"
 
-#: server/amc.py:827
+#: server/amc.py:821
 msgid "t.automatic"
 msgstr "Saisie automatique…"
 
-#: server/amc.py:1032
+#: server/amc.py:1028
 msgid "t.clear"
 msgstr "Nettoyage des données du projet…"
 
-#: server/amc.py:1057
+#: server/amc.py:1053
 msgid "t.layouts"
 msgstr "Détection des mises en page…"
 
-#: server/amc.py:1164
+#: server/amc.py:1160
 msgid "t.print_to"
 msgstr "Impression vers %(printer)s…"
 
-#: server/amc.py:1186
+#: server/amc.py:1178
 msgid "msg.printing.done"
 msgstr "Impression terminée !"
 
-#: server/amc.py:1197
+#: server/amc.py:1189
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1509
+#: server/amc.py:1493
 msgid "add.student.syntax"
 msgstr ""
 "L'étudiant à ajouter doit être renseigné sous la forme d'un nombre entier "
 "(version du sujet), ou de deux entiers (version du sujet et numéro de "
 "copie) séparés par deux points (\":\")."
 
-#: server/amc.py:1582
+#: server/amc.py:1564
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1590
+#: server/amc.py:1572
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1694
+#: server/amc.py:1676
 msgid "student.list.number"
 msgstr "Étudiant·e n°{}"
 
-#: server/amc.py:1765
+#: server/amc.py:1747
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "Une nouvelle identification a été détectée."
 msgstr[1] "Nouvelles identifications détectées : %(num)s"
 
-#: server/amc.py:1768
+#: server/amc.py:1750
 msgid "assoc.auto.none"
 msgstr "Aucune nouvelle identification n'a été détectée."
 
-#: server/amc.py:1884
+#: server/amc.py:1866
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1891
+#: server/amc.py:1873
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1926
+#: server/amc.py:1908
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1945
+#: server/amc.py:1927
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
+
+#: server/static/amc.js:347
+msgid "create.project.noname"
+msgstr "Vous avez oublié de choisir un nom pour votre nouveau projet !"
+
+#: server/static/amc.js:356
+msgid "create.project.notemplate"
+msgstr "Vous avez oublié de choisir le modèle à utiliser !"
+
+#: server/static/amc.js:370
+msgid "create.project.nofile"
+msgstr "Vous avez oublié de choisir un fichier à envoyer !"
 
 #: server/templates/document_missing.html:3
 msgid "document.missing"
@@ -783,10 +803,6 @@ msgstr "Mettre à jour"
 #: server/templates/tab_source.html:42
 msgid "btn.print"
 msgstr "Imprimer"
-
-#: server/templates/warn_dialog.html:25
-msgid "dialog.ok"
-msgstr "OK"
 
 #~ msgid "dialog.errors"
 #~ msgstr "Erreurs"

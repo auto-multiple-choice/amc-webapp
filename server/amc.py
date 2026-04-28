@@ -898,6 +898,10 @@ def context_args(args = None):
                          for k,v in args.items() ])
     return s
 
+@socketio.on('alert-warn')
+def io_alert_warn(msg):
+    dialog_msg(warn=_(msg))
+
 @app.route('/files_list.html')
 def u_files_list():
     headers_info()

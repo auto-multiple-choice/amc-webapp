@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-28 10:28+0200\n"
-"PO-Revision-Date: 2026-04-28 10:28+0200\n"
+"POT-Creation-Date: 2026-04-28 14:52+0200\n"
+"PO-Revision-Date: 2026-04-28 14:54+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -19,113 +19,133 @@ msgstr ""
 "Generated-By: Babel 2.18.0\n"
 "X-Generator: Poedit 3.9\n"
 
-#: server/amc.py:355
+#: server/amc.py:159
+msgid "dialog.cancel"
+msgstr "Cancel"
+
+#: server/amc.py:161
+msgid "dialog.ok"
+msgstr "OK"
+
+#: server/amc.py:368
 msgid "t.cloning"
 msgstr "Cloning project…"
 
-#: server/amc.py:367
+#: server/amc.py:375
 msgid "msg.cloned"
 msgstr "Project cloned to %(name)s."
 
-#: server/amc.py:372
+#: server/amc.py:378
 msgid "msg.clone.err"
 msgstr ""
 "Errors while cloning to %(name)s: only %(n)s files copied out of %"
 "(ntotal)s."
 
-#: server/amc.py:402
+#: server/amc.py:403
 msgid "msg.rename.exists"
 msgstr "Can't rename \"%(old)s\" to \"%(new)s\": \"%(new)s\" already exists."
 
-#: server/amc.py:495
+#: server/amc.py:491
 msgid "msg.create.exists"
 msgstr ""
 "Can't create project \"%(name)s\": some file or directory already exists "
 "with this name."
 
-#: server/amc.py:592 server/amc.py:617
+#: server/amc.py:586 server/amc.py:611
 msgid "t.options"
 msgstr "Looking for the options file…"
 
-#: server/amc.py:605 server/amc.py:628
+#: server/amc.py:599 server/amc.py:622
 msgid "t.extract"
 msgstr "Extracting…"
 
-#: server/amc.py:695
+#: server/amc.py:689
 msgid "t.archive.save"
 msgstr "Saving archive…"
 
-#: server/amc.py:818
+#: server/amc.py:812
 msgid "t.scans.extract"
 msgstr "Extracting scans images…"
 
-#: server/amc.py:827
+#: server/amc.py:821
 msgid "t.automatic"
 msgstr "Automatic data capture…"
 
-#: server/amc.py:1032
+#: server/amc.py:1028
 msgid "t.clear"
 msgstr "Clear project data…"
 
-#: server/amc.py:1057
+#: server/amc.py:1053
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:1164
+#: server/amc.py:1160
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:1186
+#: server/amc.py:1178
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:1197
+#: server/amc.py:1189
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1509
+#: server/amc.py:1493
 msgid "add.student.syntax"
 msgstr ""
 "The student to be added must be given as an integer (student sheet number) "
 "or two integers (student sheet number and copy) separated by a colon."
 
-#: server/amc.py:1582
+#: server/amc.py:1564
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1590
+#: server/amc.py:1572
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1694
+#: server/amc.py:1676
 msgid "student.list.number"
 msgstr "Student #{}"
 
-#: server/amc.py:1765
+#: server/amc.py:1747
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "One new student were identified."
 msgstr[1] "New students identified: %(num)s"
 
-#: server/amc.py:1768
+#: server/amc.py:1750
 msgid "assoc.auto.none"
 msgstr "No new students were identified."
 
-#: server/amc.py:1884
+#: server/amc.py:1866
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1891
+#: server/amc.py:1873
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1926
+#: server/amc.py:1908
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1945
+#: server/amc.py:1927
 msgid "files.indiv"
 msgstr "Download all individual files"
+
+#: server/static/amc.js:347
+msgid "create.project.noname"
+msgstr "You forgot to choose a name for your new project!"
+
+#: server/static/amc.js:356
+msgid "create.project.notemplate"
+msgstr "You forgot to choose a template!"
+
+#: server/static/amc.js:370
+msgid "create.project.nofile"
+msgstr "You forgot to choose a file to be sent!"
 
 #: server/templates/document_missing.html:3
 msgid "document.missing"
@@ -778,10 +798,6 @@ msgstr "Update"
 #: server/templates/tab_source.html:42
 msgid "btn.print"
 msgstr "Print"
-
-#: server/templates/warn_dialog.html:25
-msgid "dialog.ok"
-msgstr "OK"
 
 #~ msgid "dialog.errors"
 #~ msgstr "Errors"

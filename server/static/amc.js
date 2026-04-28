@@ -12,6 +12,10 @@ function socket_emit(msg, ...args) {
     socket.emit(msg, x); 
 }
 
+function alert_msg(msg) {
+    socket.emit('alert-warn', msg);
+}
+
 function is_scrolled_view(elem, frac=0.1) {
     var container = elem.offsetParent.parentElement;
     var up = container.scrollTop;
@@ -340,7 +344,7 @@ function do_create_project() {
     var name = document.getElementById('new-project-name').value;
     var way = document.querySelector('input[name="way"]:checked').value;
     if(name === "") {
-        alert("Please choose a name for your new project!");
+        alert_msg('create.project.noname');
         return;
     }
     if(way == "empty") {
@@ -349,7 +353,7 @@ function do_create_project() {
     } else if(way == "template") {
         var tid = document.querySelector('input[name="tid"]:checked');
         if(tid === null) {
-            alert("Please choose a template!");
+            alert_msg('create.project.notemplate');
             return;
         }
         tid = tid.value;
@@ -363,7 +367,7 @@ function do_create_project() {
                          function(r) { project_open([name, true]); }
                         )
         } else {
-            alert("Please choose a file to send!");
+            alert_msg('create.project.nofile');
         }
     } else {
         console.error("Unknown way: " + way)
