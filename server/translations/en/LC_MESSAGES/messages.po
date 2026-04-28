@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-28 10:08+0200\n"
-"PO-Revision-Date: 2026-04-28 10:11+0200\n"
+"POT-Creation-Date: 2026-04-28 10:28+0200\n"
+"PO-Revision-Date: 2026-04-28 10:28+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -318,6 +318,10 @@ msgid "project.clone"
 msgstr "Clone"
 
 #: server/templates/projects_list.html:6
+msgid "project.download"
+msgstr "Download"
+
+#: server/templates/projects_list.html:7
 msgid "project.delete"
 msgstr "Delete"
 

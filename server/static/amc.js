@@ -218,6 +218,9 @@ function select_project(element, name, user=null) {
         case "project-clone":
             socket_emit(projects_action, name);
             break;
+        case "project-download":
+            window.location.href = element.getAttribute("amc-url");
+            break;
         default:
             console.log(`Unknown action: ${projects_action}.`);
         }
