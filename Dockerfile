@@ -1,6 +1,6 @@
 FROM alpine
 
-ARG AMC_REVISION=8225d624f7be936a02142ac576317696a4f4731b
+ARG AMC_REVISION=f0f11a5c3153157b010ed13d8e4e0b2f8a14fcf6
 
 ###############################################################
 # TeXLive
