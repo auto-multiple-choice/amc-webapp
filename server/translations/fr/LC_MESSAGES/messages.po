@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-22 11:43+0200\n"
-"PO-Revision-Date: 2026-04-22 11:44+0200\n"
+"POT-Creation-Date: 2026-04-28 10:08+0200\n"
+"PO-Revision-Date: 2026-04-28 10:10+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -19,110 +19,114 @@ msgstr ""
 "Generated-By: Babel 2.18.0\n"
 "X-Generator: Poedit 3.9\n"
 
-#: server/amc.py:301
+#: server/amc.py:355
 msgid "t.cloning"
 msgstr "Clonage du projet…"
 
-#: server/amc.py:313
+#: server/amc.py:367
 msgid "msg.cloned"
 msgstr "Le projet a été cloné vers %(name)s."
 
-#: server/amc.py:318
+#: server/amc.py:372
 msgid "msg.clone.err"
 msgstr ""
 "Erreur lors de la création du clone %(name)s : %(n)s fichiers sur %"
 "(ntotal)s ont seulement été copiés."
 
-#: server/amc.py:348
+#: server/amc.py:402
 msgid "msg.rename.exists"
 msgstr ""
 "Impossible de renommer \"%(old)s\" en \"%(new)s\", car ce dernier existe "
 "déjà."
 
-#: server/amc.py:440
+#: server/amc.py:495
 msgid "msg.create.exists"
 msgstr ""
 "Impossible de créer un projet nommé \"%(name)s\", car un fichier ou "
 "répertoire existe déjà sous ce nom."
 
-#: server/amc.py:537 server/amc.py:562
+#: server/amc.py:592 server/amc.py:617
 msgid "t.options"
 msgstr "Recherche du fichier d'options…"
 
-#: server/amc.py:550 server/amc.py:573
+#: server/amc.py:605 server/amc.py:628
 msgid "t.extract"
 msgstr "Extraction…"
 
-#: server/amc.py:640
+#: server/amc.py:695
 msgid "t.archive.save"
 msgstr "Sauvegarde de l'archive…"
 
-#: server/amc.py:765
+#: server/amc.py:818
 msgid "t.scans.extract"
 msgstr "Extraction des images…"
 
-#: server/amc.py:774
+#: server/amc.py:827
 msgid "t.automatic"
 msgstr "Saisie automatique…"
 
-#: server/amc.py:965
+#: server/amc.py:1032
 msgid "t.clear"
 msgstr "Nettoyage des données du projet…"
 
-#: server/amc.py:990
+#: server/amc.py:1057
 msgid "t.layouts"
 msgstr "Détection des mises en page…"
 
-#: server/amc.py:1097
+#: server/amc.py:1164
 msgid "t.print_to"
 msgstr "Impression vers %(printer)s…"
 
-#: server/amc.py:1117
+#: server/amc.py:1186
 msgid "msg.printing.done"
 msgstr "Impression terminée !"
 
-#: server/amc.py:1128
+#: server/amc.py:1197
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1440
+#: server/amc.py:1509
 msgid "add.student.syntax"
 msgstr ""
 "L'étudiant à ajouter doit être renseigné sous la forme d'un nombre entier "
 "(version du sujet), ou de deux entiers (version du sujet et numéro de "
 "copie) séparés par deux points (\":\")."
 
-#: server/amc.py:1513
+#: server/amc.py:1582
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1521
+#: server/amc.py:1590
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1686
+#: server/amc.py:1694
+msgid "student.list.number"
+msgstr "Étudiant·e n°{}"
+
+#: server/amc.py:1765
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "Une nouvelle identification a été détectée."
 msgstr[1] "Nouvelles identifications détectées : %(num)s"
 
-#: server/amc.py:1689
+#: server/amc.py:1768
 msgid "assoc.auto.none"
 msgstr "Aucune nouvelle identification n'a été détectée."
 
-#: server/amc.py:1804
+#: server/amc.py:1884
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1811
+#: server/amc.py:1891
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1846
+#: server/amc.py:1926
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1865
+#: server/amc.py:1945
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
@@ -198,23 +202,23 @@ msgstr[1] "Des pages manquent pour %(num)s copies."
 msgid "scans.missing.text"
 msgstr "Copie %(copy)s — pages manquantes : %(pages)s"
 
-#: server/templates/index.html:20
+#: server/templates/index.html:26
 msgid "menu.main"
 msgstr "Gestion des projets"
 
-#: server/templates/index.html:23
+#: server/templates/index.html:29
 msgid "menu.source"
 msgstr "Source et documents de travail"
 
-#: server/templates/index.html:26
+#: server/templates/index.html:32
 msgid "menu.scans"
 msgstr "Saisie"
 
-#: server/templates/index.html:29
+#: server/templates/index.html:35
 msgid "menu.grading"
 msgstr "Notation et annotation"
 
-#: server/templates/index.html:32
+#: server/templates/index.html:38
 msgid "menu.config"
 msgstr "Configuration"
 
@@ -476,15 +480,27 @@ msgstr "Internationalisation"
 msgid "config.i18n.ascii"
 msgstr "N'utiliser que des caractères ASCII dans les noms de fichiers"
 
-#: server/templates/tab_config.html:100
+#: server/templates/tab_config.html:97
+msgid "config.i18n.headers.name"
+msgstr "En-têtes CSV de colonnes de prénoms :"
+
+#: server/templates/tab_config.html:99 server/templates/tab_config.html:104
+msgid "config.i18n.headers"
+msgstr "séparés par des virgules"
+
+#: server/templates/tab_config.html:102
+msgid "config.i18n.headers.surname"
+msgstr "En-têtes CSV de colonnes de noms :"
+
+#: server/templates/tab_config.html:111
 msgid "config.view"
 msgstr "Affichage"
 
-#: server/templates/tab_config.html:104
+#: server/templates/tab_config.html:115
 msgid "config.view.histogram"
 msgstr "Histogramme"
 
-#: server/templates/tab_config.html:107
+#: server/templates/tab_config.html:118
 msgid "config.view.ahead"
 msgstr "Ouvrir les onglets en avance"
 
@@ -708,59 +724,59 @@ msgstr "Pré-traitement"
 msgid "failed.delete"
 msgstr "Effacer"
 
-#: server/templates/tab_source.html:11
+#: server/templates/tab_source.html:7
 msgid "btn.revert"
 msgstr "Annuler les modifications"
 
-#: server/templates/tab_source.html:12
+#: server/templates/tab_source.html:8
 msgid "btn.save"
 msgstr "Enregistrer"
 
-#: server/templates/tab_source.html:13
+#: server/templates/tab_source.html:9
 msgid "print.cancel"
 msgstr "Annuler l'impression"
 
-#: server/templates/tab_source.html:19
+#: server/templates/tab_source.html:15
 msgid "btn.allfiles"
 msgstr "Tous"
 
-#: server/templates/tab_source.html:23
+#: server/templates/tab_source.html:19
 msgid "btn.upload"
 msgstr "Téléverser"
 
-#: server/templates/tab_source.html:35
+#: server/templates/tab_source.html:31
 msgid "number.copies"
 msgstr "Nb copies :"
 
-#: server/templates/tab_source.html:38
+#: server/templates/tab_source.html:34
 msgid "option.choose"
 msgstr "choisir"
 
-#: server/templates/tab_source.html:39
+#: server/templates/tab_source.html:35
 msgid "doc.subject"
 msgstr "Sujet"
 
-#: server/templates/tab_source.html:40
+#: server/templates/tab_source.html:36
 msgid "doc.layout"
 msgstr "Mise en page"
 
-#: server/templates/tab_source.html:41
+#: server/templates/tab_source.html:37
 msgid "doc.catalog"
 msgstr "Catalogue"
 
-#: server/templates/tab_source.html:42
+#: server/templates/tab_source.html:38
 msgid "doc.answers"
 msgstr "Correction"
 
-#: server/templates/tab_source.html:43
+#: server/templates/tab_source.html:39
 msgid "doc.corrected"
 msgstr "Correction indiv."
 
-#: server/templates/tab_source.html:45
+#: server/templates/tab_source.html:41
 msgid "btn.update"
 msgstr "Mettre à jour"
 
-#: server/templates/tab_source.html:46
+#: server/templates/tab_source.html:42
 msgid "btn.print"
 msgstr "Imprimer"
 

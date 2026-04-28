@@ -891,6 +891,7 @@ def io_project_config():
               "global:tolerance_marque_inf", "global:tolerance_marque_sup",
               "global:try_three", "global:ascii_filenames",
               "global:view_histogram", "global:activate_ahead",
+              "global:csv_name_headers", "global:csv_surname_headers"
              ]
          ))
 
@@ -1663,24 +1664,34 @@ def first_of(l, *proposals):
             return unil[x]
     return None
 
+def headers_list(hlist):
+    return [h.strip() for h in hlist.split(",")
+            if h.strip()]
+
 def students_flat_list():
-    lkey = get_option("liste_key")
+    o = get_options(["liste_key",
+                     "global:csv_name_headers", "global:csv_surname_headers"])
+    lkey = o.get('liste_key')
     path = students_list_file()
     rows = list_file_read(path)
     if not rows:
         return []
 
     ks = list(rows[0].keys())
-    k_name = first_of(ks, "name", "prenom")
-    k_surname = first_of(ks, "surname", "nom")
+    k_name = first_of(ks, "prenom", "name",
+                      *headers_list(o['global:csv_name_headers']))
+    k_surname = first_of(ks, "nom", "surname",
+                         *headers_list(o['global:csv_surname_headers']))
 
     flat = []
-    for r in rows:
+    for i, r in enumerate(rows):
         n = []
         if r.get(k_surname):
             n.append(r[k_surname])
         if r.get(k_name):
             n.append(r[k_name])
+        if not n:
+            n.append(_('student.list.number').format(i+1))
         flat.append( [r[lkey], " ".join(n), None] )
 
     flat.sort(key=lambda x: x[1])

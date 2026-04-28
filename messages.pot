@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-22 11:43+0200\n"
+"POT-Creation-Date: 2026-04-28 10:08+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,101 +17,105 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: server/amc.py:301
+#: server/amc.py:355
 msgid "t.cloning"
 msgstr ""
 
-#: server/amc.py:313
+#: server/amc.py:367
 msgid "msg.cloned"
 msgstr ""
 
-#: server/amc.py:318
+#: server/amc.py:372
 msgid "msg.clone.err"
 msgstr ""
 
-#: server/amc.py:348
+#: server/amc.py:402
 msgid "msg.rename.exists"
 msgstr ""
 
-#: server/amc.py:440
+#: server/amc.py:495
 msgid "msg.create.exists"
 msgstr ""
 
-#: server/amc.py:537 server/amc.py:562
+#: server/amc.py:592 server/amc.py:617
 msgid "t.options"
 msgstr ""
 
-#: server/amc.py:550 server/amc.py:573
+#: server/amc.py:605 server/amc.py:628
 msgid "t.extract"
 msgstr ""
 
-#: server/amc.py:640
+#: server/amc.py:695
 msgid "t.archive.save"
 msgstr ""
 
-#: server/amc.py:765
+#: server/amc.py:818
 msgid "t.scans.extract"
 msgstr ""
 
-#: server/amc.py:774
+#: server/amc.py:827
 msgid "t.automatic"
 msgstr ""
 
-#: server/amc.py:965
+#: server/amc.py:1032
 msgid "t.clear"
 msgstr ""
 
-#: server/amc.py:990
+#: server/amc.py:1057
 msgid "t.layouts"
 msgstr ""
 
-#: server/amc.py:1097
+#: server/amc.py:1164
 msgid "t.print_to"
 msgstr ""
 
-#: server/amc.py:1117
+#: server/amc.py:1186
 msgid "msg.printing.done"
 msgstr ""
 
-#: server/amc.py:1128
+#: server/amc.py:1197
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1440
+#: server/amc.py:1509
 msgid "add.student.syntax"
 msgstr ""
 
-#: server/amc.py:1513
+#: server/amc.py:1582
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1521
+#: server/amc.py:1590
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1686
+#: server/amc.py:1694
+msgid "student.list.number"
+msgstr ""
+
+#: server/amc.py:1765
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/amc.py:1689
+#: server/amc.py:1768
 msgid "assoc.auto.none"
 msgstr ""
 
-#: server/amc.py:1804
+#: server/amc.py:1884
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1811
+#: server/amc.py:1891
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1846
+#: server/amc.py:1926
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1865
+#: server/amc.py:1945
 msgid "files.indiv"
 msgstr ""
 
@@ -185,23 +189,23 @@ msgstr[1] ""
 msgid "scans.missing.text"
 msgstr ""
 
-#: server/templates/index.html:20
+#: server/templates/index.html:26
 msgid "menu.main"
 msgstr ""
 
-#: server/templates/index.html:23
+#: server/templates/index.html:29
 msgid "menu.source"
 msgstr ""
 
-#: server/templates/index.html:26
+#: server/templates/index.html:32
 msgid "menu.scans"
 msgstr ""
 
-#: server/templates/index.html:29
+#: server/templates/index.html:35
 msgid "menu.grading"
 msgstr ""
 
-#: server/templates/index.html:32
+#: server/templates/index.html:38
 msgid "menu.config"
 msgstr ""
 
@@ -459,15 +463,27 @@ msgstr ""
 msgid "config.i18n.ascii"
 msgstr ""
 
-#: server/templates/tab_config.html:100
+#: server/templates/tab_config.html:97
+msgid "config.i18n.headers.name"
+msgstr ""
+
+#: server/templates/tab_config.html:99 server/templates/tab_config.html:104
+msgid "config.i18n.headers"
+msgstr ""
+
+#: server/templates/tab_config.html:102
+msgid "config.i18n.headers.surname"
+msgstr ""
+
+#: server/templates/tab_config.html:111
 msgid "config.view"
 msgstr ""
 
-#: server/templates/tab_config.html:104
+#: server/templates/tab_config.html:115
 msgid "config.view.histogram"
 msgstr ""
 
-#: server/templates/tab_config.html:107
+#: server/templates/tab_config.html:118
 msgid "config.view.ahead"
 msgstr ""
 
@@ -691,59 +707,59 @@ msgstr ""
 msgid "failed.delete"
 msgstr ""
 
-#: server/templates/tab_source.html:11
+#: server/templates/tab_source.html:7
 msgid "btn.revert"
 msgstr ""
 
-#: server/templates/tab_source.html:12
+#: server/templates/tab_source.html:8
 msgid "btn.save"
 msgstr ""
 
-#: server/templates/tab_source.html:13
+#: server/templates/tab_source.html:9
 msgid "print.cancel"
 msgstr ""
 
-#: server/templates/tab_source.html:19
+#: server/templates/tab_source.html:15
 msgid "btn.allfiles"
 msgstr ""
 
-#: server/templates/tab_source.html:23
+#: server/templates/tab_source.html:19
 msgid "btn.upload"
 msgstr ""
 
-#: server/templates/tab_source.html:35
+#: server/templates/tab_source.html:31
 msgid "number.copies"
 msgstr ""
 
-#: server/templates/tab_source.html:38
+#: server/templates/tab_source.html:34
 msgid "option.choose"
 msgstr ""
 
-#: server/templates/tab_source.html:39
+#: server/templates/tab_source.html:35
 msgid "doc.subject"
 msgstr ""
 
-#: server/templates/tab_source.html:40
+#: server/templates/tab_source.html:36
 msgid "doc.layout"
 msgstr ""
 
-#: server/templates/tab_source.html:41
+#: server/templates/tab_source.html:37
 msgid "doc.catalog"
 msgstr ""
 
-#: server/templates/tab_source.html:42
+#: server/templates/tab_source.html:38
 msgid "doc.answers"
 msgstr ""
 
-#: server/templates/tab_source.html:43
+#: server/templates/tab_source.html:39
 msgid "doc.corrected"
 msgstr ""
 
-#: server/templates/tab_source.html:45
+#: server/templates/tab_source.html:41
 msgid "btn.update"
 msgstr ""
 
-#: server/templates/tab_source.html:46
+#: server/templates/tab_source.html:42
 msgid "btn.print"
 msgstr ""
 
