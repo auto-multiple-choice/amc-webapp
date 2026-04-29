@@ -54,7 +54,7 @@ tests-single:
 tests-multi:
   stage: test
   needs:
-    - job: build
+    - job: tests-single
   image: python:3-alpine
   services:
     - name: $CI_REGISTRY_IMAGE/test:$CI_COMMIT_SHORT_SHA
