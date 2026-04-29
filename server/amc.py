@@ -1612,6 +1612,19 @@ def io_studentslist_delete():
     change_option("listeetudiants", "")
     emit_msg("update-identification")
 
+@socketio_name('studentslist-shared')
+def io_studentslist_shared(name):
+    name += ".csv"
+    path = students_shared_dir() + "/" + name
+    imported = project_dir() + "/" + name
+    try:
+        shutil.copyfile(path, imported)
+    except Exception as e:
+        app.logger.error("Error while copying {path} to {imported}: {e}")
+        return
+    change_option("listeetudiants", "%PROJET/" + name)
+    emit_msg("update-identification")
+
 def students_list_file():
     path = get_option("listeetudiants")
     pdir = project_dir()
@@ -1756,6 +1769,7 @@ def x_identification():
         
     return render_template(
         "identification.html",
+        students_shared=sorted(students_shared_lists()),
         filename=lname, ukeys=ukeys, lkey=lkey,
         codes=codes, acode=acode,
         n_id=n_id, n_students=n_students)

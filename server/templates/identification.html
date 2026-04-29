@@ -60,10 +60,20 @@
 <div>
   {{ _('students.none') }}
 </div>
+<div class="bandeau {%if not students_shared %}hidden{% endif %}">
+  <select id="students-shared">
+    <option value="" selected>{{ _('students.upload') }}</option>
+    {% for sl in students_shared %}
+    <option value="{{ sl }}">{{ sl }}</option>
+    {% endfor %}
+  </select>
+</div>
 <div class="bandeau">
   <input type="file" id="students-upload" name="file" class="hidden"
          accept=".csv,.txt,text/csv"
          onchange="upload_students();" />
-  <label class="btn btn-ok" for="students-upload">{{ _('students.upload') }}</label>
+  <label class="btn btn-ok" for="students-upload"
+         onclick="return students_install();"
+         >{% if students_shared %}{{ _('students.install') }}{% else %}{{ _('students.upload') }}{% endif %}</label>
 </div>
 {% endif %}

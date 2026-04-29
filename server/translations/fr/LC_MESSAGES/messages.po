@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-29 10:59+0200\n"
-"PO-Revision-Date: 2026-04-29 11:01+0200\n"
+"POT-Creation-Date: 2026-04-29 13:34+0200\n"
+"PO-Revision-Date: 2026-04-29 13:35+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -16,7 +16,7 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-"Generated-By: Babel 2.18.0\n"
+"Generated-By: Babel 2.17.0\n"
 "X-Generator: Poedit 3.9\n"
 
 #: extra.py:1
@@ -120,33 +120,33 @@ msgstr "Extraction du barème…"
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1707
+#: server/amc.py:1720
 msgid "student.list.number"
 msgstr "Étudiant·e n°{}"
 
-#: server/amc.py:1778
+#: server/amc.py:1792
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "Une nouvelle identification a été détectée."
 msgstr[1] "Nouvelles identifications détectées : %(num)s"
 
-#: server/amc.py:1781
+#: server/amc.py:1795
 msgid "assoc.auto.none"
 msgstr "Aucune nouvelle identification n'a été détectée."
 
-#: server/amc.py:1897
+#: server/amc.py:1911
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1904
+#: server/amc.py:1918
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1939
+#: server/amc.py:1953
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1958
+#: server/amc.py:1972
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
@@ -179,19 +179,19 @@ msgstr ""
 "souhaitez utiliser des sujets déjà imprimés, annulez ! Êtes-vous sûr·e de "
 "vouloir continuer ?"
 
-#: server/static/amc.js:1291
+#: server/static/amc.js:1301
 msgid "confirm.rmstudentslist"
 msgstr ""
 "Voulez-vous vraiment effacer la liste des étudiant·es ? Cela supprimera "
 "toutes les associations entre copies et étudiant·es."
 
-#: server/static/amc.js:1358
+#: server/static/amc.js:1368
 msgid "confirm.lkey"
 msgstr ""
 "Voulez-vous vraiment modifier la clé unique utilisée ? Cela effacera "
 "toutes les associations entre copies et étudiant·es."
 
-#: server/static/amc.js:1392
+#: server/static/amc.js:1402
 msgid "confirm.rmassociation"
 msgstr ""
 "Voulez-vous vraiment effacer toutes les associations entre copies et "
@@ -259,9 +259,14 @@ msgstr ""
 "Ajoutez une liste d'étudiant·es (sous la forme d'un fichier CSV) dans "
 "votre répertoire projet."
 
-#: server/templates/identification.html:67
+#: server/templates/identification.html:65
+#: server/templates/identification.html:77
 msgid "students.upload"
 msgstr "Téléverser une liste…"
+
+#: server/templates/identification.html:77
+msgid "students.install"
+msgstr "Ajouter une liste d'étudiant·es"
 
 #: server/templates/incomplete_details.html:1
 msgid "scans.incomplete.one"

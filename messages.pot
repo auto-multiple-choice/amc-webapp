@@ -8,14 +8,14 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-29 10:59+0200\n"
+"POT-Creation-Date: 2026-04-29 13:34+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.18.0\n"
+"Generated-By: Babel 2.17.0\n"
 
 #: extra.py:1
 msgid "btn.yes"
@@ -109,33 +109,33 @@ msgstr ""
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1707
+#: server/amc.py:1720
 msgid "student.list.number"
 msgstr ""
 
-#: server/amc.py:1778
+#: server/amc.py:1792
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/amc.py:1781
+#: server/amc.py:1795
 msgid "assoc.auto.none"
 msgstr ""
 
-#: server/amc.py:1897
+#: server/amc.py:1911
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1904
+#: server/amc.py:1918
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1939
+#: server/amc.py:1953
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1958
+#: server/amc.py:1972
 msgid "files.indiv"
 msgstr ""
 
@@ -163,15 +163,15 @@ msgstr ""
 msgid "confirm.rebuild"
 msgstr ""
 
-#: server/static/amc.js:1291
+#: server/static/amc.js:1301
 msgid "confirm.rmstudentslist"
 msgstr ""
 
-#: server/static/amc.js:1358
+#: server/static/amc.js:1368
 msgid "confirm.lkey"
 msgstr ""
 
-#: server/static/amc.js:1392
+#: server/static/amc.js:1402
 msgid "confirm.rmassociation"
 msgstr ""
 
@@ -235,8 +235,13 @@ msgstr ""
 msgid "students.none"
 msgstr ""
 
-#: server/templates/identification.html:67
+#: server/templates/identification.html:65
+#: server/templates/identification.html:77
 msgid "students.upload"
+msgstr ""
+
+#: server/templates/identification.html:77
+msgid "students.install"
 msgstr ""
 
 #: server/templates/incomplete_details.html:1

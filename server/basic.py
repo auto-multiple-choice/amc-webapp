@@ -134,6 +134,16 @@ def project_clone_name(name):
             return(nn)
     return None
 
+def students_shared_dir():
+    return projects_dir(root=True) + "/_shared_lists"
+
+def students_shared_lists():
+    shared_dir = students_shared_dir()
+    if os.path.isdir(shared_dir):
+        return [ f[:-4] for f in os.listdir(shared_dir) if f.endswith(".csv") ]
+    else:
+        return []
+
 def first_or_none(l):
     if l:
         return l[0]

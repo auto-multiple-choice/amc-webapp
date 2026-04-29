@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-29 10:59+0200\n"
-"PO-Revision-Date: 2026-04-29 11:00+0200\n"
+"POT-Creation-Date: 2026-04-29 13:34+0200\n"
+"PO-Revision-Date: 2026-04-29 13:34+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -16,7 +16,7 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"Generated-By: Babel 2.18.0\n"
+"Generated-By: Babel 2.17.0\n"
 "X-Generator: Poedit 3.9\n"
 
 #: extra.py:1
@@ -117,33 +117,33 @@ msgstr "Extracting scoring strategy…"
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1707
+#: server/amc.py:1720
 msgid "student.list.number"
 msgstr "Student #{}"
 
-#: server/amc.py:1778
+#: server/amc.py:1792
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "One new student were identified."
 msgstr[1] "New students identified: %(num)s"
 
-#: server/amc.py:1781
+#: server/amc.py:1795
 msgid "assoc.auto.none"
 msgstr "No new students were identified."
 
-#: server/amc.py:1897
+#: server/amc.py:1911
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1904
+#: server/amc.py:1918
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1939
+#: server/amc.py:1953
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1958
+#: server/amc.py:1972
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -175,19 +175,19 @@ msgstr ""
 "Rebuilding the subject will remove all the project data. To allow the use "
 "of an already printed question, cancel! Are you sure you want to continue?"
 
-#: server/static/amc.js:1291
+#: server/static/amc.js:1301
 msgid "confirm.rmstudentslist"
 msgstr ""
 "Are you sure you want to delete the students list file? This will delete "
 "all association data."
 
-#: server/static/amc.js:1358
+#: server/static/amc.js:1368
 msgid "confirm.lkey"
 msgstr ""
 "Do you really want to change this key? This will cancel all the papers/"
 "students associations!"
 
-#: server/static/amc.js:1392
+#: server/static/amc.js:1402
 msgid "confirm.rmassociation"
 msgstr "Are you sure you want to delete all association data?"
 
@@ -251,9 +251,14 @@ msgstr "Manual"
 msgid "students.none"
 msgstr "Please add a students list as a CSV file in your project directory."
 
-#: server/templates/identification.html:67
+#: server/templates/identification.html:65
+#: server/templates/identification.html:77
 msgid "students.upload"
 msgstr "Send students list…"
+
+#: server/templates/identification.html:77
+msgid "students.install"
+msgstr "Add students list"
 
 #: server/templates/incomplete_details.html:1
 msgid "scans.incomplete.one"

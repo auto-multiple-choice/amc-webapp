@@ -1272,6 +1272,16 @@ function n_incomplete_details() {
     socket_emit("n-incomplete-details");
 }
 
+function students_install() {
+    var shared = document.getElementById("students-shared").value;
+    if(shared) {
+        socket_emit("studentslist-shared", shared);
+        return false;
+    } else {
+        return true;
+    }
+}
+
 function upload_students_done() {
     u_identification();
 }
