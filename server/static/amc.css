@@ -496,6 +496,7 @@ li.selectable.recent {
     color: black;
     transform: translate(-50%,-50%);
     background: white;
+    padding: 1ex;
 }
 
 #info-content > p {
@@ -504,6 +505,10 @@ li.selectable.recent {
 
 #info-prop {
     width: 90%;
+    height: 1.5ex;
+    appearance: none;
+    border-radius: 0.75ex;
+    margin-top: 1ex;
 }
 
 #warn-content {
