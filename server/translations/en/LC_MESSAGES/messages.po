@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-28 16:10+0200\n"
-"PO-Revision-Date: 2026-04-28 16:11+0200\n"
+"POT-Creation-Date: 2026-04-29 10:59+0200\n"
+"PO-Revision-Date: 2026-04-29 11:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -117,71 +117,77 @@ msgstr "Extracting scoring strategy…"
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1692
+#: server/amc.py:1707
 msgid "student.list.number"
 msgstr "Student #{}"
 
-#: server/amc.py:1763
+#: server/amc.py:1778
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "One new student were identified."
 msgstr[1] "New students identified: %(num)s"
 
-#: server/amc.py:1766
+#: server/amc.py:1781
 msgid "assoc.auto.none"
 msgstr "No new students were identified."
 
-#: server/amc.py:1882
+#: server/amc.py:1897
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1889
+#: server/amc.py:1904
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1924
+#: server/amc.py:1939
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:1943
+#: server/amc.py:1958
 msgid "files.indiv"
 msgstr "Download all individual files"
 
-#: server/static/amc.js:229
+#: server/static/amc.js:231
 msgid "confirm.deleteproject"
 msgstr ""
 "Are you sure you want to delete project \"{}\"? This will permanently "
 "delete all related files."
 
-#: server/static/amc.js:349
+#: server/static/amc.js:351
 msgid "confirm.deletefile"
 msgstr "Are you sure you want to delete the file {}?"
 
-#: server/static/amc.js:358
+#: server/static/amc.js:360
 msgid "create.project.noname"
 msgstr "You forgot to choose a name for your new project!"
 
-#: server/static/amc.js:367
+#: server/static/amc.js:369
 msgid "create.project.notemplate"
 msgstr "You forgot to choose a template!"
 
-#: server/static/amc.js:381
+#: server/static/amc.js:383
 msgid "create.project.nofile"
 msgstr "You forgot to choose a file to be sent!"
 
-#: server/static/amc.js:598
+#: server/static/amc.js:600
 msgid "confirm.rebuild"
 msgstr ""
 "Rebuilding the subject will remove all the project data. To allow the use "
 "of an already printed question, cancel! Are you sure you want to continue?"
 
-#: server/static/amc.js:1346
+#: server/static/amc.js:1291
+msgid "confirm.rmstudentslist"
+msgstr ""
+"Are you sure you want to delete the students list file? This will delete "
+"all association data."
+
+#: server/static/amc.js:1358
 msgid "confirm.lkey"
 msgstr ""
 "Do you really want to change this key? This will cancel all the papers/"
 "students associations!"
 
-#: server/static/amc.js:1381
+#: server/static/amc.js:1392
 msgid "confirm.rmassociation"
 msgstr "Are you sure you want to delete all association data?"
 
@@ -202,46 +208,50 @@ msgid "students.filename"
 msgstr "Students list:"
 
 #: server/templates/identification.html:10
+msgid "btn.delete"
+msgstr "Delete"
+
+#: server/templates/identification.html:14
 msgid "students.listkey"
 msgstr "Key in students list:"
 
-#: server/templates/identification.html:23
+#: server/templates/identification.html:27
 msgid "students.listkey.none"
 msgstr "No unique key in this students list!"
 
-#: server/templates/identification.html:28
+#: server/templates/identification.html:32
 msgid "assoc.code"
 msgstr "Code for identification:"
 
-#: server/templates/identification.html:33
+#: server/templates/identification.html:37
 msgid "assoc.preassoc"
 msgstr "pre-association"
 
-#: server/templates/identification.html:39
+#: server/templates/identification.html:43
 msgid "assoc.code.none"
 msgstr "No code found."
 
-#: server/templates/identification.html:43
+#: server/templates/identification.html:47
 msgid "assoc.title"
 msgstr "Papers/students association"
 
-#: server/templates/identification.html:49
+#: server/templates/identification.html:53
 msgid "assoc.clear"
 msgstr "Clear"
 
-#: server/templates/identification.html:51
+#: server/templates/identification.html:55
 msgid "assoc.auto"
 msgstr "Automatic"
 
-#: server/templates/identification.html:53
+#: server/templates/identification.html:57
 msgid "assoc.manual"
 msgstr "Manual"
 
-#: server/templates/identification.html:57
+#: server/templates/identification.html:61
 msgid "students.none"
 msgstr "Please add a students list as a CSV file in your project directory."
 
-#: server/templates/identification.html:63
+#: server/templates/identification.html:67
 msgid "students.upload"
 msgstr "Send students list…"
 

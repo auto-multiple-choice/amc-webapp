@@ -1286,6 +1286,16 @@ function upload_students() {
     }
 }
 
+function students_list_delete(ask_confirm) {
+    if(ask_confirm) {
+        confirm_msg('confirm.rmstudentslist', [],
+                    'continue:danger', 'cancel:neutral',
+                    'socket_emit', ["studentslist-delete"]);
+    } else {
+        socket_emit("studentslist-delete");
+    }
+}
+
 function u_identification() {
     fetch_to_dom("identification", "/identification.html", {})
         .then( () => {

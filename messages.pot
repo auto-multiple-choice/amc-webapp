@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-28 16:10+0200\n"
+"POT-Creation-Date: 2026-04-29 10:59+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -109,65 +109,69 @@ msgstr ""
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1692
+#: server/amc.py:1707
 msgid "student.list.number"
 msgstr ""
 
-#: server/amc.py:1763
+#: server/amc.py:1778
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/amc.py:1766
+#: server/amc.py:1781
 msgid "assoc.auto.none"
 msgstr ""
 
-#: server/amc.py:1882
+#: server/amc.py:1897
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1889
+#: server/amc.py:1904
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1924
+#: server/amc.py:1939
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1943
+#: server/amc.py:1958
 msgid "files.indiv"
 msgstr ""
 
-#: server/static/amc.js:229
+#: server/static/amc.js:231
 msgid "confirm.deleteproject"
 msgstr ""
 
-#: server/static/amc.js:349
+#: server/static/amc.js:351
 msgid "confirm.deletefile"
 msgstr ""
 
-#: server/static/amc.js:358
+#: server/static/amc.js:360
 msgid "create.project.noname"
 msgstr ""
 
-#: server/static/amc.js:367
+#: server/static/amc.js:369
 msgid "create.project.notemplate"
 msgstr ""
 
-#: server/static/amc.js:381
+#: server/static/amc.js:383
 msgid "create.project.nofile"
 msgstr ""
 
-#: server/static/amc.js:598
+#: server/static/amc.js:600
 msgid "confirm.rebuild"
 msgstr ""
 
-#: server/static/amc.js:1346
+#: server/static/amc.js:1291
+msgid "confirm.rmstudentslist"
+msgstr ""
+
+#: server/static/amc.js:1358
 msgid "confirm.lkey"
 msgstr ""
 
-#: server/static/amc.js:1381
+#: server/static/amc.js:1392
 msgid "confirm.rmassociation"
 msgstr ""
 
@@ -188,46 +192,50 @@ msgid "students.filename"
 msgstr ""
 
 #: server/templates/identification.html:10
+msgid "btn.delete"
+msgstr ""
+
+#: server/templates/identification.html:14
 msgid "students.listkey"
 msgstr ""
 
-#: server/templates/identification.html:23
+#: server/templates/identification.html:27
 msgid "students.listkey.none"
 msgstr ""
 
-#: server/templates/identification.html:28
+#: server/templates/identification.html:32
 msgid "assoc.code"
 msgstr ""
 
-#: server/templates/identification.html:33
+#: server/templates/identification.html:37
 msgid "assoc.preassoc"
 msgstr ""
 
-#: server/templates/identification.html:39
+#: server/templates/identification.html:43
 msgid "assoc.code.none"
 msgstr ""
 
-#: server/templates/identification.html:43
+#: server/templates/identification.html:47
 msgid "assoc.title"
 msgstr ""
 
-#: server/templates/identification.html:49
+#: server/templates/identification.html:53
 msgid "assoc.clear"
 msgstr ""
 
-#: server/templates/identification.html:51
+#: server/templates/identification.html:55
 msgid "assoc.auto"
 msgstr ""
 
-#: server/templates/identification.html:53
+#: server/templates/identification.html:57
 msgid "assoc.manual"
 msgstr ""
 
-#: server/templates/identification.html:57
+#: server/templates/identification.html:61
 msgid "students.none"
 msgstr ""
 
-#: server/templates/identification.html:63
+#: server/templates/identification.html:67
 msgid "students.upload"
 msgstr ""
 

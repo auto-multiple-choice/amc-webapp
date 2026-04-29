@@ -3,7 +3,11 @@
 </div>
 {% if filename %}
 <div>
-  {{ _('students.filename') }} <span class="filename">{{ filename }}</span>
+  {{ _('students.filename') }}
+  <span class="filename">{{ filename }}</span><br/>
+  <span class="btn btn-danger btn-small"
+        onclick="students_list_delete({% if n_id %}true{% else %}false{% endif %});"
+        >{{ _('btn.delete') }}</span>
 </div>
   {% if ukeys %}
 <div>

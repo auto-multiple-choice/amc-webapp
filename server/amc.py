@@ -1597,6 +1597,21 @@ def io_do_mark(update):
     emit_msg("update-marks")
     emit_msg("update-identification")
 
+@socketio_name('studentslist-delete')
+def io_studentslist_delete():
+    old = get_option("listeetudiants")
+    pdir = project_dir()
+    if old.startswith("%PROJET/"):
+        old = lstrip_text(old, '%PROJET/', pdir + "/")
+    if old.startswith(pdir + "/"):
+        try:
+            os.unlink(old)
+        except Exception as e:
+            app.logger.error(f"Can't delete students list file {old}: {e}")
+    clear_data("assoc")
+    change_option("listeetudiants", "")
+    emit_msg("update-identification")
+
 def students_list_file():
     path = get_option("listeetudiants")
     pdir = project_dir()

@@ -120,6 +120,11 @@ img.menu {
     border-style: solid;
 }
 
+.btn.btn-small {
+    font-size: small;
+    padding: 0px;
+}
+
 .btn:active:hover {
     border-color: #0008;
 }
