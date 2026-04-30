@@ -1,11 +1,13 @@
 FROM alpine
 
 ARG AMC_REVISION=f0f11a5c3153157b010ed13d8e4e0b2f8a14fcf6
+ARG TEXLIVE_PKGS
 
 ###############################################################
 # TeXLive
 
 RUN apk add texlive texlive-luatex texlive-xetex texlive-latexextra texmf-dist-langfrench
+RUN if [ "$TEXLIVE_PKGS" ]; then apk add $TEXLIVE_PKGS ; fi
 
 ###############################################################
 # AMC
