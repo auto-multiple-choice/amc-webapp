@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-29 13:34+0200\n"
+"POT-Creation-Date: 2026-04-30 14:47+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -37,105 +37,109 @@ msgstr ""
 msgid "dialog.ok"
 msgstr ""
 
-#: server/amc.py:371
+#: server/amc.py:374
 msgid "t.cloning"
 msgstr ""
 
-#: server/amc.py:378
+#: server/amc.py:381
 msgid "msg.cloned"
 msgstr ""
 
-#: server/amc.py:381
+#: server/amc.py:384
 msgid "msg.clone.err"
 msgstr ""
 
-#: server/amc.py:406
+#: server/amc.py:409
 msgid "msg.rename.exists"
 msgstr ""
 
-#: server/amc.py:494
+#: server/amc.py:497
 msgid "msg.create.exists"
 msgstr ""
 
-#: server/amc.py:589 server/amc.py:614
+#: server/amc.py:592 server/amc.py:617
 msgid "t.options"
 msgstr ""
 
-#: server/amc.py:602 server/amc.py:625
+#: server/amc.py:605 server/amc.py:628
 msgid "t.extract"
 msgstr ""
 
-#: server/amc.py:692
+#: server/amc.py:695
 msgid "t.archive.save"
 msgstr ""
 
-#: server/amc.py:815
+#: server/amc.py:818
 msgid "t.scans.extract"
 msgstr ""
 
-#: server/amc.py:824
+#: server/amc.py:827
 msgid "t.automatic"
 msgstr ""
 
-#: server/amc.py:1044
+#: server/amc.py:1042
+msgid "latex.log"
+msgstr ""
+
+#: server/amc.py:1074
 msgid "t.clear"
 msgstr ""
 
-#: server/amc.py:1069
+#: server/amc.py:1099
 msgid "t.layouts"
 msgstr ""
 
-#: server/amc.py:1176
+#: server/amc.py:1206
 msgid "t.print_to"
 msgstr ""
 
-#: server/amc.py:1194
+#: server/amc.py:1224
 msgid "msg.printing.done"
 msgstr ""
 
-#: server/amc.py:1205
+#: server/amc.py:1235
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1509
+#: server/amc.py:1539
 msgid "add.student.syntax"
 msgstr ""
 
-#: server/amc.py:1580
+#: server/amc.py:1610
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1588
+#: server/amc.py:1618
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1720
+#: server/amc.py:1750
 msgid "student.list.number"
 msgstr ""
 
-#: server/amc.py:1792
+#: server/amc.py:1822
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/amc.py:1795
+#: server/amc.py:1825
 msgid "assoc.auto.none"
 msgstr ""
 
-#: server/amc.py:1911
+#: server/amc.py:1941
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1918
+#: server/amc.py:1948
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1953
+#: server/amc.py:1983
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:1972
+#: server/amc.py:2002
 msgid "files.indiv"
 msgstr ""
 

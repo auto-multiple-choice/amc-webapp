@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-04-29 13:34+0200\n"
-"PO-Revision-Date: 2026-04-29 13:35+0200\n"
+"POT-Creation-Date: 2026-04-30 14:47+0200\n"
+"PO-Revision-Date: 2026-04-30 14:48+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -39,114 +39,118 @@ msgstr "Annuler"
 msgid "dialog.ok"
 msgstr "OK"
 
-#: server/amc.py:371
+#: server/amc.py:374
 msgid "t.cloning"
 msgstr "Clonage du projet…"
 
-#: server/amc.py:378
+#: server/amc.py:381
 msgid "msg.cloned"
 msgstr "Le projet a été cloné vers %(name)s."
 
-#: server/amc.py:381
+#: server/amc.py:384
 msgid "msg.clone.err"
 msgstr ""
 "Erreur lors de la création du clone %(name)s : %(n)s fichiers sur %"
 "(ntotal)s ont seulement été copiés."
 
-#: server/amc.py:406
+#: server/amc.py:409
 msgid "msg.rename.exists"
 msgstr ""
 "Impossible de renommer \"%(old)s\" en \"%(new)s\", car ce dernier existe "
 "déjà."
 
-#: server/amc.py:494
+#: server/amc.py:497
 msgid "msg.create.exists"
 msgstr ""
 "Impossible de créer un projet nommé \"%(name)s\", car un fichier ou "
 "répertoire existe déjà sous ce nom."
 
-#: server/amc.py:589 server/amc.py:614
+#: server/amc.py:592 server/amc.py:617
 msgid "t.options"
 msgstr "Recherche du fichier d'options…"
 
-#: server/amc.py:602 server/amc.py:625
+#: server/amc.py:605 server/amc.py:628
 msgid "t.extract"
 msgstr "Extraction…"
 
-#: server/amc.py:692
+#: server/amc.py:695
 msgid "t.archive.save"
 msgstr "Sauvegarde de l'archive…"
 
-#: server/amc.py:815
+#: server/amc.py:818
 msgid "t.scans.extract"
 msgstr "Extraction des images…"
 
-#: server/amc.py:824
+#: server/amc.py:827
 msgid "t.automatic"
 msgstr "Saisie automatique…"
 
-#: server/amc.py:1044
+#: server/amc.py:1042
+msgid "latex.log"
+msgstr "Log LaTeX complet"
+
+#: server/amc.py:1074
 msgid "t.clear"
 msgstr "Nettoyage des données du projet…"
 
-#: server/amc.py:1069
+#: server/amc.py:1099
 msgid "t.layouts"
 msgstr "Détection des mises en page…"
 
-#: server/amc.py:1176
+#: server/amc.py:1206
 msgid "t.print_to"
 msgstr "Impression vers %(printer)s…"
 
-#: server/amc.py:1194
+#: server/amc.py:1224
 msgid "msg.printing.done"
 msgstr "Impression terminée !"
 
-#: server/amc.py:1205
+#: server/amc.py:1235
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1509
+#: server/amc.py:1539
 msgid "add.student.syntax"
 msgstr ""
 "L'étudiant à ajouter doit être renseigné sous la forme d'un nombre entier "
 "(version du sujet), ou de deux entiers (version du sujet et numéro de "
 "copie) séparés par deux points (\":\")."
 
-#: server/amc.py:1580
+#: server/amc.py:1610
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1588
+#: server/amc.py:1618
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1720
+#: server/amc.py:1750
 msgid "student.list.number"
 msgstr "Étudiant·e n°{}"
 
-#: server/amc.py:1792
+#: server/amc.py:1822
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "Une nouvelle identification a été détectée."
 msgstr[1] "Nouvelles identifications détectées : %(num)s"
 
-#: server/amc.py:1795
+#: server/amc.py:1825
 msgid "assoc.auto.none"
 msgstr "Aucune nouvelle identification n'a été détectée."
 
-#: server/amc.py:1911
+#: server/amc.py:1941
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1918
+#: server/amc.py:1948
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1953
+#: server/amc.py:1983
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:1972
+#: server/amc.py:2002
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
@@ -868,3 +872,6 @@ msgstr "Imprimer"
 
 #~ msgid "btn."
 #~ msgstr "Non"
+
+#~ msgid "display.first.lines"
+#~ msgstr "Premières lignes du message :"
