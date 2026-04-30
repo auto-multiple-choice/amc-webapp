@@ -34,6 +34,8 @@ def amc_command(*args,
                 *args ]
     command += ["--profile", "default"]
     command += ["--project-dir", project_dir()]
+    if args[0] == "prepare":
+        command += ["--log", project_dir() + "/_latex.log"]
     current_app.logger.info("c-cmd> " + command_str(command))
 
     try:
@@ -73,9 +75,9 @@ def amc_command(*args,
             prop = 0
             emit_msg("t", text)
             emit_msg("p", prop)
-        m = re.match(r'^(ERR|INFO|WARN)[:>]\s*(.*)', line)
+        m = re.match(r'^(ERR|INFO|WARN)([:>])(.*)', line)
         if m:
-            messages[m[1]].append(m[2])
+            messages[m[1]].append(m[2] + m[3])
         v = re.match(r'^VAR:\s*([^=]+)=(.*)', line)
         if v:
             variables[v[1]] = v[2]

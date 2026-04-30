@@ -272,7 +272,10 @@ def fs_file(path):
             if ext in ('tiff', 'tif') and not attach:
                 return serve_pil_image(Image.open(path))
             else:
-                return send_file(path,
+                mtype = None
+                if path.endswith(".log") or path.endswith(".tex"):
+                    mtype = "text/plain"
+                return send_file(path, mimetype=mtype,
                                  as_attachment=attach)
         elif os.path.isdir(path):
             return send_dir_as_zip(path,
@@ -1003,22 +1006,52 @@ def io_doc_type(t):
     emit_msg("document-content", [can_print, danger,
                                        template_name, url])
 
-def select_messages(messages):
-    if len(messages) > 10:
-        messages = ["<i>Only display the first 10 messages…</i>"] + messages[:10]
-    return "<br>\n". join(messages)
+def select_messages(messages, after=None):
+    first_of = len(messages) > 12
+    text = ""
+    in_code = False
+    to_show = messages[:12]
+    if first_of:
+        to_show.append(":<i>[...]</i>")
+    if after:
+        to_show += after
+    for m in to_show:
+        if m.startswith(":"):
+            if in_code:
+                text += "</div>\n"
+            text += m[1:] + "<br/>\n"
+        elif m.startswith(">"):
+            text += "\n"
+            if not in_code:
+                text += '<div class="msgcode">'
+            text += m[1:]
+            in_code = True
+    if in_code:
+        text += "</div>\n"
+    return text
 
-def show_messages(messages, err=True, warn=True, info=False):
+def show_messages(messages, variables=None,
+                  err=True, warn=True, info=False):
     n = 0
+    after_err = []
     if err:
         n += len(messages["ERR"])
+        if variables and smooth_int(variables.get('latex_errors')):
+            path = project_dir() + "/_latex.log"
+            if os.path.isfile(path):
+                url = f"/fs/{flask_g.project_name}/_latex.log" + context_args(
+                    {"attach": "0"})
+                after_err.append(
+                    f':<a href="{url}" target="_log">' + _('latex.log') + '</a>'
+                )
     if warn:
         n += len(messages["WARN"])
     if info:
         n += len(messages["INFO"])
     if n:
         dialog_msg(
-            err = select_messages(messages["ERR"]) if err else "",
+            err = select_messages(messages["ERR"],
+                                  after=after_err) if err else "",
             warn = select_messages(messages["WARN"]) if warn else "",
             info = select_messages(messages["INFO"]) if info else "")
     return len(messages["ERR"])
@@ -1083,7 +1116,7 @@ def io_doc_update(t):
         emit_msg("defects", db.defects_class())
 
     emit_msg("end-command")
-    show_messages(messages)
+    show_messages(messages, variables=variables)
     io_adapt_menu()
     io_doc_type(t)
 

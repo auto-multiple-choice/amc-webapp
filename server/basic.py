@@ -13,6 +13,14 @@ from flask_socketio import emit
 def lstrip_text(s, prefix, replace=''):
     return re.sub('^' + re.escape(prefix), replace, s)
 
+def smooth_int(s):
+    if s:
+        s = re.sub(r'[^0-9]+', '', s)
+    if s:
+        return int(s)
+    else:
+        return 0
+
 def get_locale():
     return request.accept_languages.best_match(['fr', 'en'])
 
