@@ -58,6 +58,7 @@ tests-single:
     - /venv/bin/python3 multiple.py
     - /venv/bin/python3 i18n.py
     - /venv/bin/python3 options.py
+    - /venv/bin/python3 multicopies.py
   artifacts:
     when: always
     paths:

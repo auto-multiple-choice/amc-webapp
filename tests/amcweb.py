@@ -149,10 +149,7 @@ class AMCWeb():
             self.driver.find_element(By.ID, 'project-delete').click()
             self.sleep(0.5)
             old[0].click()
-            alert = WebDriverWait(self.driver, timeout=2).until(
-                lambda d : d.switch_to.alert)
-            assert 'delete project' in alert.text
-            alert.accept()
+            self.wait_for_warning(check_message="delete project", accept=True)
             self.sleep(1)
 
     def goto_home(self):
@@ -473,6 +470,7 @@ class AMCWeb():
         self.wait_for_endcommand()
 
     def do_association_auto(self):
+        self.goto_tab("grading")
         self.click_on('do-association-auto')
         self.wait_for_endcommand()
         self.read_dialog()
