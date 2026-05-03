@@ -419,13 +419,15 @@ class Amcdb:
         else:
             return None
         
-    def associate(self, student, copy, student_id):
+    def associate(self, student, copy, student_id, multiple_copies=False):
         self.use_module("association")
         self.db.row_factory = None
-        to_rm = list(self.db.execute(
-            """SELECT student, copy FROM association.association_association
-            WHERE (auto=? AND manual IS NULL) OR manual=?""",
-            (student_id, student_id)).fetchall())
+        to_rm = []
+        if not multiple_copies:
+            to_rm = list(self.db.execute(
+                """SELECT student, copy FROM association.association_association
+                WHERE (auto=? AND manual IS NULL) OR manual=?""",
+                (student_id, student_id)).fetchall())
         for s,c in to_rm:
             self.db.execute(
                 """UPDATE association.association_association

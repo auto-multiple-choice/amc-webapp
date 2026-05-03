@@ -1878,7 +1878,8 @@ def io_associate(data):
         if old_lkey:
             app.logger.warning(f"key_in_list changed! {old_lkey} -> {lkey}")
 
-    to_rm = db.associate(student, copy, student_id)
+    multiple_copies = get_option("multiple_copies")
+    to_rm = db.associate(student, copy, student_id, multiple_copies)
     app.logger.info(f"Associated: [{student},{copy}] <-> \"{student_id}\" | {to_rm}")
     emit_msg("update-association",
          [ student, copy, student_id, to_rm ])
