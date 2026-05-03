@@ -886,7 +886,7 @@ def io_project_config():
          get_options(
              ["moteur_latex_b",
               "note_null", "note_max", "note_grain", "note_arrondi",
-              "verdict", "annote_position",
+              "verdict", "annote_position", "multiple_copies",
               "global:bw_threshold",
               "global:tolerance_marque_inf", "global:tolerance_marque_sup",
               "global:try_three", "global:ascii_filenames",
