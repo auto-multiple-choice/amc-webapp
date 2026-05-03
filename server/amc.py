@@ -1792,7 +1792,7 @@ def x_identification():
 
     db = get_db()
     codes = db.codes_list()
-    n_id = db.n_identifications()
+    n_id = db.n_real_identifications()
     n_students = db.n_graded_students()
     acode = get_option("assoc_code")
     if not acode:

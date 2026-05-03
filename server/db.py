@@ -360,6 +360,18 @@ class Amcdb:
         self.db.row_factory = None
         x = self.db.execute("SELECT count(*) FROM scoring.scoring_mark").fetchone()
         return x[0]
+
+    def n_real_identifications(self):
+        self.use_module("association")
+        self.db.row_factory = None
+        x = self.db.execute(
+            """SELECT count(*) FROM (
+                  SELECT CASE WHEN manual IS NOT NULL THEN manual
+                              ELSE auto END AS realid
+                    FROM association_association
+                    WHERE realid IS NOT NULL AND realid != ""
+               )""").fetchone()
+        return x[0]
         
     def n_identifications(self, manual=True, auto=True):
         self.use_module("association")
@@ -368,9 +380,9 @@ class Amcdb:
 
         cond = []
         if manual:
-            cond.append("manual IS NOT NULL")
+            cond.append('(manual IS NOT NULL AND manual != "")')
         if auto:
-            cond.append("auto IS NOT NULL")
+            cond.append('(auto IS NOT NULL AND auto != "")')
         if cond:
             sql += " WHERE " + " OR ".join(cond)
 
