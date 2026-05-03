@@ -1826,7 +1826,7 @@ def io_association_auto():
                      n_after-n_before)
     else:
         m = _("assoc.auto.none")
-    messages["INFO"].append(m)
+    messages["INFO"].append(":" + m)
     show_messages(messages, info=True)
     db.set_variable("association", "key_in_list", get_option("liste_key"))
     db.set_variable("association", "code", get_option("assoc_code"))
