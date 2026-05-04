@@ -1150,7 +1150,9 @@ def layout_set_page(student, page):
 
 @socketio_name("layout-init")
 def io_layout_init():
-    layout_set_page(1, 1)
+    db = get_db(modules=("layout",))
+    student, page = db.first_page()
+    layout_set_page(student, page)
     
 @socketio_name("layout-add")
 def io_layout_add(data):

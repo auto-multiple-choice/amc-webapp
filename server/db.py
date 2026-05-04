@@ -55,6 +55,11 @@ class Amcdb:
         self.db.row_factory = None
         return self.db.execute("SELECT max(page) FROM layout.layout_page").fetchone()[0]
 
+    def first_page(self):
+        self.use_module("layout")
+        self.db.row_factory = None
+        return self.db.execute("SELECT student, page FROM layout.layout_page ORDER BY student,page LIMIT 1").fetchone()
+
     def layout_npages(self):
         self.use_module("layout")
         self.db.row_factory = None
