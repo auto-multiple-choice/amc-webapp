@@ -30,12 +30,7 @@ var AMCTxtHighlightRules = function() {
  Pages
  RandomSeed
  PreAssociation PreAssociationKey PreAssociationName
- LaTeX xltxtra
- ShuffleQuestions QuestionBlocks
- CompleteMulti SeparateAnswerSheet AutoMarks
- Arabic
- ManualDuplex SingleSided
-`.split(/\s+/).filter((s)=>s).join("|") + ")";
+ `.split(/\s+/).filter((s)=>s).join("|") + ")";
     // regexp must not have capturing parentheses. Use (?:) instead.
     // regexps are ordered -> the first match is used
 
