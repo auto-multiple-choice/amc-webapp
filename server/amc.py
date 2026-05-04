@@ -251,11 +251,17 @@ def serve_pil_image(pil_img):
     img_io.seek(0)
     return send_file(img_io, mimetype='image/jpeg')
 
+def fs_path_to_local(path, with_fs=True):
+    if with_fs:
+        path = lstrip_text(path, "/fs/", "")
+    path = path.replace("..", "").replace('\\', '')
+    path = projects_dir() + "/" + path
+    return path
+
 @app.route('/fs/<path:path>', methods=['GET', 'POST'])
 def fs_file(path):
     headers_info()
-    path = path.replace("..", "")
-    path = projects_dir() + "/" + path
+    path = fs_path_to_local(path, with_fs=False)
     if request.method == 'POST':
         app.logger.info(f"Uploaded file: {path}")
         if 'file' not in request.files:
@@ -966,7 +972,13 @@ def u_document_type(doc_type):
     headers_info()
     url = request.json.get('url')
     if url:
-        url = url + context_args({"attach": "0"})
+        opts = {"attach": "0"}
+        path = fs_path_to_local(url)
+        if os.path.exists(path):
+            opts["t"] = str(os.path.getmtime(path))
+        else:
+            app.logger.warning(f"Document not found: {path}")
+        url = url + context_args(opts)
     return render_template(f"document_{doc_type}.html",
                            url=url)
 
