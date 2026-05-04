@@ -85,4 +85,4 @@ VOLUME /amc-web/files
 
 EXPOSE 8080
 WORKDIR /amc-web/server
-CMD [ "gunicorn", "-k", "gevent", "-w", "1", "amc:app", "-b", "0.0.0.0:8080", "--preload" ]
+CMD [ "gunicorn", "-k", "gevent", "-w", "1", "amc:app", "-b", "0.0.0.0:8080", "--preload", "--access-logfile",  "-" ]
