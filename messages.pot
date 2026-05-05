@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-03 14:26+0200\n"
+"POT-Creation-Date: 2026-05-05 22:06+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -37,109 +37,109 @@ msgstr ""
 msgid "dialog.ok"
 msgstr ""
 
-#: server/amc.py:374
+#: server/amc.py:380
 msgid "t.cloning"
 msgstr ""
 
-#: server/amc.py:381
+#: server/amc.py:387
 msgid "msg.cloned"
 msgstr ""
 
-#: server/amc.py:384
+#: server/amc.py:390
 msgid "msg.clone.err"
 msgstr ""
 
-#: server/amc.py:409
+#: server/amc.py:415
 msgid "msg.rename.exists"
 msgstr ""
 
-#: server/amc.py:497
+#: server/amc.py:503
 msgid "msg.create.exists"
 msgstr ""
 
-#: server/amc.py:592 server/amc.py:617
+#: server/amc.py:598 server/amc.py:623
 msgid "t.options"
 msgstr ""
 
-#: server/amc.py:605 server/amc.py:628
+#: server/amc.py:611 server/amc.py:634
 msgid "t.extract"
 msgstr ""
 
-#: server/amc.py:695
+#: server/amc.py:701
 msgid "t.archive.save"
 msgstr ""
 
-#: server/amc.py:818
+#: server/amc.py:844
 msgid "t.scans.extract"
 msgstr ""
 
-#: server/amc.py:827
+#: server/amc.py:853
 msgid "t.automatic"
 msgstr ""
 
-#: server/amc.py:1045
+#: server/amc.py:1077
 msgid "latex.log"
 msgstr ""
 
-#: server/amc.py:1077
+#: server/amc.py:1109
 msgid "t.clear"
 msgstr ""
 
-#: server/amc.py:1102
+#: server/amc.py:1134
 msgid "t.layouts"
 msgstr ""
 
-#: server/amc.py:1209
+#: server/amc.py:1243
 msgid "t.print_to"
 msgstr ""
 
-#: server/amc.py:1227
+#: server/amc.py:1261
 msgid "msg.printing.done"
 msgstr ""
 
-#: server/amc.py:1238
+#: server/amc.py:1272
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1542
+#: server/amc.py:1577
 msgid "add.student.syntax"
 msgstr ""
 
-#: server/amc.py:1613
+#: server/amc.py:1648
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1621
+#: server/amc.py:1656
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1753
+#: server/amc.py:1788
 msgid "student.list.number"
 msgstr ""
 
-#: server/amc.py:1825
+#: server/amc.py:1860
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/amc.py:1828
+#: server/amc.py:1863
 msgid "assoc.auto.none"
 msgstr ""
 
-#: server/amc.py:1944
+#: server/amc.py:1980
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1951
+#: server/amc.py:1987
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:1986
+#: server/amc.py:2022
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:2005
+#: server/amc.py:2041
 msgid "files.indiv"
 msgstr ""
 
@@ -175,7 +175,7 @@ msgstr ""
 msgid "confirm.lkey"
 msgstr ""
 
-#: server/static/amc.js:1402
+#: server/static/amc.js:1403
 msgid "confirm.rmassociation"
 msgstr ""
 
@@ -702,6 +702,10 @@ msgstr ""
 
 #: server/templates/tab_grading.html:136
 msgid "assoc.done"
+msgstr ""
+
+#: server/templates/tab_grading.html:146
+msgid "student.type-to-select"
 msgstr ""
 
 #: server/templates/tab_scans.html:6

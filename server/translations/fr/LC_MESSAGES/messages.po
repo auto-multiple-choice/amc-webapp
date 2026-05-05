@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-03 14:26+0200\n"
-"PO-Revision-Date: 2026-05-03 14:28+0200\n"
+"POT-Creation-Date: 2026-05-05 22:06+0200\n"
+"PO-Revision-Date: 2026-05-05 22:08+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -39,118 +39,118 @@ msgstr "Annuler"
 msgid "dialog.ok"
 msgstr "OK"
 
-#: server/amc.py:374
+#: server/amc.py:380
 msgid "t.cloning"
 msgstr "Clonage du projet…"
 
-#: server/amc.py:381
+#: server/amc.py:387
 msgid "msg.cloned"
 msgstr "Le projet a été cloné vers %(name)s."
 
-#: server/amc.py:384
+#: server/amc.py:390
 msgid "msg.clone.err"
 msgstr ""
 "Erreur lors de la création du clone %(name)s : %(n)s fichiers sur %"
 "(ntotal)s ont seulement été copiés."
 
-#: server/amc.py:409
+#: server/amc.py:415
 msgid "msg.rename.exists"
 msgstr ""
 "Impossible de renommer \"%(old)s\" en \"%(new)s\", car ce dernier existe "
 "déjà."
 
-#: server/amc.py:497
+#: server/amc.py:503
 msgid "msg.create.exists"
 msgstr ""
 "Impossible de créer un projet nommé \"%(name)s\", car un fichier ou "
 "répertoire existe déjà sous ce nom."
 
-#: server/amc.py:592 server/amc.py:617
+#: server/amc.py:598 server/amc.py:623
 msgid "t.options"
 msgstr "Recherche du fichier d'options…"
 
-#: server/amc.py:605 server/amc.py:628
+#: server/amc.py:611 server/amc.py:634
 msgid "t.extract"
 msgstr "Extraction…"
 
-#: server/amc.py:695
+#: server/amc.py:701
 msgid "t.archive.save"
 msgstr "Sauvegarde de l'archive…"
 
-#: server/amc.py:818
+#: server/amc.py:844
 msgid "t.scans.extract"
 msgstr "Extraction des images…"
 
-#: server/amc.py:827
+#: server/amc.py:853
 msgid "t.automatic"
 msgstr "Saisie automatique…"
 
-#: server/amc.py:1045
+#: server/amc.py:1077
 msgid "latex.log"
 msgstr "Log LaTeX complet"
 
-#: server/amc.py:1077
+#: server/amc.py:1109
 msgid "t.clear"
 msgstr "Nettoyage des données du projet…"
 
-#: server/amc.py:1102
+#: server/amc.py:1134
 msgid "t.layouts"
 msgstr "Détection des mises en page…"
 
-#: server/amc.py:1209
+#: server/amc.py:1243
 msgid "t.print_to"
 msgstr "Impression vers %(printer)s…"
 
-#: server/amc.py:1227
+#: server/amc.py:1261
 msgid "msg.printing.done"
 msgstr "Impression terminée !"
 
-#: server/amc.py:1238
+#: server/amc.py:1272
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1542
+#: server/amc.py:1577
 msgid "add.student.syntax"
 msgstr ""
 "L'étudiant à ajouter doit être renseigné sous la forme d'un nombre entier "
 "(version du sujet), ou de deux entiers (version du sujet et numéro de "
 "copie) séparés par deux points (\":\")."
 
-#: server/amc.py:1613
+#: server/amc.py:1648
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1621
+#: server/amc.py:1656
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1753
+#: server/amc.py:1788
 msgid "student.list.number"
 msgstr "Étudiant·e n°{}"
 
-#: server/amc.py:1825
+#: server/amc.py:1860
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "Une nouvelle identification a été détectée."
 msgstr[1] "Nouvelles identifications détectées : %(num)s"
 
-#: server/amc.py:1828
+#: server/amc.py:1863
 msgid "assoc.auto.none"
 msgstr "Aucune nouvelle identification n'a été détectée."
 
-#: server/amc.py:1944
+#: server/amc.py:1980
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1951
+#: server/amc.py:1987
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:1986
+#: server/amc.py:2022
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:2005
+#: server/amc.py:2041
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
@@ -195,7 +195,7 @@ msgstr ""
 "Voulez-vous vraiment modifier la clé unique utilisée ? Cela effacera toutes "
 "les associations entre copies et étudiant·es."
 
-#: server/static/amc.js:1402
+#: server/static/amc.js:1403
 msgid "confirm.rmassociation"
 msgstr ""
 "Voulez-vous vraiment effacer toutes les associations entre copies et "
@@ -731,6 +731,10 @@ msgstr "Annoter"
 #: server/templates/tab_grading.html:136
 msgid "assoc.done"
 msgstr "Fait"
+
+#: server/templates/tab_grading.html:146
+msgid "student.type-to-select"
+msgstr "Écrire pour filtrer…"
 
 #: server/templates/tab_scans.html:6
 msgid "scans.photocopy"

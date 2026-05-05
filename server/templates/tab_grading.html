@@ -141,6 +141,12 @@
     <div id="assoc-choice">
       <div id="studentname">
       </div>
+      <div class="bandeau">
+        <input type="text" id="student-entry"
+               placeholder="{{ _('student.type-to-select') }}"
+               oninput="select_students(this);"
+               onkeyup="select_students_keyup(this, event);"></input>
+      </div>
       <div id="students-list">
       </div>
     </div>

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-03 14:26+0200\n"
-"PO-Revision-Date: 2026-05-03 14:27+0200\n"
+"POT-Creation-Date: 2026-05-05 22:06+0200\n"
+"PO-Revision-Date: 2026-05-05 22:07+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -39,114 +39,114 @@ msgstr "Cancel"
 msgid "dialog.ok"
 msgstr "OK"
 
-#: server/amc.py:374
+#: server/amc.py:380
 msgid "t.cloning"
 msgstr "Cloning project…"
 
-#: server/amc.py:381
+#: server/amc.py:387
 msgid "msg.cloned"
 msgstr "Project cloned to %(name)s."
 
-#: server/amc.py:384
+#: server/amc.py:390
 msgid "msg.clone.err"
 msgstr ""
 "Errors while cloning to %(name)s: only %(n)s files copied out of %(ntotal)s."
 
-#: server/amc.py:409
+#: server/amc.py:415
 msgid "msg.rename.exists"
 msgstr "Can't rename \"%(old)s\" to \"%(new)s\": \"%(new)s\" already exists."
 
-#: server/amc.py:497
+#: server/amc.py:503
 msgid "msg.create.exists"
 msgstr ""
 "Can't create project \"%(name)s\": some file or directory already exists "
 "with this name."
 
-#: server/amc.py:592 server/amc.py:617
+#: server/amc.py:598 server/amc.py:623
 msgid "t.options"
 msgstr "Looking for the options file…"
 
-#: server/amc.py:605 server/amc.py:628
+#: server/amc.py:611 server/amc.py:634
 msgid "t.extract"
 msgstr "Extracting…"
 
-#: server/amc.py:695
+#: server/amc.py:701
 msgid "t.archive.save"
 msgstr "Saving archive…"
 
-#: server/amc.py:818
+#: server/amc.py:844
 msgid "t.scans.extract"
 msgstr "Extracting scans images…"
 
-#: server/amc.py:827
+#: server/amc.py:853
 msgid "t.automatic"
 msgstr "Automatic data capture…"
 
-#: server/amc.py:1045
+#: server/amc.py:1077
 msgid "latex.log"
 msgstr "See full LaTeX log"
 
-#: server/amc.py:1077
+#: server/amc.py:1109
 msgid "t.clear"
 msgstr "Clear project data…"
 
-#: server/amc.py:1102
+#: server/amc.py:1134
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:1209
+#: server/amc.py:1243
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:1227
+#: server/amc.py:1261
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:1238
+#: server/amc.py:1272
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1542
+#: server/amc.py:1577
 msgid "add.student.syntax"
 msgstr ""
 "The student to be added must be given as an integer (student sheet number) "
 "or two integers (student sheet number and copy) separated by a colon."
 
-#: server/amc.py:1613
+#: server/amc.py:1648
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1621
+#: server/amc.py:1656
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1753
+#: server/amc.py:1788
 msgid "student.list.number"
 msgstr "Student #{}"
 
-#: server/amc.py:1825
+#: server/amc.py:1860
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "One new student were identified."
 msgstr[1] "New students identified: %(num)s"
 
-#: server/amc.py:1828
+#: server/amc.py:1863
 msgid "assoc.auto.none"
 msgstr "No new students were identified."
 
-#: server/amc.py:1944
+#: server/amc.py:1980
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1951
+#: server/amc.py:1987
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:1986
+#: server/amc.py:2022
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:2005
+#: server/amc.py:2041
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -190,7 +190,7 @@ msgstr ""
 "Do you really want to change this key? This will cancel all the papers/"
 "students associations!"
 
-#: server/static/amc.js:1402
+#: server/static/amc.js:1403
 msgid "confirm.rmassociation"
 msgstr "Are you sure you want to delete all association data?"
 
@@ -722,6 +722,10 @@ msgstr "Annotate"
 #: server/templates/tab_grading.html:136
 msgid "assoc.done"
 msgstr "Done"
+
+#: server/templates/tab_grading.html:146
+msgid "student.type-to-select"
+msgstr "Type to select…"
 
 #: server/templates/tab_scans.html:6
 msgid "scans.photocopy"

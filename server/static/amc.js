@@ -1384,6 +1384,7 @@ function association_auto() {
 function association_manual() {
     document.getElementById("grading").classList.add("hidden");
     document.getElementById("association").classList.remove("hidden");
+    clear_select_student(null);
     fetch_to_dom("assoc-sheets", "/assoc_sheets.html", {})
         .then(() => {
             select_assoc_sheet(-1,-1);
@@ -1420,6 +1421,54 @@ function student_highlight(id) {
     }
 }
 
+function normalize_string(s) {
+    return(s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase());
+}
+
+var n_selected_students = -1;
+var last_selected_student;
+
+function clear_select_student(entry) {
+    if(!entry) entry = document.getElementById("student-entry");
+    entry.value = "";
+    select_students(entry);
+}
+
+function select_students(entry) {
+    search_strings = normalize_string(entry.value).split(" ");
+    list = document.getElementById("students-list");
+    n_selected_students = 0;
+    for(student of list.getElementsByTagName("li")) {
+        var selected = true;
+        var name = normalize_string(student.textContent);
+        for(i of search_strings) {
+            if(! name.includes(i)) selected = false ;
+        }
+        if(selected) {
+            student.classList.remove("hidden");
+            n_selected_students++;
+            last_selected_student = student;
+        } else student.classList.add("hidden");
+    }
+}
+
+function select_students_keyup(entry, event) {
+    if(event.key == "Enter" && n_selected_students == 1) {
+        select_student_name(last_selected_student);
+        return false;
+    }
+    if(event.key == "Escape") {
+        clear_select_student();
+        return false;
+    }
+}
+
+function start_student_entry() {
+    var entry = document.getElementById("student-entry");
+    clear_select_student(entry);
+    entry.focus();
+}
+
 function select_assoc_sheet(e, student, copy) {
     if(student >= 0) {
         fetch_to_dom("studentname", `/namefield/${student}/${copy}`, {})
@@ -1431,7 +1480,8 @@ function select_assoc_sheet(e, student, copy) {
                 var auto = e.getAttribute("amc-auto");
                 var manual = e.getAttribute("amc-manual");
                 student_highlight(manual == "None" ? auto : manual);
-            });
+            })
+            .then(start_student_entry);
     } else {
         var e = document.getElementById("studentname");
         if(e) {
@@ -1454,7 +1504,8 @@ function first_not_associated() {
 
 function select_student_name(e) {
     var student_id = e.getAttribute("amc-id");
-    socket_emit("associate", [...assoc_sheet, student_id]);
+    if(assoc_sheet[0]>=0)
+        socket_emit("associate", [...assoc_sheet, student_id]);
 }
 
 function set_association_student(student_id, associated) {
