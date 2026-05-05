@@ -735,6 +735,12 @@ def next_filename(f):
     i += 1
     return f"{f}_{i:04}{ext}"
 
+def int_prefix(s, sep="_"):
+    if r := re.match(r'([0-9]+)' + sep, s):
+        return int(r[1])
+    else:
+        return 0
+
 @app.route('/upload/<dest>', methods=['POST'])
 def file_upload(dest):
     headers_info()
@@ -1436,7 +1442,8 @@ def u_failed_report():
         else:
             local_f = f[0]
         url = purl + local_f + context_args({"attach": "0"})
-        scans.append({ "filename": f[0], "file": fn, "url": url })
+        scans.append({ "filename": f[0], "file": fn, "url": url, "i": int_prefix(fn) })
+    scans.sort(key=lambda x: (x["i"], x["file"]))
     return render_template('failed_report.html',
                            scans=scans)
 
