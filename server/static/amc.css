@@ -885,8 +885,10 @@ tr[amc-manual="0"] .manual-tag {
 }
 
 .zoom-image {
-    max-width: 4em;
-    max-height: 4em;
+    width: 4em;
+    height: 4em;
+    object-fit: contain;
+    image-rendering: pixelated;
 }
 
 #zooms-0 .zoom-one.ticked {
