@@ -717,11 +717,23 @@ def create_from_archive(name, rep, f):
     return { "ok": ok }
 
 def upload_file_parts(f):
-    simple_filename = f.filename.replace("/", "").replace(" ","_")
+    simple_filename = re.sub(r'[<>\\ /*?$@&^#]', '_', f.filename)
     ext = ""
-    if r := re.match(r'.*\.([a-z0-9]{1,3})$', simple_filename):
+    if r := re.match(r'.*\.([a-z0-9]{1,5})$', simple_filename):
         ext = r[1].lower()
     return simple_filename, ext
+
+def next_filename(f):
+    ext = ''
+    i = 0
+    if r := re.match(r'(.*)(\.[a-z0-9]{1,5})$', f):
+        f = r[1]
+        ext = r[2].lower()
+    if r := re.match(r'(.+)_([0-9]+)$', f):
+        f = r[1]
+        i = int(r[2])
+    i += 1
+    return f"{f}_{i:04}{ext}"
 
 @app.route('/upload/<dest>', methods=['POST'])
 def file_upload(dest):
@@ -785,7 +797,9 @@ def file_upload(dest):
         local_paths = []
         for f in request_files:
             fn, ext = upload_file_parts(f)
-            n, path = tempfile.mkstemp(suffix="." + ext, dir=rep)
+            path = f"{rep}/{fn}"
+            while os.path.exists(path):
+                path = next_filename(path)
             f.save(path)
             local_paths.append(path)
 
