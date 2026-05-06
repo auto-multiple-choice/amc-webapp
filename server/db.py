@@ -261,9 +261,10 @@ class Amcdb:
                  ELSE 0
             END as auto_ticked
             FROM capture.capture_zone
-            WHERE student=? AND page=? AND copy=?
+            WHERE type=? AND student=? AND page=? AND copy=?
             """,
             (threshold, threshold_up,
+             4,
              student, page, copy)
         ).fetchall()
 
