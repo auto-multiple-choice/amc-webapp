@@ -1901,6 +1901,12 @@ def x_namefield(student, copy):
                            student=student, copy=copy,
                            path=path)
 
+@socketio_name('association-config')
+def io_annotation_config():
+    emit_msg("selected-config",
+         get_options(
+             ["global:filter_beginning"]))
+
 @socketio_name('associate')
 def io_associate(data):
     student, copy, student_id = data

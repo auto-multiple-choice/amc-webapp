@@ -1353,6 +1353,7 @@ function tab_grading() {
         u_exported_files(null);
         socket_emit("annotation-config");
         u_annotated_files(null);
+        socket_emit("association-config");
     });
 }
 
@@ -1435,14 +1436,26 @@ function clear_select_student(entry) {
 }
 
 function select_students(entry) {
-    search_strings = normalize_string(entry.value).split(" ");
-    list = document.getElementById("students-list");
+    if(!entry) entry = document.getElementById("student-entry");
+    var beginning = document.getElementById("global:filter_beginning").checked;
+    var search_strings = normalize_string(entry.value).split(" ");
+    var search_regexs;
+    if(beginning) {
+        search_regexs = search_strings.map((i) => new RegExp("\\b" + i));
+    }
+    var list = document.getElementById("students-list");
     n_selected_students = 0;
     for(student of list.getElementsByTagName("li")) {
         var selected = true;
         var name = normalize_string(student.textContent);
-        for(i of search_strings) {
-            if(! name.includes(i)) selected = false ;
+        if(beginning) {
+            for(i of search_regexs) {
+                if(! name.match(i)) selected = false ;
+            }
+        } else {
+            for(i of search_strings) {
+                if(! name.includes(i)) selected = false ;
+            }
         }
         if(selected) {
             student.classList.remove("hidden");

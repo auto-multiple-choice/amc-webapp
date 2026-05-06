@@ -146,6 +146,9 @@
                placeholder="{{ _('student.type-to-select') }}"
                oninput="select_students(this);"
                onkeyup="select_students_keyup(this, event);"></input>
+        <input type="checkbox" id="global:filter_beginning" name="global:filter_beginning"
+               onchange="select_students();change_config_value(this);"/>
+        <label for="global:filter_beginning">{{ _('config.association.filter_beginning') }}</label>
       </div>
       <div id="students-list">
       </div>

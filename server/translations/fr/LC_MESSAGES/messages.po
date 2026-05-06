@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-05 22:06+0200\n"
-"PO-Revision-Date: 2026-05-05 22:08+0200\n"
+"POT-Creation-Date: 2026-05-06 10:33+0200\n"
+"PO-Revision-Date: 2026-05-06 10:34+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -138,19 +138,19 @@ msgstr[1] "Nouvelles identifications détectées : %(num)s"
 msgid "assoc.auto.none"
 msgstr "Aucune nouvelle identification n'a été détectée."
 
-#: server/amc.py:1980
+#: server/amc.py:1986
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1987
+#: server/amc.py:1993
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:2022
+#: server/amc.py:2028
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:2041
+#: server/amc.py:2047
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
@@ -189,13 +189,13 @@ msgstr ""
 "Voulez-vous vraiment effacer la liste des étudiant·es ? Cela supprimera "
 "toutes les associations entre copies et étudiant·es."
 
-#: server/static/amc.js:1368
+#: server/static/amc.js:1369
 msgid "confirm.lkey"
 msgstr ""
 "Voulez-vous vraiment modifier la clé unique utilisée ? Cela effacera toutes "
 "les associations entre copies et étudiant·es."
 
-#: server/static/amc.js:1403
+#: server/static/amc.js:1404
 msgid "confirm.rmassociation"
 msgstr ""
 "Voulez-vous vraiment effacer toutes les associations entre copies et "
@@ -735,6 +735,10 @@ msgstr "Fait"
 #: server/templates/tab_grading.html:146
 msgid "student.type-to-select"
 msgstr "Écrire pour filtrer…"
+
+#: server/templates/tab_grading.html:151
+msgid "config.association.filter_beginning"
+msgstr "Au début"
 
 #: server/templates/tab_scans.html:6
 msgid "scans.photocopy"
