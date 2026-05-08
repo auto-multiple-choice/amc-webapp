@@ -183,7 +183,8 @@ function request_project(name, reload) {
 
 function project_open(data) {
     var name = data[0];
-    document.getElementById('project-name').innerHTML = name;
+    document.getElementById('project-name').textContent = name;
+    document.title = name;
     localStorage.setItem("project-name", name);
     if(name != project_name || data[1]) {
         project_name = name;
