@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-06 10:33+0200\n"
-"PO-Revision-Date: 2026-05-06 10:34+0200\n"
+"POT-Creation-Date: 2026-05-08 16:17+0200\n"
+"PO-Revision-Date: 2026-05-08 16:18+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -142,11 +142,11 @@ msgstr "Download all"
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:2028
+#: server/amc.py:2029
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:2047
+#: server/amc.py:2048
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -716,18 +716,22 @@ msgid "annotate.model"
 msgstr "Filename model:"
 
 #: server/templates/tab_grading.html:125
+msgid "annotate.dontoverwrite"
+msgstr "Don't overwrite existing files"
+
+#: server/templates/tab_grading.html:128
 msgid "annotate.btn"
 msgstr "Annotate"
 
-#: server/templates/tab_grading.html:136
+#: server/templates/tab_grading.html:139
 msgid "assoc.done"
 msgstr "Done"
 
-#: server/templates/tab_grading.html:146
+#: server/templates/tab_grading.html:149
 msgid "student.type-to-select"
 msgstr "Type to select…"
 
-#: server/templates/tab_grading.html:151
+#: server/templates/tab_grading.html:154
 msgid "config.association.filter_beginning"
 msgstr "At the beginning"
 

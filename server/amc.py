@@ -2008,7 +2008,8 @@ def io_annotation_config():
     emit_msg("selected-config",
          get_options(
              ["regroupement_type", "regroupement_compose",
-              "add_corrected", "modele_regroupement"]))
+              "add_corrected", "modele_regroupement",
+              "annotate_dont_overwrite"]))
 
 def unlink_indiv_annotated():
     rep = project_dir() + "/cr/corrections/pdf"

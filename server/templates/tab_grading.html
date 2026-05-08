@@ -120,6 +120,9 @@
         <br/>
         <label for="modele_regroupement">{{ _('annotate.model') }}</label>
         <input type="text" id="modele_regroupement" name="modele_regroupement"/>
+        <br/>
+        <input type="checkbox" id="annotate_dont_overwrite" name="annotate_dont_overwrite"/>
+        <label for="annotate_dont_overwrite">{{ _('annotate.dontoverwrite') }}</label>
       </div>
       <div class="bandeau">
         <span id="do-annotate" class="btn btn-ok" onclick="do_annotate();">{{ _('annotate.btn') }}</span>
