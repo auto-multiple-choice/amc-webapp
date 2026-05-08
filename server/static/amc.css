@@ -38,6 +38,7 @@ h1 {
     flex-grow: 0;
     display: flex;
     flex-direction: column;
+    overflow-y: clip;
 }
 
 .part-title {
@@ -313,6 +314,8 @@ li.selectable.recent {
     margin-left: 4px;
     cursor: pointer;
     font-size: 1.8rem;
+    overflow: clip;
+    whitespace: pre;
 }
 
 .project-change-name {
