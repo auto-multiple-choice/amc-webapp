@@ -206,6 +206,10 @@ def request_sty_file():
     ).decode("utf-8").strip()
     return send_file(sty_path, as_attachment=True, mimetype='text/x-tex')
 
+@app.route('/public/status.json')
+def public_status():
+    return { "running": True }
+
 @app.route('/public/<uuids>/marks.csv')
 def marks_csv(uuids):
     csv_content = "id,mark,total\n"
