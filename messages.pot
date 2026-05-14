@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-08 16:17+0200\n"
+"POT-Creation-Date: 2026-05-18 13:04+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -37,145 +37,145 @@ msgstr ""
 msgid "dialog.ok"
 msgstr ""
 
-#: server/amc.py:380
+#: server/amc.py:386
 msgid "t.cloning"
 msgstr ""
 
-#: server/amc.py:387
+#: server/amc.py:393
 msgid "msg.cloned"
 msgstr ""
 
-#: server/amc.py:390
+#: server/amc.py:396
 msgid "msg.clone.err"
 msgstr ""
 
-#: server/amc.py:415
+#: server/amc.py:421
 msgid "msg.rename.exists"
 msgstr ""
 
-#: server/amc.py:503
+#: server/amc.py:509
 msgid "msg.create.exists"
 msgstr ""
 
-#: server/amc.py:598 server/amc.py:623
+#: server/amc.py:604 server/amc.py:629
 msgid "t.options"
 msgstr ""
 
-#: server/amc.py:611 server/amc.py:634
+#: server/amc.py:617 server/amc.py:640
 msgid "t.extract"
 msgstr ""
 
-#: server/amc.py:701
+#: server/amc.py:707
 msgid "t.archive.save"
 msgstr ""
 
-#: server/amc.py:844
+#: server/amc.py:850
 msgid "t.scans.extract"
 msgstr ""
 
-#: server/amc.py:853
+#: server/amc.py:859
 msgid "t.automatic"
 msgstr ""
 
-#: server/amc.py:1077
+#: server/amc.py:1084
 msgid "latex.log"
 msgstr ""
 
-#: server/amc.py:1109
+#: server/amc.py:1116
 msgid "t.clear"
 msgstr ""
 
-#: server/amc.py:1134
+#: server/amc.py:1141
 msgid "t.layouts"
 msgstr ""
 
-#: server/amc.py:1243
+#: server/amc.py:1250
 msgid "t.print_to"
 msgstr ""
 
-#: server/amc.py:1261
+#: server/amc.py:1268
 msgid "msg.printing.done"
 msgstr ""
 
-#: server/amc.py:1272
+#: server/amc.py:1279
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1577
+#: server/amc.py:1584
 msgid "add.student.syntax"
 msgstr ""
 
-#: server/amc.py:1648
+#: server/amc.py:1655
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1656
+#: server/amc.py:1663
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1788
+#: server/amc.py:1795
 msgid "student.list.number"
 msgstr ""
 
-#: server/amc.py:1860
+#: server/amc.py:1867
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/amc.py:1863
+#: server/amc.py:1870
 msgid "assoc.auto.none"
 msgstr ""
 
-#: server/amc.py:1986
+#: server/amc.py:1993
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:1993
+#: server/amc.py:2000
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:2029
+#: server/amc.py:2036
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:2048
+#: server/amc.py:2055
 msgid "files.indiv"
 msgstr ""
 
-#: server/static/amc.js:231
+#: server/static/amc.js:232
 msgid "confirm.deleteproject"
 msgstr ""
 
-#: server/static/amc.js:351
+#: server/static/amc.js:352
 msgid "confirm.deletefile"
 msgstr ""
 
-#: server/static/amc.js:360
+#: server/static/amc.js:361
 msgid "create.project.noname"
 msgstr ""
 
-#: server/static/amc.js:369
+#: server/static/amc.js:370
 msgid "create.project.notemplate"
 msgstr ""
 
-#: server/static/amc.js:383
+#: server/static/amc.js:384
 msgid "create.project.nofile"
 msgstr ""
 
-#: server/static/amc.js:600
+#: server/static/amc.js:601
 msgid "confirm.rebuild"
 msgstr ""
 
-#: server/static/amc.js:1301
+#: server/static/amc.js:1302
 msgid "confirm.rmstudentslist"
 msgstr ""
 
-#: server/static/amc.js:1369
+#: server/static/amc.js:1370
 msgid "confirm.lkey"
 msgstr ""
 
-#: server/static/amc.js:1404
+#: server/static/amc.js:1405
 msgid "confirm.rmassociation"
 msgstr ""
 
@@ -513,54 +513,62 @@ msgid "config.global"
 msgstr ""
 
 #: server/templates/tab_config.html:78
+msgid "config.build"
+msgstr ""
+
+#: server/templates/tab_config.html:82
+msgid "config.force_textpos"
+msgstr ""
+
+#: server/templates/tab_config.html:87
 msgid "config.scan"
 msgstr ""
 
-#: server/templates/tab_config.html:81
+#: server/templates/tab_config.html:90
 msgid "config.scan.bwthreshold"
 msgstr ""
 
-#: server/templates/tab_config.html:85
+#: server/templates/tab_config.html:94
 msgid "config.scan.msized"
 msgstr ""
 
-#: server/templates/tab_config.html:89
+#: server/templates/tab_config.html:98
 msgid "config.scan.msizei"
 msgstr ""
 
-#: server/templates/tab_config.html:94
+#: server/templates/tab_config.html:103
 msgid "config.scan.3m"
 msgstr ""
 
-#: server/templates/tab_config.html:100
+#: server/templates/tab_config.html:109
 msgid "config.i18n"
 msgstr ""
 
-#: server/templates/tab_config.html:104
+#: server/templates/tab_config.html:113
 msgid "config.i18n.ascii"
 msgstr ""
 
-#: server/templates/tab_config.html:107
+#: server/templates/tab_config.html:116
 msgid "config.i18n.headers.name"
 msgstr ""
 
-#: server/templates/tab_config.html:109 server/templates/tab_config.html:114
+#: server/templates/tab_config.html:118 server/templates/tab_config.html:123
 msgid "config.i18n.headers"
 msgstr ""
 
-#: server/templates/tab_config.html:112
+#: server/templates/tab_config.html:121
 msgid "config.i18n.headers.surname"
 msgstr ""
 
-#: server/templates/tab_config.html:121
+#: server/templates/tab_config.html:130
 msgid "config.view"
 msgstr ""
 
-#: server/templates/tab_config.html:125
+#: server/templates/tab_config.html:134
 msgid "config.view.histogram"
 msgstr ""
 
-#: server/templates/tab_config.html:128
+#: server/templates/tab_config.html:137
 msgid "config.view.ahead"
 msgstr ""
 

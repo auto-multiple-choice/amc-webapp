@@ -247,6 +247,8 @@ def tab(tab_name):
     if tab_name == "grading":
         u = project_uuid()
         vs["public_marks_link"] = f"{request.root_url}public/{u}/marks.csv"
+    if tab_name == "config":
+        vs["package_options"] = get_option("global:add_package_options")
     return render_template(f"tab_{tab_name}.html", **vs)
 
 def serve_pil_image(pil_img):
@@ -917,6 +919,7 @@ def io_project_config():
              ["moteur_latex_b",
               "note_null", "note_max", "note_grain", "note_arrondi",
               "verdict", "annote_position", "multiple_copies",
+              "global:force_textpos",
               "global:bw_threshold",
               "global:tolerance_marque_inf", "global:tolerance_marque_sup",
               "global:try_three", "global:ascii_filenames",

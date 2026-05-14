@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-08 16:17+0200\n"
-"PO-Revision-Date: 2026-05-08 16:19+0200\n"
+"POT-Creation-Date: 2026-05-18 13:04+0200\n"
+"PO-Revision-Date: 2026-05-18 13:07+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -39,163 +39,163 @@ msgstr "Annuler"
 msgid "dialog.ok"
 msgstr "OK"
 
-#: server/amc.py:380
+#: server/amc.py:386
 msgid "t.cloning"
 msgstr "Clonage du projet…"
 
-#: server/amc.py:387
+#: server/amc.py:393
 msgid "msg.cloned"
 msgstr "Le projet a été cloné vers %(name)s."
 
-#: server/amc.py:390
+#: server/amc.py:396
 msgid "msg.clone.err"
 msgstr ""
 "Erreur lors de la création du clone %(name)s : %(n)s fichiers sur %"
 "(ntotal)s ont seulement été copiés."
 
-#: server/amc.py:415
+#: server/amc.py:421
 msgid "msg.rename.exists"
 msgstr ""
 "Impossible de renommer \"%(old)s\" en \"%(new)s\", car ce dernier existe "
 "déjà."
 
-#: server/amc.py:503
+#: server/amc.py:509
 msgid "msg.create.exists"
 msgstr ""
 "Impossible de créer un projet nommé \"%(name)s\", car un fichier ou "
 "répertoire existe déjà sous ce nom."
 
-#: server/amc.py:598 server/amc.py:623
+#: server/amc.py:604 server/amc.py:629
 msgid "t.options"
 msgstr "Recherche du fichier d'options…"
 
-#: server/amc.py:611 server/amc.py:634
+#: server/amc.py:617 server/amc.py:640
 msgid "t.extract"
 msgstr "Extraction…"
 
-#: server/amc.py:701
+#: server/amc.py:707
 msgid "t.archive.save"
 msgstr "Sauvegarde de l'archive…"
 
-#: server/amc.py:844
+#: server/amc.py:850
 msgid "t.scans.extract"
 msgstr "Extraction des images…"
 
-#: server/amc.py:853
+#: server/amc.py:859
 msgid "t.automatic"
 msgstr "Saisie automatique…"
 
-#: server/amc.py:1077
+#: server/amc.py:1084
 msgid "latex.log"
 msgstr "Log LaTeX complet"
 
-#: server/amc.py:1109
+#: server/amc.py:1116
 msgid "t.clear"
 msgstr "Nettoyage des données du projet…"
 
-#: server/amc.py:1134
+#: server/amc.py:1141
 msgid "t.layouts"
 msgstr "Détection des mises en page…"
 
-#: server/amc.py:1243
+#: server/amc.py:1250
 msgid "t.print_to"
 msgstr "Impression vers %(printer)s…"
 
-#: server/amc.py:1261
+#: server/amc.py:1268
 msgid "msg.printing.done"
 msgstr "Impression terminée !"
 
-#: server/amc.py:1272
+#: server/amc.py:1279
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1577
+#: server/amc.py:1584
 msgid "add.student.syntax"
 msgstr ""
 "L'étudiant à ajouter doit être renseigné sous la forme d'un nombre entier "
 "(version du sujet), ou de deux entiers (version du sujet et numéro de "
 "copie) séparés par deux points (\":\")."
 
-#: server/amc.py:1648
+#: server/amc.py:1655
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1656
+#: server/amc.py:1663
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1788
+#: server/amc.py:1795
 msgid "student.list.number"
 msgstr "Étudiant·e n°{}"
 
-#: server/amc.py:1860
+#: server/amc.py:1867
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "Une nouvelle identification a été détectée."
 msgstr[1] "Nouvelles identifications détectées : %(num)s"
 
-#: server/amc.py:1863
+#: server/amc.py:1870
 msgid "assoc.auto.none"
 msgstr "Aucune nouvelle identification n'a été détectée."
 
-#: server/amc.py:1986
+#: server/amc.py:1993
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:1993
+#: server/amc.py:2000
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:2029
+#: server/amc.py:2036
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:2048
+#: server/amc.py:2055
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
-#: server/static/amc.js:231
+#: server/static/amc.js:232
 msgid "confirm.deleteproject"
 msgstr ""
 "Êtes-vous sûr·e de vouloir effacer le projet \"{}\" ? Cela effacera de "
 "manière permanente tous les fichiers correspondants."
 
-#: server/static/amc.js:351
+#: server/static/amc.js:352
 msgid "confirm.deletefile"
 msgstr "Êtes-vous sûr·e de vouloir effacer le fichier \"{}\" ?"
 
-#: server/static/amc.js:360
+#: server/static/amc.js:361
 msgid "create.project.noname"
 msgstr "Vous avez oublié de choisir un nom pour votre nouveau projet !"
 
-#: server/static/amc.js:369
+#: server/static/amc.js:370
 msgid "create.project.notemplate"
 msgstr "Vous avez oublié de choisir le modèle à utiliser !"
 
-#: server/static/amc.js:383
+#: server/static/amc.js:384
 msgid "create.project.nofile"
 msgstr "Vous avez oublié de choisir un fichier à envoyer !"
 
-#: server/static/amc.js:600
+#: server/static/amc.js:601
 msgid "confirm.rebuild"
 msgstr ""
 "Regénérer le sujet effacera toutes les données de ce projet. Si vous "
 "souhaitez utiliser des sujets déjà imprimés, annulez ! Êtes-vous sûr·e de "
 "vouloir continuer ?"
 
-#: server/static/amc.js:1301
+#: server/static/amc.js:1302
 msgid "confirm.rmstudentslist"
 msgstr ""
 "Voulez-vous vraiment effacer la liste des étudiant·es ? Cela supprimera "
 "toutes les associations entre copies et étudiant·es."
 
-#: server/static/amc.js:1369
+#: server/static/amc.js:1370
 msgid "confirm.lkey"
 msgstr ""
 "Voulez-vous vraiment modifier la clé unique utilisée ? Cela effacera toutes "
 "les associations entre copies et étudiant·es."
 
-#: server/static/amc.js:1404
+#: server/static/amc.js:1405
 msgid "confirm.rmassociation"
 msgstr ""
 "Voulez-vous vraiment effacer toutes les associations entre copies et "
@@ -541,54 +541,63 @@ msgid "config.global"
 msgstr "Configuration globale"
 
 #: server/templates/tab_config.html:78
+msgid "config.build"
+msgstr "Compilation"
+
+#: server/templates/tab_config.html:82
+msgid "config.force_textpos"
+msgstr ""
+"Saisie manuelle restreinte aux questions disponible pour tous les projets"
+
+#: server/templates/tab_config.html:87
 msgid "config.scan"
 msgstr "Saisie automatique"
 
-#: server/templates/tab_config.html:81
+#: server/templates/tab_config.html:90
 msgid "config.scan.bwthreshold"
 msgstr "Seuil de conversion noir et blanc :"
 
-#: server/templates/tab_config.html:85
+#: server/templates/tab_config.html:94
 msgid "config.scan.msized"
 msgstr "Réduction maximale de la taille des marques :"
 
-#: server/templates/tab_config.html:89
+#: server/templates/tab_config.html:98
 msgid "config.scan.msizei"
 msgstr "Augmentation maximale de la taille des marques :"
 
-#: server/templates/tab_config.html:94
+#: server/templates/tab_config.html:103
 msgid "config.scan.3m"
 msgstr "Détection avec 3 marques de coin"
 
-#: server/templates/tab_config.html:100
+#: server/templates/tab_config.html:109
 msgid "config.i18n"
 msgstr "Internationalisation"
 
-#: server/templates/tab_config.html:104
+#: server/templates/tab_config.html:113
 msgid "config.i18n.ascii"
 msgstr "N'utiliser que des caractères ASCII dans les noms de fichiers"
 
-#: server/templates/tab_config.html:107
+#: server/templates/tab_config.html:116
 msgid "config.i18n.headers.name"
 msgstr "En-têtes CSV de colonnes de prénoms :"
 
-#: server/templates/tab_config.html:109 server/templates/tab_config.html:114
+#: server/templates/tab_config.html:118 server/templates/tab_config.html:123
 msgid "config.i18n.headers"
 msgstr "séparés par des virgules"
 
-#: server/templates/tab_config.html:112
+#: server/templates/tab_config.html:121
 msgid "config.i18n.headers.surname"
 msgstr "En-têtes CSV de colonnes de noms :"
 
-#: server/templates/tab_config.html:121
+#: server/templates/tab_config.html:130
 msgid "config.view"
 msgstr "Affichage"
 
-#: server/templates/tab_config.html:125
+#: server/templates/tab_config.html:134
 msgid "config.view.histogram"
 msgstr "Histogramme"
 
-#: server/templates/tab_config.html:128
+#: server/templates/tab_config.html:137
 msgid "config.view.ahead"
 msgstr "Ouvrir les onglets en avance"
 
@@ -896,3 +905,6 @@ msgstr "Imprimer"
 #~ msgstr ""
 #~ "Voulez-vous vraiment effacer toutes les associations entre copies et "
 #~ "étudiant·es ?"
+
+#~ msgid "config.package_options"
+#~ msgstr "Ajouter les options de paquet LaTeX :"

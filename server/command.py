@@ -34,8 +34,15 @@ def amc_command(*args,
                 *args ]
     command += ["--profile", "default"]
     command += ["--project-dir", project_dir()]
+
     if args[0] == "prepare":
         command += ["--log", project_dir() + "/_latex.log"]
+        po = get_options(["global:force_textpos"])
+        package_options = []
+        if po["global:force_textpos"]:
+            package_options.append("textpos")
+        command += [ "--add-package-options", ",".join(package_options) ]
+
     current_app.logger.info("c-cmd> " + command_str(command))
 
     try:

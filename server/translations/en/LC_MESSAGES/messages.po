@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-08 16:17+0200\n"
-"PO-Revision-Date: 2026-05-08 16:18+0200\n"
+"POT-Creation-Date: 2026-05-18 13:04+0200\n"
+"PO-Revision-Date: 2026-05-18 13:08+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -39,158 +39,158 @@ msgstr "Cancel"
 msgid "dialog.ok"
 msgstr "OK"
 
-#: server/amc.py:380
+#: server/amc.py:386
 msgid "t.cloning"
 msgstr "Cloning project…"
 
-#: server/amc.py:387
+#: server/amc.py:393
 msgid "msg.cloned"
 msgstr "Project cloned to %(name)s."
 
-#: server/amc.py:390
+#: server/amc.py:396
 msgid "msg.clone.err"
 msgstr ""
 "Errors while cloning to %(name)s: only %(n)s files copied out of %(ntotal)s."
 
-#: server/amc.py:415
+#: server/amc.py:421
 msgid "msg.rename.exists"
 msgstr "Can't rename \"%(old)s\" to \"%(new)s\": \"%(new)s\" already exists."
 
-#: server/amc.py:503
+#: server/amc.py:509
 msgid "msg.create.exists"
 msgstr ""
 "Can't create project \"%(name)s\": some file or directory already exists "
 "with this name."
 
-#: server/amc.py:598 server/amc.py:623
+#: server/amc.py:604 server/amc.py:629
 msgid "t.options"
 msgstr "Looking for the options file…"
 
-#: server/amc.py:611 server/amc.py:634
+#: server/amc.py:617 server/amc.py:640
 msgid "t.extract"
 msgstr "Extracting…"
 
-#: server/amc.py:701
+#: server/amc.py:707
 msgid "t.archive.save"
 msgstr "Saving archive…"
 
-#: server/amc.py:844
+#: server/amc.py:850
 msgid "t.scans.extract"
 msgstr "Extracting scans images…"
 
-#: server/amc.py:853
+#: server/amc.py:859
 msgid "t.automatic"
 msgstr "Automatic data capture…"
 
-#: server/amc.py:1077
+#: server/amc.py:1084
 msgid "latex.log"
 msgstr "See full LaTeX log"
 
-#: server/amc.py:1109
+#: server/amc.py:1116
 msgid "t.clear"
 msgstr "Clear project data…"
 
-#: server/amc.py:1134
+#: server/amc.py:1141
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:1243
+#: server/amc.py:1250
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:1261
+#: server/amc.py:1268
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:1272
+#: server/amc.py:1279
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1577
+#: server/amc.py:1584
 msgid "add.student.syntax"
 msgstr ""
 "The student to be added must be given as an integer (student sheet number) "
 "or two integers (student sheet number and copy) separated by a colon."
 
-#: server/amc.py:1648
+#: server/amc.py:1655
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1656
+#: server/amc.py:1663
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1788
+#: server/amc.py:1795
 msgid "student.list.number"
 msgstr "Student #{}"
 
-#: server/amc.py:1860
+#: server/amc.py:1867
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "One new student were identified."
 msgstr[1] "New students identified: %(num)s"
 
-#: server/amc.py:1863
+#: server/amc.py:1870
 msgid "assoc.auto.none"
 msgstr "No new students were identified."
 
-#: server/amc.py:1986
+#: server/amc.py:1993
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:1993
+#: server/amc.py:2000
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:2029
+#: server/amc.py:2036
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:2048
+#: server/amc.py:2055
 msgid "files.indiv"
 msgstr "Download all individual files"
 
-#: server/static/amc.js:231
+#: server/static/amc.js:232
 msgid "confirm.deleteproject"
 msgstr ""
 "Are you sure you want to delete project \"{}\"? This will permanently "
 "delete all related files."
 
-#: server/static/amc.js:351
+#: server/static/amc.js:352
 msgid "confirm.deletefile"
 msgstr "Are you sure you want to delete the file {}?"
 
-#: server/static/amc.js:360
+#: server/static/amc.js:361
 msgid "create.project.noname"
 msgstr "You forgot to choose a name for your new project!"
 
-#: server/static/amc.js:369
+#: server/static/amc.js:370
 msgid "create.project.notemplate"
 msgstr "You forgot to choose a template!"
 
-#: server/static/amc.js:383
+#: server/static/amc.js:384
 msgid "create.project.nofile"
 msgstr "You forgot to choose a file to be sent!"
 
-#: server/static/amc.js:600
+#: server/static/amc.js:601
 msgid "confirm.rebuild"
 msgstr ""
 "Rebuilding the subject will remove all the project data. To allow the use "
 "of an already printed question, cancel! Are you sure you want to continue?"
 
-#: server/static/amc.js:1301
+#: server/static/amc.js:1302
 msgid "confirm.rmstudentslist"
 msgstr ""
 "Are you sure you want to delete the students list file? This will delete "
 "all association data."
 
-#: server/static/amc.js:1369
+#: server/static/amc.js:1370
 msgid "confirm.lkey"
 msgstr ""
 "Do you really want to change this key? This will cancel all the papers/"
 "students associations!"
 
-#: server/static/amc.js:1404
+#: server/static/amc.js:1405
 msgid "confirm.rmassociation"
 msgstr "Are you sure you want to delete all association data?"
 
@@ -532,54 +532,62 @@ msgid "config.global"
 msgstr "Global configuration"
 
 #: server/templates/tab_config.html:78
+msgid "config.build"
+msgstr "Build"
+
+#: server/templates/tab_config.html:82
+msgid "config.force_textpos"
+msgstr "Questions-specific manual data capture available for all projects"
+
+#: server/templates/tab_config.html:87
 msgid "config.scan"
 msgstr "Scanning"
 
-#: server/templates/tab_config.html:81
+#: server/templates/tab_config.html:90
 msgid "config.scan.bwthreshold"
 msgstr "Black&white conversion threshold:"
 
-#: server/templates/tab_config.html:85
+#: server/templates/tab_config.html:94
 msgid "config.scan.msized"
 msgstr "Marks size max decrease:"
 
-#: server/templates/tab_config.html:89
+#: server/templates/tab_config.html:98
 msgid "config.scan.msizei"
 msgstr "Marks size max increase:"
 
-#: server/templates/tab_config.html:94
+#: server/templates/tab_config.html:103
 msgid "config.scan.3m"
 msgstr "Process scans with 3 corner marks"
 
-#: server/templates/tab_config.html:100
+#: server/templates/tab_config.html:109
 msgid "config.i18n"
 msgstr "Internationalisation"
 
-#: server/templates/tab_config.html:104
+#: server/templates/tab_config.html:113
 msgid "config.i18n.ascii"
 msgstr "Use only ASCII characters in filenames"
 
-#: server/templates/tab_config.html:107
+#: server/templates/tab_config.html:116
 msgid "config.i18n.headers.name"
 msgstr "CSV headers for names column :"
 
-#: server/templates/tab_config.html:109 server/templates/tab_config.html:114
+#: server/templates/tab_config.html:118 server/templates/tab_config.html:123
 msgid "config.i18n.headers"
 msgstr "comma separated"
 
-#: server/templates/tab_config.html:112
+#: server/templates/tab_config.html:121
 msgid "config.i18n.headers.surname"
 msgstr "CSV headers for surnames column :"
 
-#: server/templates/tab_config.html:121
+#: server/templates/tab_config.html:130
 msgid "config.view"
 msgstr "View"
 
-#: server/templates/tab_config.html:125
+#: server/templates/tab_config.html:134
 msgid "config.view.histogram"
 msgstr "Histogram"
 
-#: server/templates/tab_config.html:128
+#: server/templates/tab_config.html:137
 msgid "config.view.ahead"
 msgstr "Activate tabs ahead of time"
 
@@ -885,3 +893,6 @@ msgstr "Print"
 
 #~ msgid "config.association"
 #~ msgstr "Are you sure you want to delete all association data?"
+
+#~ msgid "config.package_options"
+#~ msgstr "Add AMC LaTeX package options:"
