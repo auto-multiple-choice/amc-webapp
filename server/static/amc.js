@@ -181,10 +181,18 @@ function request_project(name, reload) {
     socket_emit("request-project", [name, reload]);
 }
 
+function set_project_title(n_printing=0) {
+    var title = '';
+    if(n_printing>0) {
+        title += `🖨️${n_printing} `;
+    }
+    title += project_name;
+    document.title = title;
+}
+
 function project_open(data) {
     var name = data[0];
     document.getElementById('project-name').textContent = name;
-    document.title = name;
     localStorage.setItem("project-name", name);
     if(name != project_name || data[1]) {
         project_name = name;
@@ -208,6 +216,7 @@ function project_open(data) {
             }
         } else tab_main();
     }
+    set_project_title();
 }
 socket.on("project-open", project_open );
 
@@ -695,6 +704,7 @@ function update_printing() {
 socket.on("n-waiting-print", function(data) {
     var n = parseInt(data);
     var ps = document.getElementById("printing-status");
+    set_project_title(n);
     if(ps) {
         if(n>0) ps.classList.remove("hidden");
         else ps.classList.add("hidden");
