@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>AMC</title>
-    <script src="/static/socket.io.js"></script>
-    <script src="/static/amc.js"></script>
-    <script src="/static/ace/ace.js"></script>
-    <link rel="stylesheet" href="/static/amc.css">
+    <script src="{{ static_url_for('static', filename='socket.io.js') }}"></script>
+    <script src="{{ static_url_for('static', filename='amc.js') }}"></script>
+    <script src="/ace/ace.js"></script>
+    <link rel="stylesheet" href="{{ static_url_for('static', filename='amc.css') }}">
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="{{ url_for('static', filename='menu-amc.svg') }}">
 </head>

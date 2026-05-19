@@ -33,9 +33,10 @@ from command import amc_command
 from basic import *
 
 import logging
-from flask import Flask, Response, abort, render_template, request, send_file, make_response, url_for, g as flask_g
+from flask import Flask, Response, abort, render_template, request, send_file, make_response, url_for, send_from_directory, g as flask_g
 from flask_socketio import SocketIO, emit
 from flask_babel import Babel, _, ngettext
+from flask_static_digest import FlaskStaticDigest
 
 TEMPLATES_DIR = os.environ.get(
     'AMC_TEMPLATES_DIR',
@@ -45,11 +46,15 @@ app = Flask(__name__)
 
 app.config.from_mapping(
     SECRET_KEY='dev',
+    FLASK_STATIC_DIGEST_BLACKLIST_FILTER = [ ".png", ".svg", ".css~", ".js~" ],
 )
 socketio = SocketIO(app, async_mode='gevent')
 app.socketio = socketio
 
 babel = Babel(app, locale_selector=get_locale)
+
+flask_static_digest = FlaskStaticDigest()
+flask_static_digest.init_app(app)
 
 log_level = os.environ.get('AMC_SERVER_LOGGING')
 if log_level=='ERROR':
@@ -78,6 +83,10 @@ if proxy_level:
 temp_dir = tempfile.mkdtemp(prefix="amcapp")
 
 app.logger.info(f"Temp dir: {temp_dir}")
+
+@app.route('/ace/<path:filename>')
+def custom_static(filename):
+    return send_from_directory('ace', filename)
 
 def set_user(fake_user):
     header_name = os.environ.get("AMC_USERHEADER")

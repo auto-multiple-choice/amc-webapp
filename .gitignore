@@ -4,7 +4,7 @@
 
 __pycache__
 
-server/static/ace/unused
+server/ace/unused
 
 venv
 dev.sh
@@ -14,6 +14,10 @@ dev.sh
 server/ace-src/*.0
 server/ace-src/mode-amc_txt.js
 
-server/static/ace/mode-amc_txt.js
+server/ace/mode-amc_txt.js
 
 server/version.py
+
+server/static/*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].*
+server/static/*.gz
+server/static/cache_manifest.json

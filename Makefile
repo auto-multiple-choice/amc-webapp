@@ -8,9 +8,9 @@ clean: FORCE
 messages: FORCE
 	$(foreach lang,en fr,$(MAKE) server/translations/$(lang)/LC_MESSAGES/messages.mo ; )
 
-ace: server/static/ace/mode-amc_txt.js ;
+ace: server/ace/mode-amc_txt.js ;
 
-server/static/ace/mode-amc_txt.js: server/ace-src/mode-amc_txt.js
+server/ace/mode-amc_txt.js: server/ace-src/mode-amc_txt.js
 	cp $< $@
 
 server/ace-src/mode-amc_txt.js: FORCE
