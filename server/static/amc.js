@@ -1393,6 +1393,12 @@ function association_auto() {
     socket_emit("association-auto");
 }
 
+function update_students_list() {
+    fetch_to_dom("students-list", "/students_list.html", {});
+}
+
+socket.on("update-students-list", update_students_list);
+
 function association_manual() {
     document.getElementById("grading").classList.add("hidden");
     document.getElementById("association").classList.remove("hidden");
@@ -1402,7 +1408,7 @@ function association_manual() {
             select_assoc_sheet(-1,-1);
             first_not_associated();
         });
-    fetch_to_dom("students-list", "/students_list.html", {})
+    update_students_list();
 }
 
 function association_manual_done() {
@@ -1473,6 +1479,14 @@ function select_students(entry) {
             n_selected_students++;
             last_selected_student = student;
         } else student.classList.add("hidden");
+    }
+    if(n_selected_students == 0) {
+        document.getElementById("create-student").classList.remove("hidden");
+        document.getElementById("create-student-surname").value = entry.value;
+        document.getElementById("create-student-name").value = "";
+        document.getElementById("create-student-id").value = "";
+    } else {
+        document.getElementById("create-student").classList.add("hidden");
     }
 }
 
@@ -1555,6 +1569,15 @@ function set_association(student, copy, student_id) {
         set_association_student(old, false);
         e.setAttribute("amc-manual", student_id);
         set_association_student(student_id, true);
+    }
+}
+
+function create_student() {
+    var id = document.getElementById("create-student-id").value.trim();
+    var name = document.getElementById("create-student-name").value.trim();
+    var surname = document.getElementById("create-student-surname").value.trim();
+    if(id && surname && assoc_sheet[0]>=0) {
+        socket_emit("associate-new", [id, surname, name, ...assoc_sheet]);
     }
 }
 

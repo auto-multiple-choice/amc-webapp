@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-18 13:04+0200\n"
-"PO-Revision-Date: 2026-05-18 13:07+0200\n"
+"POT-Creation-Date: 2026-05-20 17:00+0200\n"
+"PO-Revision-Date: 2026-05-20 17:04+0200\n"
 "Last-Translator: \n"
 "Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
@@ -16,7 +16,7 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-"Generated-By: Babel 2.17.0\n"
+"Generated-By: Babel 2.18.0\n"
 "X-Generator: Poedit 3.9\n"
 
 #: extra.py:1
@@ -31,171 +31,176 @@ msgstr "Non"
 msgid "btn.continue"
 msgstr "Continuer"
 
-#: server/amc.py:160
+#: server/amc.py:169
 msgid "dialog.cancel"
 msgstr "Annuler"
 
-#: server/amc.py:163
+#: server/amc.py:172
 msgid "dialog.ok"
 msgstr "OK"
 
-#: server/amc.py:386
+#: server/amc.py:395
 msgid "t.cloning"
 msgstr "Clonage du projet…"
 
-#: server/amc.py:393
+#: server/amc.py:402
 msgid "msg.cloned"
 msgstr "Le projet a été cloné vers %(name)s."
 
-#: server/amc.py:396
+#: server/amc.py:405
 msgid "msg.clone.err"
 msgstr ""
-"Erreur lors de la création du clone %(name)s : %(n)s fichiers sur %"
-"(ntotal)s ont seulement été copiés."
+"Erreur lors de la création du clone %(name)s : %(n)s fichiers sur %(ntotal)s "
+"ont seulement été copiés."
 
-#: server/amc.py:421
+#: server/amc.py:430
 msgid "msg.rename.exists"
 msgstr ""
-"Impossible de renommer \"%(old)s\" en \"%(new)s\", car ce dernier existe "
-"déjà."
+"Impossible de renommer \"%(old)s\" en \"%(new)s\", car ce dernier existe déjà."
 
-#: server/amc.py:509
+#: server/amc.py:518
 msgid "msg.create.exists"
 msgstr ""
-"Impossible de créer un projet nommé \"%(name)s\", car un fichier ou "
-"répertoire existe déjà sous ce nom."
+"Impossible de créer un projet nommé \"%(name)s\", car un fichier ou répertoire "
+"existe déjà sous ce nom."
 
-#: server/amc.py:604 server/amc.py:629
+#: server/amc.py:613 server/amc.py:638
 msgid "t.options"
 msgstr "Recherche du fichier d'options…"
 
-#: server/amc.py:617 server/amc.py:640
+#: server/amc.py:626 server/amc.py:649
 msgid "t.extract"
 msgstr "Extraction…"
 
-#: server/amc.py:707
+#: server/amc.py:716
 msgid "t.archive.save"
 msgstr "Sauvegarde de l'archive…"
 
-#: server/amc.py:850
+#: server/amc.py:859
 msgid "t.scans.extract"
 msgstr "Extraction des images…"
 
-#: server/amc.py:859
+#: server/amc.py:868
 msgid "t.automatic"
 msgstr "Saisie automatique…"
 
-#: server/amc.py:1084
+#: server/amc.py:1093
 msgid "latex.log"
 msgstr "Log LaTeX complet"
 
-#: server/amc.py:1116
+#: server/amc.py:1125
 msgid "t.clear"
 msgstr "Nettoyage des données du projet…"
 
-#: server/amc.py:1141
+#: server/amc.py:1150
 msgid "t.layouts"
 msgstr "Détection des mises en page…"
 
-#: server/amc.py:1250
+#: server/amc.py:1259
 msgid "t.print_to"
 msgstr "Impression vers %(printer)s…"
 
-#: server/amc.py:1268
+#: server/amc.py:1277
 msgid "msg.printing.done"
 msgstr "Impression terminée !"
 
-#: server/amc.py:1279
+#: server/amc.py:1288
 msgid "t.print.files"
 msgstr "Impression vers des fichiers…"
 
-#: server/amc.py:1584
+#: server/amc.py:1593
 msgid "add.student.syntax"
 msgstr ""
 "L'étudiant à ajouter doit être renseigné sous la forme d'un nombre entier "
-"(version du sujet), ou de deux entiers (version du sujet et numéro de "
-"copie) séparés par deux points (\":\")."
+"(version du sujet), ou de deux entiers (version du sujet et numéro de copie) "
+"séparés par deux points (\":\")."
 
-#: server/amc.py:1655
+#: server/amc.py:1664
 msgid "t.mark.extract"
 msgstr "Extraction du barème…"
 
-#: server/amc.py:1663
+#: server/amc.py:1672
 msgid "t.mark.compute"
 msgstr "Calcul des notes…"
 
-#: server/amc.py:1795
+#: server/amc.py:1822
 msgid "student.list.number"
 msgstr "Étudiant·e n°{}"
 
-#: server/amc.py:1867
+#: server/amc.py:1927
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "Une nouvelle identification a été détectée."
 msgstr[1] "Nouvelles identifications détectées : %(num)s"
 
-#: server/amc.py:1870
+#: server/amc.py:1930
 msgid "assoc.auto.none"
 msgstr "Aucune nouvelle identification n'a été détectée."
 
-#: server/amc.py:1993
+#: server/amc.py:2003
+msgid "newstudent.exists"
+msgstr ""
+"Vous ne pouvez pas ajouter cet étudiant·e à la liste, car l'identifiant %(sid)s "
+"est déjà utilisé."
+
+#: server/amc.py:2068
 msgid "files.all"
 msgstr "Tout télécharger"
 
-#: server/amc.py:2000
+#: server/amc.py:2075
 msgid "t.export"
 msgstr "Export…"
 
-#: server/amc.py:2036
+#: server/amc.py:2111
 msgid "t.annotate"
 msgstr "Annotation…"
 
-#: server/amc.py:2055
+#: server/amc.py:2130
 msgid "files.indiv"
 msgstr "Télécharger les fichiers individuels"
 
-#: server/static/amc.js:232
+#: server/static/amc.js:241
 msgid "confirm.deleteproject"
 msgstr ""
-"Êtes-vous sûr·e de vouloir effacer le projet \"{}\" ? Cela effacera de "
-"manière permanente tous les fichiers correspondants."
+"Êtes-vous sûr·e de vouloir effacer le projet \"{}\" ? Cela effacera de manière "
+"permanente tous les fichiers correspondants."
 
-#: server/static/amc.js:352
+#: server/static/amc.js:361
 msgid "confirm.deletefile"
 msgstr "Êtes-vous sûr·e de vouloir effacer le fichier \"{}\" ?"
 
-#: server/static/amc.js:361
+#: server/static/amc.js:370
 msgid "create.project.noname"
 msgstr "Vous avez oublié de choisir un nom pour votre nouveau projet !"
 
-#: server/static/amc.js:370
+#: server/static/amc.js:379
 msgid "create.project.notemplate"
 msgstr "Vous avez oublié de choisir le modèle à utiliser !"
 
-#: server/static/amc.js:384
+#: server/static/amc.js:393
 msgid "create.project.nofile"
 msgstr "Vous avez oublié de choisir un fichier à envoyer !"
 
-#: server/static/amc.js:601
+#: server/static/amc.js:610
 msgid "confirm.rebuild"
 msgstr ""
-"Regénérer le sujet effacera toutes les données de ce projet. Si vous "
-"souhaitez utiliser des sujets déjà imprimés, annulez ! Êtes-vous sûr·e de "
-"vouloir continuer ?"
+"Regénérer le sujet effacera toutes les données de ce projet. Si vous souhaitez "
+"utiliser des sujets déjà imprimés, annulez ! Êtes-vous sûr·e de vouloir "
+"continuer ?"
 
-#: server/static/amc.js:1302
+#: server/static/amc.js:1312
 msgid "confirm.rmstudentslist"
 msgstr ""
-"Voulez-vous vraiment effacer la liste des étudiant·es ? Cela supprimera "
-"toutes les associations entre copies et étudiant·es."
-
-#: server/static/amc.js:1370
-msgid "confirm.lkey"
-msgstr ""
-"Voulez-vous vraiment modifier la clé unique utilisée ? Cela effacera toutes "
+"Voulez-vous vraiment effacer la liste des étudiant·es ? Cela supprimera toutes "
 "les associations entre copies et étudiant·es."
 
-#: server/static/amc.js:1405
+#: server/static/amc.js:1380
+msgid "confirm.lkey"
+msgstr ""
+"Voulez-vous vraiment modifier la clé unique utilisée ? Cela effacera toutes les "
+"associations entre copies et étudiant·es."
+
+#: server/static/amc.js:1421
 msgid "confirm.rmassociation"
 msgstr ""
 "Voulez-vous vraiment effacer toutes les associations entre copies et "
@@ -263,8 +268,7 @@ msgstr ""
 "Ajoutez une liste d'étudiant·es (sous la forme d'un fichier CSV) dans votre "
 "répertoire projet."
 
-#: server/templates/identification.html:65
-#: server/templates/identification.html:77
+#: server/templates/identification.html:65 server/templates/identification.html:77
 msgid "students.upload"
 msgstr "Téléverser une liste…"
 
@@ -353,8 +357,8 @@ msgstr "Nouveau projet"
 #: server/templates/project_new.html:3
 msgid "newproject.intro"
 msgstr ""
-"Choisissez un nom pour votre nouveau projet AMC, et une des façons "
-"suivantes de le créer."
+"Choisissez un nom pour votre nouveau projet AMC, et une des façons suivantes de "
+"le créer."
 
 #: server/templates/project_new.html:6
 msgid "newproject.name"
@@ -546,8 +550,7 @@ msgstr "Compilation"
 
 #: server/templates/tab_config.html:82
 msgid "config.force_textpos"
-msgstr ""
-"Saisie manuelle restreinte aux questions disponible pour tous les projets"
+msgstr "Saisie manuelle restreinte aux questions disponible pour tous les projets"
 
 #: server/templates/tab_config.html:87
 msgid "config.scan"
@@ -752,6 +755,22 @@ msgstr "Écrire pour filtrer…"
 #: server/templates/tab_grading.html:154
 msgid "config.association.filter_beginning"
 msgstr "Au début"
+
+#: server/templates/tab_grading.html:157
+msgid "assoc.new.id"
+msgstr "ID :"
+
+#: server/templates/tab_grading.html:158
+msgid "assoc.new.surname"
+msgstr "Nom :"
+
+#: server/templates/tab_grading.html:159
+msgid "assoc.new.name"
+msgstr "Prénom :"
+
+#: server/templates/tab_grading.html:160
+msgid "assoc.new.go"
+msgstr "Ajouter à la liste"
 
 #: server/templates/tab_scans.html:6
 msgid "scans.photocopy"

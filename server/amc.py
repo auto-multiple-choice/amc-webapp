@@ -1755,6 +1755,21 @@ def list_file_read(path):
     f.close()
     return rows
 
+def list_file_headers(path):
+    skip = 0
+    f = open(path, "r")
+    line = "#"
+    while line[0]=="#":
+        skip = f.tell()
+        line = f.readline()
+    f.seek(skip)
+    dialect = csv.Sniffer().sniff(f.read(1024), ",:;\t")
+    f.seek(skip)
+    reader = csv.reader(f, dialect=dialect)
+    headers = next(iter(reader))
+    f.close()
+    return dialect, headers
+
 def unique_keys(rows):
     if not rows:
         return []
@@ -1765,11 +1780,14 @@ def unique_keys(rows):
             ukeys.append(k)
     return ukeys
 
-def first_of(l, *proposals):
+def first_of(l, *proposals, index=False):
     unil = {}
-    for x in l:
-        unil[ unidecode(x.lower()) ] = x
-    for x in proposals:
+    for i, x in enumerate(l):
+        if index:
+            unil[ unidecode(x.lower()) ] = i
+        else:
+            unil[ unidecode(x.lower()) ] = x
+    for i, x in enumerate(proposals):
         if unil.get(x):
             return unil[x]
     return None
@@ -1806,6 +1824,39 @@ def students_flat_list():
 
     flat.sort(key=lambda x: x[1])
     return flat
+
+def student_id_exists(sid):
+    lkey = get_option("liste_key")
+    path = students_list_file()
+    rows = list_file_read(path)
+
+    list_ids = [ s[lkey] for s in rows ]
+    return sid in list_ids
+
+def student_new(sid, surname, name):
+    o = get_options(["liste_key",
+                     "global:csv_name_headers", "global:csv_surname_headers"])
+    lkey = o.get('liste_key')
+    path = students_list_file()
+    dialect, headers = list_file_headers(path)
+
+    i_id = headers.index(lkey)
+    i_name = first_of(headers, "prenom", "name",
+                      *headers_list(o['global:csv_name_headers']), index=True)
+    i_surname = first_of(headers, "nom", "surname",
+                         *headers_list(o['global:csv_surname_headers']), index=True)
+    s_new = [ "" for i in range(len(headers)) ]
+    s_new[i_id] = sid
+    if i_name:
+        s_new[i_name] = name
+    else:
+        surname = surname + " " + name
+    if i_surname:
+        s_new[i_surname] = surname
+        
+    with open(path, 'a', newline='') as csvfile:
+        studentswriter = csv.writer(csvfile, dialect)
+        studentswriter.writerow(s_new)
 
 @socketio_name('change-lkey')
 def io_change_lkey(data):
@@ -1923,9 +1974,7 @@ def io_annotation_config():
          get_options(
              ["global:filter_beginning"]))
 
-@socketio_name('associate')
-def io_associate(data):
-    student, copy, student_id = data
+def do_associate(student, copy, student_id):
     db = get_db()
     
     old_lkey = db.get_variable("association", "key_in_list")
@@ -1939,7 +1988,24 @@ def io_associate(data):
     to_rm = db.associate(student, copy, student_id, multiple_copies)
     app.logger.info(f"Associated: [{student},{copy}] <-> \"{student_id}\" | {to_rm}")
     emit_msg("update-association",
-         [ student, copy, student_id, to_rm ])
+             [ student, copy, student_id, to_rm ])
+
+@socketio_name('associate')
+def io_associate(data):
+    student, copy, student_id = data
+    do_associate(student, copy, student_id)
+
+@socketio_name('associate-new')
+def io_associate_new(data):
+    sid, surname, name, student, copy = data
+    if student_id_exists(sid):
+        app.logger.warning(f"Student id already exists: {sid} / {surname} {name}")
+        dialog_msg(err=_('newstudent.exists', sid=sid))
+    else:
+        app.logger.debug(f"New student: {sid} / {surname} {name}")
+        student_new(sid, surname, name)
+        do_associate(student, copy, sid)
+        emit_msg("update-students-list")
 
 def u_exports_available():
     db = get_db()
