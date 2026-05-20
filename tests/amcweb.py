@@ -210,8 +210,8 @@ class AMCWeb():
 
     def element_is_hidden(self, element, by=By.ID):
         e = self.driver.find_element(by, element)
-        cl = e.get_attribute('class').split()
-        return "hidden" in cl
+        cl = e.get_attribute('class')
+        return cl and ("hidden" in cl.split())
 
     def wait_for_visible(self, element, total=10, by=By.ID):
         wait = WebDriverWait(self.driver,
