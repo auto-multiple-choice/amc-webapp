@@ -1572,6 +1572,19 @@ function set_association(student, copy, student_id) {
     }
 }
 
+function student_id_test_row(element, event) {
+    var string = (event.clipboardData || window.clipboardData).getData("text");
+    var row = string.split(/\s*[,;\t\n\r]+\s*/);
+    console.log(row);
+    if(row.length > 1) {
+        element.value = row[0];
+        document.getElementById("create-student-surname").value = row[1];
+        if(row.length > 2)
+            document.getElementById("create-student-name").value = row[2];
+        event.preventDefault();
+    }
+}
+
 function create_student() {
     var id = document.getElementById("create-student-id").value.trim();
     var name = document.getElementById("create-student-name").value.trim();

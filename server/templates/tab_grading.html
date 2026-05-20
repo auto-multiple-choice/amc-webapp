@@ -155,7 +155,8 @@
         <label for="global:filter_beginning">{{ _('config.association.filter_beginning') }}</label>
       </div>
       <div id="create-student" class="bandeau hidden">
-        {{ _('assoc.new.id') }} <input type="text" id="create-student-id" size="12" tabindex="2"/>
+        {{ _('assoc.new.id') }} <input type="text" id="create-student-id" size="12" tabindex="2"
+                                       onpaste="student_id_test_row(this, event);"/>
         {{ _('assoc.new.surname') }} <input type="text" id="create-student-surname" size="12" tabindex="3"/>
         {{ _('assoc.new.name') }} <input type="text" id="create-student-name" size="12" tabindex="4"/>
         <span class="btn btn-ok" onclick="create_student();" tabindex="5">{{ _('assoc.new.go') }}</span>
