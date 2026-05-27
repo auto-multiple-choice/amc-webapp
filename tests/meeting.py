@@ -14,7 +14,7 @@ def launch_u(u):
         user_header=os.environ.get("AMC_USERHEADER", "Test-User"),
         random_delay=True, prefix=f"{u}> ",
     )
-    aw.extend_sleep_factor(3)
+    aw.extend_sleep_factor(5)
     aw.sleep(5 * random.random())
     aw.launch()
 

@@ -5,7 +5,7 @@ from selenium.webdriver import Keys, ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.chrome.options import Options
-from selenium.common import NoSuchElementException, ElementNotInteractableException
+from selenium.common import NoSuchElementException, ElementNotInteractableException, StaleElementReferenceException
 
 import time
 import tempfile
@@ -37,6 +37,8 @@ class AMCWeb():
         self.base_url = os.environ.get('AMCWEB_BASEURL', "http://127.0.0.1:5000")
         self.sleep_factor = float(os.environ.get(
             'AMC_TESTS_SLEEP_FACTOR', 1))
+        self.transient_errors = [NoSuchElementException, ElementNotInteractableException,
+                                 StaleElementReferenceException]
         self.renew_temp_dir()
 
     def extend_sleep_factor(self, mult):
@@ -196,7 +198,7 @@ class AMCWeb():
         wait = WebDriverWait(self.driver,
                              timeout=10*self.sleep_factor,
                              poll_frequency=.2,
-                             ignored_exceptions=[NoSuchElementException])
+                             ignored_exceptions=self.transient_errors)
         wait.until(lambda _ :
                    self.driver.find_element(by, element).text != text)
 
@@ -204,7 +206,7 @@ class AMCWeb():
         wait = WebDriverWait(self.driver,
                              timeout=10*self.sleep_factor,
                              poll_frequency=.2,
-                             ignored_exceptions=[NoSuchElementException])
+                             ignored_exceptions=self.transient_errors)
         wait.until(lambda _ :
                    self.driver.find_element(by, element).text == text)
 
@@ -217,7 +219,7 @@ class AMCWeb():
         wait = WebDriverWait(self.driver,
                              timeout=total*self.sleep_factor,
                              poll_frequency=.2,
-                             ignored_exceptions=[NoSuchElementException])
+                             ignored_exceptions=self.transient_errors)
         wait.until(lambda _ :
                    not self.element_is_hidden(element, by=by))
 
@@ -225,7 +227,7 @@ class AMCWeb():
         wait = WebDriverWait(self.driver,
                              timeout=total*self.sleep_factor,
                              poll_frequency=.2,
-                             ignored_exceptions=[NoSuchElementException])
+                             ignored_exceptions=self.transient_errors)
         wait.until(lambda _ :
                    self.element_is_hidden(element, by=by))
 
@@ -687,8 +689,7 @@ class AMCWeb():
     def switch_user(self, user, project=None):
         self.log(f"fake user {user}")
         self.goto_tab("main")
-        self.driver.find_element(
-            By.ID, "menu-admin-search").click()
+        self.click_on("menu-admin-search")
         if project:
             x = f'//ul[@amc-user="{user}"]/li[text()="{project}"]'
         else:
