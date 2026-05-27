@@ -184,7 +184,7 @@ def close_connection(exception):
 
 @app.route('/')
 def index():
-    resp = make_response(render_template('index.html'))
+    resp = make_response(render_template('index.html', username=username(ifnone="")))
     if not request.cookies.get('amcsession'):
         session = str(uuid.uuid4())
         app.logger.info(f"New session: {session}")
