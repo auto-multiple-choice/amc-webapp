@@ -6,6 +6,15 @@ var project_name = null;
 var editor = null;
 var current_tab = null;
 
+function app_version() {
+    var app = document.getElementById("app");
+    if(app) {
+        return(app.getAttribute("version") || "Unknown");
+    } else {
+        return "";
+    }
+}
+
 function socket_emit(msg, ...args) {
     x = { fake_user: fake_user, proj: project_name, sid: socket.id };
     if(args.length) x["args"] = args[0];
@@ -522,13 +531,17 @@ function restore_project() {
 
 socket.on("connect", () => {
     connection_status("online");
-    socket_emit("is-online");
+    socket_emit("is-online", app_version());
     if(socket_creation) {
         socket_creation = false;
         restore_project();
     } else {
         request_project(project_name, false);
     }
+});
+
+socket.on("reload", () => {
+    location.reload();
 });
 
 socket.on("disconnect", () => {

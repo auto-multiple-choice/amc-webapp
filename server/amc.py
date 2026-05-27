@@ -44,6 +44,13 @@ TEMPLATES_DIR = os.environ.get(
 
 app = Flask(__name__)
 
+AMCWEB_VERSION = None
+try:
+    import version
+    AMCWEB_VERSION = version.APP_VERSION
+except Exception as e:
+    app.logger.error("App version not found: " + str(e))
+
 app.config.from_mapping(
     SECRET_KEY='dev',
     FLASK_STATIC_DIGEST_BLACKLIST_FILTER = [ ".png", ".svg", ".css~", ".js~" ],
@@ -184,7 +191,11 @@ def close_connection(exception):
 
 @app.route('/')
 def index():
-    resp = make_response(render_template('index.html', username=username(ifnone="")))
+    resp = make_response(render_template(
+        'index.html',
+        username=username(ifnone=""),
+        app_version=AMCWEB_VERSION,
+    ))
     if not request.cookies.get('amcsession'):
         session = str(uuid.uuid4())
         app.logger.info(f"New session: {session}")
@@ -193,20 +204,13 @@ def index():
 
 @app.route('/version')
 def version():
-    amcweb_version = "Unknown"
-    try:
-        import version
-        amcweb_version = version.APP_VERSION
-    except Exception as e:
-        app.logger.error("App version not found: " + str(e))
-
     amc_version = subprocess.check_output(
         ["auto-multiple-choice", "version"], shell=False
     ).decode("utf-8").strip()
 
     return render_template('version.html',
                            amc_version=amc_version,
-                           amcweb_version=amcweb_version)
+                           amcweb_version=AMCWEB_VERSION)
 
 @app.route('/tex/automultiplechoice.sty')
 def request_sty_file():
@@ -243,8 +247,14 @@ def marks_csv(uuids):
         
 
 @socketio_name('is-online')
-def io_is_online():
-    app.logger.debug(f"📶 {flask_g._sid} (u={flask_g._real_user}) is online from {request.remote_addr}")
+def io_is_online(*client_version):
+    if client_version:
+        client_version = client_version[0]
+    else:
+        client_version = ""
+    app.logger.debug(f"📶 {flask_g._sid} (u={flask_g._real_user}) is online from {request.remote_addr}, version '{client_version}'")
+    if client_version and AMCWEB_VERSION and (client_version != AMCWEB_VERSION):
+        emit_msg("reload")
 
 @app.route('/tab/<tab_name>')
 def tab(tab_name):
