@@ -8,6 +8,7 @@ import os
 import math
 from pathlib import Path
 import datetime
+import time
 import shutil
 import tempfile
 import sys
@@ -37,6 +38,7 @@ from flask import Flask, Response, abort, render_template, request, send_file, m
 from flask_socketio import SocketIO, emit
 from flask_babel import Babel, _, ngettext
 from flask_static_digest import FlaskStaticDigest
+from flask_apscheduler import APScheduler
 
 TEMPLATES_DIR = os.environ.get(
     'AMC_TEMPLATES_DIR',
@@ -62,6 +64,20 @@ babel = Babel(app, locale_selector=get_locale)
 
 flask_static_digest = FlaskStaticDigest()
 flask_static_digest.init_app(app)
+
+cli_command = None
+if os.environ.get('FLASK_RUN_FROM_CLI', 'false') == 'true':
+    if len(sys.argv) > 2:
+        if sys.argv[0].endswith('flask'):
+            cli_command = sys.argv[1]
+if cli_command == 'run':
+    cli_command = None
+
+scheduler = APScheduler()
+scheduler.api_enabled = (os.environ.get('FLASK_SCHEDULER_API', 'False').lower() == 'true')
+scheduler.timezone = os.environ.get('TZ', 'Europe/Paris')
+if not cli_command:
+    scheduler.init_app(app)
 
 log_level = os.environ.get('AMC_SERVER_LOGGING')
 if log_level=='ERROR':
@@ -90,6 +106,47 @@ if proxy_level:
 temp_dir = tempfile.mkdtemp(prefix="amcapp")
 
 app.logger.info(f"Temp dir: {temp_dir}")
+
+def clean_temp():
+    app.logger.debug(f"Clean temp job starting.")
+    old_time = time.time() - int(os.environ.get('AMC_TEMP_TIMEOUT_H', 2)) * 3600
+    old_dirs = []
+    for root, dirs, files in os.walk(temp_dir, topdown=False):
+        if os.path.getmtime(root) < old_time:
+            old_dirs.append(root)
+        for f in files:
+            fn = os.path.join(root, f)
+            if os.path.getmtime(fn) < old_time:
+                app.logger.debug(f"Clean temp file: {fn}")
+                try:
+                    os.remove(fn)
+                except Exception as e:
+                    app.logger.error(f"Can't remove temp file {fn}: {e}")
+        for f in dirs:
+            fn = os.path.join(root, f)
+            if os.path.getmtime(fn) < old_time and not os.listdir(fn):
+                app.logger.debug(f"Clean temp dir: {fn}")
+                try:
+                    os.rmdir(fn)
+                except Exception as e:
+                    app.logger.error(f"Can't remove temp dir {fn}: {e}")
+    for fn in old_dirs:
+        if not os.listdir(fn):
+            app.logger.debug(f"Clean temp dir: {fn}")
+            try:
+                os.rmdir(fn)
+            except Exception as e:
+                app.logger.error(f"Can't remove temp dir {fn}: {e}")
+    app.logger.debug(f"Clean temp job ended.")
+        
+
+@scheduler.task('cron', id='clean_temp_job',
+                hour=os.environ.get('AMC_TEMP_CLEAN_H', '3'))
+def clean_temp_job():
+    clean_temp()
+
+if not cli_command:
+    scheduler.start()
 
 @app.route('/ace/<path:filename>')
 def custom_static(filename):
