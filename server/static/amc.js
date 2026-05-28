@@ -6,6 +6,43 @@ var project_name = null;
 var editor = null;
 var current_tab = null;
 
+var inactivity_timer = null;
+
+var reset_inactivity_ = function() {
+    clearTimeout(inactivity_timer);
+    inactivity_timer = setTimeout(socket_ask_disconnect, 30 * 60 * 1000)
+}
+
+function reset_inactivity() {
+    reset_inactivity_();
+}
+
+function start_inactivity() {
+    reset_inactivity();
+    for(e of ["mouseout", "mouseover", "keydown", "click"]) {
+        document.addEventListener(e, reset_inactivity);
+    }
+}
+
+function cancel_inactivity_timer() {
+    reset_inactivity_ = () => {};
+    clearTimeout(inactivity_timer);
+}
+
+function socket_ask_disconnect() {
+    var panel = document.getElementById('warn-panel');
+    if(panel.classList.contains('hidden'))
+        socket_emit("inactivity");
+}
+
+socket.on("dialog-disconnect", function(html) {
+    show_dialog(html);
+    socket.disconnect();
+    document.title = '❌';
+    cancel_inactivity_timer();
+});
+
+
 function app_version() {
     var app = document.getElementById("app");
     if(app) {
@@ -65,6 +102,7 @@ function fetch_content(url, opts) {
 }
 
 function fetch_to_dom(id, url, opts) {
+    reset_inactivity();
     return fetch_content(url, opts)
         .then(html => {
             if(!( id instanceof Array )) {
@@ -628,11 +666,13 @@ function doc_update(e) {
 }
 
 function set_t(text) {
+    reset_inactivity();
     var panel = document.getElementById('info-text');
     panel.textContent = text;
 }
 
 function set_p(prop) {
+    reset_inactivity();
     var pc = 100.0*prop;
     var prog = document.getElementById('info-prop');
     prog.value = pc;
@@ -659,12 +699,14 @@ function end_command() {
 
 socket.on("end-command", end_command);
 
-socket.on("dialog", function(html) {
+function show_dialog(html) {
     var w = document.getElementById('warn-content');
     w.innerHTML = html;
     var panel = document.getElementById('warn-panel');
     panel.classList.remove('hidden');
-});
+}
+
+socket.on("dialog", show_dialog);
 
 function warn_ok() {
     var panel = document.getElementById('warn-panel');
@@ -715,6 +757,7 @@ function update_printing() {
 }
 
 socket.on("n-waiting-print", function(data) {
+    reset_inactivity();
     var n = parseInt(data);
     var ps = document.getElementById("printing-status");
     set_project_title(n);
@@ -1737,6 +1780,7 @@ function key_up(event) {
 // ----------------------- MAIN
 
 document.addEventListener('DOMContentLoaded', function() {
+    start_inactivity();
     document.getElementById("app-body").addEventListener("keyup", key_up);
     connection_status(socket.connected ? "online" : "offline");
     if(!socket_creation)

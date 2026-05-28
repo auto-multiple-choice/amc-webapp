@@ -183,6 +183,14 @@ def warn_dialog(**kwargs):
 def dialog_msg(**kwargs):
     emit_msg('dialog', warn_dialog(**kwargs))
 
+@socketio_name("inactivity")
+def dialog_disconnect():
+    emit_msg('dialog-disconnect', warn_dialog(
+        warn=_('inactivity.disconnect'),
+        ok_onclick='location.reload();',
+        ok_txt=_('inactivity.reload'),
+    ))
+
 @app.teardown_appcontext
 def close_connection(exception):
     db = getattr(g, '_database', None)
