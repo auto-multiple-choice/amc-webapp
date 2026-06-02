@@ -39,7 +39,7 @@
     </div>
     <div id="scans-actions-open" class="clickable-simple"
          onclick="this.classList.toggle('selected');"
-         >{{ _('scans.actions') }}</div>
+         ><span class="plus"><i class="iconoir-plus-circle"></i></span><span class="minus"><i class="iconoir-minus-circle"></i></span> {{ _('scans.actions') }}</div>
     <div id="scans-actions">
       <input type="text" id="add-student-n" name="add-student-n"
              size="4" placeholder="num"/>
@@ -48,11 +48,11 @@
         <span id="pages-delete-stop" class="btn btn-neutral btn-large hidden"
               onclick="stop_delete_pages();"
               title="{{ _('scans.delete.cancel') }}"
-              >←</span>
+              ><i class="iconoir-u-turn-arrow-left" style="rotate: 90deg;"></i></span>
         <span id="pages-delete-do" class="btn btn-danger btn-large hidden"
               onclick="do_delete_pages();"
               title="{{ _('scans.delete.go') }}"
-              >⊗</span>
+              ><i class="iconoir-xmark-circle"></i></span>
         <span id="pages-delete-start" class="btn btn-danger"
               onclick="start_delete_pages();"
               >{{ _('scans.delete') }}</span>

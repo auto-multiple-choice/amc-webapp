@@ -4,9 +4,9 @@
       <span id="source-name" class="clickable" onclick="source_other();"></span>
       <span id="source-revert" class="btn btn-warning disabled"
             onclick="source_revert();"
-            title="{{ _('btn.revert') }}">↩</span>
+            title="{{ _('btn.revert') }}"><i class="iconoir-u-turn-arrow-left" style="rotate: 90deg;"></i></span>
       <span id="source-save" class="btn btn-ok disabled" onclick="source_save();">{{ _('btn.save') }}</span>
-      <span id="printing-status" class="hidden badge">🖨️ <span id="printing-status-n"></span> <span onclick="cancel_printing();" class="sub-badge" title="{{ _('print.cancel') }}">🛑</span></span>
+      <span id="printing-status" class="hidden badge"><i class="iconoir-printing-page iconoir"></i> <span id="printing-status-n"></span> <span onclick="cancel_printing();" class="sub-badge" title="{{ _('print.cancel') }}"><i class="iconoir-xmark-circle-solid iconoir" style="color: red;"></i></span></span>
     </div>
     <div id="files-list" class="hidden">
       <div class="bandeau">
@@ -42,7 +42,7 @@
       <span id="doc-print-btn" class="btn btn-ok hidden" onclick="doc_print();">{{ _('btn.print') }}</span>
       <span id="defects-button" class="hidden"
             onclick="toggle_defects_view();">
-        ⚠️        
+        <i class="iconoir-warning-triangle"></i>   
       </span>
     </div>
     <div id="defects-list" class="hidden">

@@ -93,6 +93,10 @@ img.menu {
     background: #ffac29;
 }
 
+.badge .iconoir {
+    vertical-align: -0.2ex;
+}
+
 .sub-badge {
     margin-left: 5px;
     cursor: pointer;
@@ -254,8 +258,8 @@ li.selectable.recent {
     background: #333;
     color: white;
     border-radius: 0.75em;
-    width: 1.5em;
-    height: 1.5em;
+    width: 1.25em;
+    height: 1.25em;
     display: inline-block;
     text-align: center;
     vertical-align: middle;
@@ -698,11 +702,11 @@ input.one-way:checked ~ div {
     margin-top: 5px;
     border-top: #aaa dashed 2px;
 }
-#scans-actions-open:before {
-    content: "⊕ ";
+#scans-actions-open:not(.selected) span.minus {
+    display: none;
 }
-#scans-actions-open.selected:before {
-    content: "⊖ ";
+#scans-actions-open.selected span.plus {
+    display: none;
 }
 #scans-actions-open:not(.selected) + div {
     display: none;

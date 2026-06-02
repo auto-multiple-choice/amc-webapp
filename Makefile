@@ -1,5 +1,5 @@
 
-build: messages ace
+build: messages ace icons
 
 clean: FORCE
 	-rm -f server/translations/*/LC_MESSAGES/messages.mo
@@ -15,6 +15,11 @@ server/ace/mode-amc_txt.js: server/ace-src/mode-amc_txt.js
 
 server/ace-src/mode-amc_txt.js: FORCE
 	$(MAKE) -C server/ace-src
+
+icons: server/static/icons.css ;
+
+server/static/icons.css: src-icons/iconoir.css src-icons/select-icons.py server/templates/*.html
+	python3 src-icons/select-icons.py > $@
 
 messages.pot: server/*.py server/templates/*.html server/static/amc.js
 	pybabel extract -F babel.cfg -k alert_msg -k confirm_msg -o messages.pot .

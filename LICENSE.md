@@ -8,6 +8,10 @@ The file `static/socket.io.js` is Copyright © 2014-2021 Guillermo Rauch, releas
 
 The files under `server/static/ace` are Copyright © 2010, Ajax.org B.V. released under the BSD license, see https://github.com/ajaxorg/ace/blob/master/LICENSE
 
+## Iconoir
+
+The file `src-icons/iconoir.css` is Copyright ⓒ 2026 Luca Burgio, released under the MIT License, see https://iconoir.com.
+
 ## AMC
 
 All other files are Copyright © 2026, Alexis Bienvenüe and the AMC

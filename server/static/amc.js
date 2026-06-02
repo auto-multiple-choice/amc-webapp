@@ -38,7 +38,6 @@ function socket_ask_disconnect() {
 socket.on("dialog-disconnect", function(html) {
     show_dialog(html);
     socket.disconnect();
-    document.title = '❌';
     cancel_inactivity_timer();
 });
 
@@ -231,7 +230,7 @@ function request_project(name, reload) {
 function set_project_title(n_printing=0) {
     var title = '';
     if(n_printing>0) {
-        title += `🖨️${n_printing} `;
+        title += `[${n_printing}] `;
     }
     title += project_name;
     document.title = title;

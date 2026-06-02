@@ -7,6 +7,7 @@
     <script src="{{ static_url_for('static', filename='amc.js') }}"></script>
     <script src="/ace/ace.js"></script>
     <link rel="stylesheet" href="{{ static_url_for('static', filename='amc.css') }}">
+    <link rel="stylesheet" href="{{ static_url_for('static', filename='icons.css') }}">
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="{{ url_for('static', filename='menu-amc.svg') }}">
 </head>
@@ -16,11 +17,11 @@
     
     <div id="menu">
       <div class="centered">
-        <span id="connection-status" class="offline" title="{{username}}">⬤</span>
+        <span id="connection-status" class="offline" title="{{username}}"><i class="iconoir-cable-tag-solid"></i></span>
         <span id="menu-admin-search" class="hidden admin-action adapt-menu"
-              onclick="admin_search();">👑</span>
+              onclick="admin_search();"><i class="iconoir-crown"></i></span>
         <span id="menu-admin-back" class="hidden admin-action adapt-menu"
-              onclick="admin_back();">🫅</span>
+              onclick="admin_back();"><i class="iconoir-profile-circle"></i></span>
       </div>
       <div id="menu-main" class="menubtn adapt-menu" onclick="tab_main();"
            title="{{ _('menu.main') }}"
