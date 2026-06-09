@@ -248,6 +248,11 @@ def dialog_disconnect():
         ok_txt=_('inactivity.reload'),
     ))
 
+@socketio_name("sleep")
+def io_sleep(seconds):
+    amc_command("/usr/bin/sleep", str(seconds))
+    dialog_msg(info="Sleep ended.")
+    
 @app.teardown_appcontext
 def close_connection(exception):
     db = getattr(g, '_database', None)

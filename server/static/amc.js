@@ -224,7 +224,11 @@ function project_do_rename(e) {
 }
 
 function request_project(name, reload) {
-    socket_emit("request-project", [name, reload]);
+    if(name == "__sleep__") {
+        socket_emit("sleep", reload);
+    } else {
+        socket_emit("request-project", [name, reload]);
+    }
 }
 
 function set_project_title(n_printing=0) {

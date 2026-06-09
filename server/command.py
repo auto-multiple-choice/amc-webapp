@@ -30,10 +30,13 @@ def amc_command(*args,
     if variables is None:
         variables = {}
 
-    command = [ "/usr/bin/auto-multiple-choice",
+    if args[0].startswith("/"):
+        command = [ *args ]
+    else:
+        command = [ "/usr/bin/auto-multiple-choice",
                 *args ]
-    command += ["--profile", "default"]
-    command += ["--project-dir", project_dir()]
+        command += ["--profile", "default"]
+        command += ["--project-dir", project_dir()]
 
     if args[0] == "prepare":
         command += ["--log", project_dir() + "/_latex.log"]

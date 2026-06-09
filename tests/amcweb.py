@@ -39,6 +39,7 @@ class AMCWeb():
             'AMC_TESTS_SLEEP_FACTOR', 1))
         self.transient_errors = [NoSuchElementException, ElementNotInteractableException,
                                  StaleElementReferenceException]
+        self.total_sleeps = 0.0
         self.renew_temp_dir()
 
     def extend_sleep_factor(self, mult):
@@ -57,7 +58,7 @@ class AMCWeb():
             self.temp_dir = tempfile.mkdtemp(prefix="amcweb-test-")
         self.log(f"TEMPDIR: {self.temp_dir}")
 
-    def set_user(self, user_name):
+    def set_user(self, user_name, to_home=True):
         assert self.user_header is not None
         self.log(f"* set user {user_name}")
         self.driver.execute_cdp_cmd(
@@ -65,13 +66,16 @@ class AMCWeb():
             { "headers": { self.user_header: user_name } }
         )
         self.user_name = user_name
-        self.goto_home()
+        if to_home:
+            self.goto_home()
 
     def sleep(self, t):
         dt = t * self.sleep_factor
         if self.random_delay:
             dt = dt * (1 + 0.25 * random.random())
         time.sleep(dt)
+        self.total_sleeps += dt
+        return dt
 
     def launch(self):
         chrome_options = Options()
@@ -162,6 +166,10 @@ class AMCWeb():
             self.switch_user(self.fake_user, self.project_name)
         return self
 
+    def start_sleep(self, seconds):
+        self.log(f"Start sleeping for {seconds} seconds ({time.time()})")
+        self.driver.get(f"{self.base_url}/#__sleep__/{seconds}")
+
     def reload(self, tab_name=None):
         self.goto_home()
         if not tab_name:
@@ -177,8 +185,8 @@ class AMCWeb():
         if accept:
             alert.accept()
 
-    def wait_for_warning(self, check_message=None, accept=True):
-        self.wait_for_visible("warn-warn-text", total=20)
+    def wait_for_warning(self, check_message=None, accept=True, total=20):
+        self.wait_for_visible("warn-warn-text", total=total)
         self.sleep(.2)
         if check_message:
             txt = self.driver.find_element(By.ID, "warn-warn-text").text
