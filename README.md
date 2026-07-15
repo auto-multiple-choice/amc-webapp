@@ -37,7 +37,7 @@ Connect you browser to http://locahost:5000
 
 You can go as for local installation, adding `-h 0.0.0.0` to the `flask` command so that the server can be accessed from your reverse proxy.
 
-You can also use a docker container, built from the `Dockerfile` that installs AMC and the server together.
+You can also [use a docker container](doc/docker.md), built from the `Dockerfile` that installs AMC and the server together.
 
 ### Configuration
 

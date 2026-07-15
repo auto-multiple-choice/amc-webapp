@@ -3,6 +3,7 @@ build: messages ace icons
 
 clean: FORCE
 	-rm -f server/translations/*/LC_MESSAGES/messages.mo
+	-rm -f server/static/icons.css
 	$(MAKE) -C server/ace-src clean
 
 messages: FORCE

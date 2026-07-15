@@ -1,0 +1,126 @@
+# Replace example.com with your domain!
+
+services:
+  # A reverse proxy (traefik)
+  traefik:
+    image: "traefik:v3.6.5"
+    container_name: traefik
+    hostname: traefik
+    command:
+      - --log.level=INFO
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --providers.docker
+      - --providers.docker.exposedByDefault=false
+      - --providers.file.directory=/traefik/dynamic
+      - --providers.file.watch=true
+      # Your email for SSL certificates
+      - --certificatesresolvers.le.acme.email=ssl@example.com
+      - --certificatesresolvers.le.acme.storage=/traefik/acme.json
+      - --certificatesresolvers.le.acme.tlschallenge=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./traefik-data:/traefik"
+    labels:
+      - "traefik.enable=true"
+      # global redirect to https
+      - "traefik.http.routers.http-catchall.rule=HostRegexp(`.+`) && !PathPrefix(`/.well-known/acme-challenge/`)"
+      - "traefik.http.routers.http-catchall.entrypoints=web"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+      # middleware redirect
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+    restart: unless-stopped
+    networks:
+      - traefik-public
+
+  # Authentification
+  tinyauth:
+    image: ghcr.io/steveiliop56/tinyauth:v5
+    container_name: tinyauth
+    restart: unless-stopped
+    networks:
+      - traefik-public
+    environment:
+      - TINYAUTH_APPURL=https://auth.example.com
+      - TINYAUTH_AUTH_USERSFILE=/users
+      - TINYAUTH_LOG_LEVEL=info
+    volumes:
+      - ./users:/users:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.services.tinyauth.loadbalancer.server.port=3000"
+      - "traefik.http.routers.tinyauth.rule=Host(`auth.example.com`)"
+      - "traefik.http.routers.tinyauth.entrypoints=websecure"
+      - "traefik.http.routers.tinyauth.tls=true"
+      - "traefik.http.routers.tinyauth.tls.certresolver=le"
+      - "traefik.http.middlewares.tinyauth.forwardauth.address=http://tinyauth:3000/api/auth/traefik"
+      - "traefik.http.middlewares.tinyauth.forwardauth.authResponseHeaders=remote-user"
+
+  # a CUPS server. You will have to confiure your printers!
+  cups:
+    image: anujdatar/cups
+    container_name: cups
+    restart: unless-stopped
+    environment:
+      - CUPSADMIN=admin
+      # Choose a different password here ;)
+      - CUPSPASSWORD=LmD6N2xL
+      - ADMIN_PASSWORD=LmD6N2xL
+      - TZ="Europe/Paris"
+    volumes:
+      # A place to store printers configuration
+      - ./cups/etc:/etc/cups
+    networks:
+      # We use a specific network in case you need this container from
+      # other services
+      - cups
+
+  # The AMC server
+  amcweb:
+    image: "registry.gitlab.com/a10684/amc-webapp/full"
+    container_name: amcweb
+    restart: unless-stopped
+    volumes:
+      # Choose the place you want to store AMC files
+      - ./amc:/amc-web/files
+    environment:
+      PREFERRED_URL_SCHEME: "https"
+      AMC_USERHEADER: "Remote-User"
+      AMC_SERVER_LOGGING: "DEBUG"
+      AMC_SERVER_PROXYLEVEL: "x_for=1"
+      # Admins user names (comma-separated)
+      AMC_ADMINS: "jojo"
+      CUPS_SERVER: cups
+      LANG: "fr_FR.UTF-8"
+      # Your time zone
+      TZ: "Europe/Paris"
+    labels:
+      # Traefik configuration to serve amc.example.com with
+      # authentification through tinyauth
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.amcweb.rule=Host(`amc.example.com`)"
+      - "traefik.http.routers.amcweb.tls=true"
+      - "traefik.http.routers.amcweb.tls.certresolver=le"
+      - "traefik.http.routers.amcweb.entrypoints=websecure"
+      - "traefik.http.routers.amcweb.middlewares=tinyauth"
+      # The public directory should be available without
+      # authentification
+      - "traefik.http.routers.amcweb-public.rule=Host(`amc.example.com`) && PathPrefix(`/public/`)"
+      - "traefik.http.routers.amcweb-public.tls=true"
+      - "traefik.http.routers.amcweb-public.tls.certresolver=le"
+      - "traefik.http.routers.amcweb-public.entrypoints=websecure"
+    networks:
+      # A specific raefik network for other services
+      - traefik-public
+      - cups
+
+networks:
+  cups:
+    external: true
+  traefik-public:
+    external: true
