@@ -575,6 +575,7 @@ class AMCWeb():
 
         self.click_on("do-annotate")
         self.wait_for_endcommand()
+        self.sleep(1)
 
     def check_annotated_files(self, *files, annotate=False):
         if annotate:
@@ -588,7 +589,7 @@ class AMCWeb():
 
         missing = set(files) - set(annotated_files.keys())
         if missing:
-            raise RuntimeError(f"Missing annotated files: {missing}")
+            raise RuntimeError(f"Missing annotated files: {missing} | found {annotated_files}")
         self.log(f"Annotated files: {list(annotated_files.keys())}")
 
         for filename in files:
