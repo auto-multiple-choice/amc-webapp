@@ -39,15 +39,7 @@ You can go as for local installation, adding `-h 0.0.0.0` to the `flask` command
 
 You can also use a docker container, built from the `Dockerfile` that installs AMC and the server together.
 
-### Environment variables
+### Configuration
 
-Some environment variables can be used to configure your server.
-
-If your reverse proxy passes the authenticated user in a HTTP header, set `AMC_USERHEADER` to the name of this header. The different users will then have separate projects directories and separate global configurations. 
-
-If your CUPS server is not running in the container, you can point to the host running it with the variable `CUPS_SERVER`.
-
-You can set the default font for AMC-TXT projects with `AMC_TXT_DEFAULTFONT`.
-
-The global configuration directory defaults to `$HOME/.AMC.d`, but you can use another directory with the environment variable `AMC_USERCONFDIR`.
-
+Some [environment variables](doc/environment.md) can be used to
+configure your server.
