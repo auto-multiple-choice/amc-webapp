@@ -69,6 +69,7 @@ RUN mkdir -p /amc-web
 RUN chown 1000:1000 /amc-web
 
 COPY --chown=1000:1000 server /amc-web/server
+COPY --chown=1000:1000 src-icons /amc-web/src-icons
 COPY --chown=1000:1000 Makefile /amc-web
 
 USER 1000
