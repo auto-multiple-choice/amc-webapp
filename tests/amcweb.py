@@ -42,6 +42,10 @@ class AMCWeb():
         self.total_sleeps = 0.0
         self.renew_temp_dir()
 
+    def error(self, e):
+        self.driver.save_screenshot(self.temp_dir + "/screenshot.png")
+        raise e
+
     def extend_sleep_factor(self, mult):
         self.sleep_factor *= mult
 
@@ -458,10 +462,10 @@ class AMCWeb():
                    int(p.get("copy"),0))
             pages_to_check.remove(pid)
             if pid in pages_must_be_missing:
-                raise RuntimeError(f"Scanned page present: {pid}")
+                self.error(RuntimeError(f"Scanned page present: {pid}"))
             
         if pages_to_check:
-            raise RuntimeError(f"Scanned pages not found: {pages_to_check}")
+            self.error(RuntimeError(f"Scanned pages not found: {pages_to_check}"))
 
     def read_dialog(self, ok=True, **check):
         w = self.driver.find_element(By.ID, 'warn-panel')
@@ -500,7 +504,7 @@ class AMCWeb():
                 text = sheets.find_element(By.XPATH, '//div[@class="sheetnum"]/div').text
                 self.log(f"Found {text}")
                 if text != student["name"]:
-                    raise RuntimeError(f'Can\'t see name {student["name"]} (instead: {text})')
+                    self.error(RuntimeError(f'Can\'t see name {student["name"]} (instead: {text})'))
             slist.find_element(By.XPATH, f'//li[@amc-id="{student["id"]}"]').click()
             self.sleep(.5)
         self.driver.find_element(By.ID, 'assoc-manual-done').click()
@@ -528,7 +532,7 @@ class AMCWeb():
         e = self.driver.find_element(By.ID, 'exported-files')
         files = { f.text: f for f in e.find_elements(By.CSS_SELECTOR, "a.filename") }
         if not files.get(filename):
-            raise RuntimeError(f"Can't find '{filename}' on the server")
+            self.error(RuntimeError(f"Can't find '{filename}' on the server"))
 
         files[filename].click()
         self.sleep(1)
@@ -560,7 +564,7 @@ class AMCWeb():
             self.log(f"Wrong marks from {filename}:")
             for e in errors:
                 self.log(e)
-            raise RuntimeError("Wrong marks")
+            self.error(RuntimeError("Wrong marks"))
 
     def do_annotate(self, **options):
         self.log("Annotating…")
@@ -589,7 +593,7 @@ class AMCWeb():
 
         missing = set(files) - set(annotated_files.keys())
         if missing:
-            raise RuntimeError(f"Missing annotated files: {missing} | found {annotated_files}")
+            self.error(RuntimeError(f"Missing annotated files: {missing} | found {annotated_files}"))
         self.log(f"Annotated files: {list(annotated_files.keys())}")
 
         for filename in files:
@@ -669,12 +673,12 @@ class AMCWeb():
                     self.log(f"Public mark OK for student {student_id}: {student_mark}")
                     del marks[student_id]
                 else:
-                    raise RuntimeError(
-                        f"Wrong mark for student {student_id}: expected {marks[student_id]}, got {student_mark}")
+                    self.error(RuntimeError(
+                        f"Wrong mark for student {student_id}: expected {marks[student_id]}, got {student_mark}"))
         if marks:
             for k in marks.keys():
                 self.log(f"Missing public mark for student {k}")
-            raise RuntimeError("Public marks not complete")
+            self.error(RuntimeError("Public marks not complete"))
 
         if and_disable:
             self.log("Test disabling public marks…")
