@@ -1,6 +1,6 @@
 FROM alpine
 
-ARG AMC_REVISION=54932e3d7e3bf79225c14afc509ec5fedef8e318
+ARG AMC_REVISION=948508301cef320d89fa9ba25f3f62ba8c12c112
 ARG TEXLIVE_PKGS
 
 ###############################################################
