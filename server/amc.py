@@ -702,7 +702,7 @@ def tar_extract_options_siblings(tarf, dest):
             app.logger.debug("found root: " + root)
     flask_g.files_total = total
     flask_g.files_n = 0
-    if root:
+    if root is not None:
         emit_msg("t", _('t.extract'))
         emit_msg("p", 0)
         if not os.path.exists(dest):
@@ -725,7 +725,7 @@ def zip_extract_options_siblings(zipf, dest):
         if o:
             root = o[1]
             app.logger.debug("found root: " + root)
-    if root:
+    if root is not None:
         emit_msg("t", _('t.extract'))
         emit_msg("p", 0)
         if not os.path.exists(dest):
@@ -805,6 +805,9 @@ def create_from_archive(name, rep, f):
         ok = tar_extract_options_siblings(tarf, rep)
     else:
         app.logger.error("Archive type unknown")
+    if not ok:
+        emit_msg("end-command")
+        return { "error": f"Archive {f.filename} doesn't contain a valid AMC project" }
     create_project_dirs(rep)
     remove_uuid(name)
     emit_msg("end-command")
