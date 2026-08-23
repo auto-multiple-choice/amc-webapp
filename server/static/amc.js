@@ -381,7 +381,7 @@ function upload_files(url, files,
                 if(r["ok"]) {
                     if(callback) callback(r);
                 } else {
-                    alert("Error: " + r["error"]);
+                    alert_msg(r["error"]);
                 }
             } else {
                 alert(`Error: upload failed (status ${xhr.status})`);
