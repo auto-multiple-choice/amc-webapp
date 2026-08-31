@@ -10,3 +10,4 @@ filelock
 uuid
 gevent
 pillow
+packaging

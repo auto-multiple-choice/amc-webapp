@@ -65,8 +65,8 @@ RUN python3 -m venv /venv
 RUN /venv/bin/pip3 install -r requirements.txt
 RUN /venv/bin/pip3 install gunicorn
 
-RUN mkdir -p /amc-web
-RUN chown 1000:1000 /amc-web
+RUN mkdir -p /amc-web/files
+RUN chown -R 1000:1000 /amc-web
 
 COPY --chown=1000:1000 server /amc-web/server
 COPY --chown=1000:1000 src-icons /amc-web/src-icons
@@ -76,7 +76,7 @@ USER 1000
 
 WORKDIR /amc-web
 
-RUN mkdir files
+
 ENV HOME=/amc-web/files
 ENV PATH=/venv/bin:${PATH}
 ENV AMC_TXT_DEFAULTFONT="Linux Libertine"
