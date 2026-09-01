@@ -10,8 +10,20 @@
       </div>
       <div>
         <label for="moteur_latex_b">{{ _('config.latex_engine') }}</label>
+        {% if latex_engines %}
+        <select id="moteur_latex_b" name="moteur_latex_b">
+          {% for engine in latex_engines %}
+          <option value="{{ engine['code'] }}"
+                  {% if engine['selected'] %}selected{% endif %}
+                  >{{ engine['code'] }}
+            {%- if not engine['available'] %} ({{ _('not.available') }}){% endif -%}
+          </option>
+          {% endfor %}
+        </select>
+        {% else %}
         <input id="moteur_latex_b" name="moteur_latex_b"
                type="text" size="25"/>
+        {% endif %}
       </div>
     </div>
 

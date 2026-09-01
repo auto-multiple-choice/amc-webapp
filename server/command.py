@@ -40,10 +40,18 @@ def amc_command(*args,
 
     if args[0] == "prepare":
         command += ["--log", project_dir() + "/_latex.log"]
-        po = get_options(["global:force_textpos"])
+        po = get_options(["global:force_textpos", "moteur_latex_b"])
         package_options = []
         if po["global:force_textpos"]:
             package_options.append("textpos")
+            
+        engines = os.environ.get('AMC_LATEX_ENGINES')
+        if engines:
+            if po["moteur_latex_b"] not in engines.split(","):
+                messages['ERR'].append(
+                    f":LaTeX engine not available: {po['moteur_latex_b']}")
+                return messages, variables
+            command += [ "--no-allow-commands", "--no-allow-engine-change" ]
         command += [ "--add-package-options", ",".join(package_options) ]
 
     current_app.logger.info("c-cmd> " + command_str(command))

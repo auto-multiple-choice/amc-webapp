@@ -337,6 +337,20 @@ def tab(tab_name):
         u = project_uuid()
         vs["public_marks_link"] = f"{request.root_url}public/{u}/marks.csv"
     if tab_name == "config":
+        vs["latex_engines"] = None
+        engines = os.environ.get('AMC_LATEX_ENGINES')
+        if engines:
+            vs["latex_engines"] = []
+            current_engine = get_option("moteur_latex_b")
+            for e in engines.split(","):
+                selected = (current_engine == e)
+                if selected:
+                    current_engine = None
+                vs["latex_engines"].append({ "code": e, "selected": True,
+                                             "available": True})
+            if current_engine is not None:
+                vs["latex_engines"].insert(0,
+                    { "code": current_engine, "selected": True, "available": False })
         vs["package_options"] = get_option("global:add_package_options")
     return render_template(f"tab_{tab_name}.html", **vs)
 

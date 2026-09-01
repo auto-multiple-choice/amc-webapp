@@ -37,6 +37,12 @@ The comma-separated list of admins is passed as the content of the
 
 `AMC_PROJECTSDIR`: see [this page](directories.md).
 
+## Security
+
+To restrict the set of LaTeX engines that can be used by the users,
+list the allowed ones (separated by commas) in the `AMC_LATEX_ENGINES`
+environment variable.
+
 ## Fonts
 
 The default font used for AMC-TXT projects can be set in the
