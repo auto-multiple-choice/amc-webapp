@@ -14,7 +14,7 @@ docker command. Upon startup, just go to http://localhost:8000 on your
 favorite browser.
 
 ```sh
-docker run -u 1000:1000 -v /home/jojo/.AMC.d:/amc-web/files/.AMC.d  -v /home/jojo/MC-Projects:/amc-web/files/MC-Projects -p 127.0.0.1:8000:5000 registry.gitlab.com/a10684/amc-webapp/full
+docker run -u 1000:1000 -v /home/jojo/.AMC.d:/amc-web/files/.AMC.d  -v /home/jojo/MC-Projects:/amc-web/files/MC-Projects -p 127.0.0.1:8000:5000 registry.gitlab.com/auto-multiple-choice/amc-webapp/full
 ```
 
 ## Multiple-users mode public server

@@ -81,7 +81,7 @@ services:
 
   # The AMC server
   amcweb:
-    image: "registry.gitlab.com/a10684/amc-webapp/full"
+    image: "registry.gitlab.com/auto-multiple-choice/amc-webapp/full"
     container_name: amcweb
     restart: unless-stopped
     volumes:

@@ -11,7 +11,7 @@ This project allows to work with your [Auto Multiple Choice (AMC)](https://www.a
 ### Installation
 First clone this project:
 ```sh
-git clone https://gitlab.com/a10684/amc-webapp.git
+git clone https://gitlab.com/auto-multiple-choice/amc-webapp.git
 ```
 Install the python dependencies in a virtual environment:
 ```sh

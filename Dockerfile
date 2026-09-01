@@ -15,7 +15,7 @@ RUN if [ "$TEXLIVE_PKGS" ]; then apk add $TEXLIVE_PKGS ; fi
 RUN apk add git
 
 WORKDIR /tmp
-RUN git clone https://gitlab.com/a10684/auto-multiple-choice.git --revision=$AMC_REVISION
+RUN git clone https://gitlab.com/auto-multiple-choice/auto-multiple-choice.git --revision=$AMC_REVISION
 WORKDIR /tmp/auto-multiple-choice
 
 # Build dependencies for AMC
