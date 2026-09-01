@@ -1138,6 +1138,8 @@ def io_doc_type(t):
                                        template_name, url])
 
 def select_messages(messages, after=None):
+    if not messages:
+        return ""
     first_of = len(messages) > 12
     text = ""
     in_code = False
@@ -1161,11 +1163,10 @@ def select_messages(messages, after=None):
         text += "</div>\n"
     return text
 
-def show_messages(messages, variables=None,
-                  err=True, warn=True, info=False):
+def show_messages(messages, variables=None):
     n = 0
     after_err = []
-    if err:
+    if messages.get('ERR'):
         n += len(messages["ERR"])
         if variables and smooth_int(variables.get('latex_errors')):
             path = project_dir() + "/_latex.log"
@@ -1175,16 +1176,15 @@ def show_messages(messages, variables=None,
                 after_err.append(
                     f':<a href="{url}" target="_log">' + _('latex.log') + '</a>'
                 )
-    if warn:
-        n += len(messages["WARN"])
-    if info:
-        n += len(messages["INFO"])
+    n += len(messages.get("WARN", []))
+    n += len(messages.get("INFO", []))
     if n:
         dialog_msg(
-            err = select_messages(messages["ERR"],
-                                  after=after_err) if err else "",
-            warn = select_messages(messages["WARN"]) if warn else "",
-            info = select_messages(messages["INFO"]) if info else "")
+            err = select_messages(messages.get("ERR"),
+                                  after=after_err),
+            warn = select_messages(messages.get("WARN")),
+            info = select_messages(messages.get("INFO"))
+            )
     return len(messages["ERR"])
 
 def log_messages(messages):
@@ -2012,7 +2012,7 @@ def io_association_auto():
     else:
         m = _("assoc.auto.none")
     messages["INFO"].append(":" + m)
-    show_messages(messages, info=True)
+    show_messages(messages)
     db.set_variable("association", "key_in_list", get_option("liste_key"))
     db.set_variable("association", "code", get_option("assoc_code"))
     emit_msg("update-identification")
