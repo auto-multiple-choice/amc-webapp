@@ -11,3 +11,5 @@ uuid
 gevent
 pillow
 packaging
+pygments
+
