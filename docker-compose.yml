@@ -5,13 +5,16 @@ services:
       dockerfile: Dockerfile
     image: amc-web
     ports:
+      ## upon startup, the AMC web app will be available at http://localhost:8081
       - "8081:8080"
     volumes:
-      - ./files:/amc-web/files
+      - amc-files:/amc-web/files
     environment:
-      - AMC_TXT_DEFAULTFONT=Linux Libertine
-      - HOME=/amc-web/files
-      - AMC_REVISION=948508301cef320d89fa9ba25f3f62ba8c12c112
-    env_file:
-      - .env
+      # Add some LaTeX packages you need here, as Alpine linux dependencies:
+      - TEXLIVE_PKGS=
+    ## Uncomment this line to select a particular AMC revision:
+    #  - AMC_REVISION=948508301cef320d89fa9ba25f3f62ba8c12c112
     restart: unless-stopped
+
+volumes:
+  amc-files: {}

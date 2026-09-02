@@ -75,7 +75,7 @@ COPY --chown=1000:1000 Makefile /amc-web
 USER 1000
 
 WORKDIR /amc-web
-
+RUN touch /amc-web/files/.keep
 
 ENV HOME=/amc-web/files
 ENV PATH=/venv/bin:${PATH}

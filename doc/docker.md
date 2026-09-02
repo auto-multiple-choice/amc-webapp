@@ -8,6 +8,18 @@ variable that can be used for configuring the AMC server.
 
 ## Single-user mode local server
 
+### Building the image and using docker-compose
+
+You can build locally the docker image and run it with
+```sh
+git clone https://gitlab.com/auto-multiple-choice/amc-webapp.git
+cd amc-webapp
+docker compose up -d
+```
+Then go to http://localhost:8001
+
+### Using the project image
+
 If your home directory is `/home/jojo` and your user id and group id
 are 1000, you can launch the AMC server locally using the following
 docker command. Upon startup, just go to http://localhost:8000 on your
