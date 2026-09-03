@@ -12,12 +12,6 @@ def command_str(command):
                       else str(x)
                       for x in command ])
 
-def select_files(paths):
-    return ",".join([ p for p in paths.split(",") if os.path.exists(p)])
-
-def isolate_spec(rights, default):
-    return select_files(os.environ.get(f'AMC_ISOLATE_{rights}', default))
-
 def amc_command(*args,
                 messages=None, variables=None):
 
@@ -61,15 +55,14 @@ def amc_command(*args,
             command += [ "--no-allow-commands", "--no-allow-engine-change" ]
         command += [ "--add-package-options", ",".join(package_options) ]
 
-        default_isolation = 1 if os.environ.get("AMC_USERHEADER") else 0
-        if os.environ.get('AMC_ISOLATE', default_isolation):
+        if current_app.isolate:
             isolate = [
                 'landrun',
                 '--best-effort',
                 '--log-level', 'info',
-                '--rox', isolate_spec('ROX', '/usr,/bin'),
-                '--rw', isolate_spec('RW', '/dev/shm,/dev/null,/var/cache'),
-                '--ro', isolate_spec('RO', '/var/lib,/lib,/lib64,/etc'),
+                '--rox', current_app.isolate_paths['ROX'],
+                '--rw', current_app.isolate_paths['RW'],
+                '--ro', current_app.isolate_paths['RO'],
                 '--env', 'HOME', '--env', 'PATH', '--env', 'LANG',
                 '--env', 'AMC_USERCONFDIR', '--env', 'AMC_TXT_DEFAULTFONT',
                 '--rw', projects_dir(),

@@ -103,6 +103,32 @@ if proxy_level:
 
     app.wsgi_app = ProxyFix(app.wsgi_app, **cfg)
 
+def to_bool(s):
+    return not(str(s).lower() in ['0', 'false', 'no', 'none'])
+    
+app.isolate = to_bool(os.environ.get('AMC_ISOLATE',
+                                     os.environ.get("AMC_USERHEADER")))
+app.isolate_paths = {}
+    
+def select_files(paths):
+    ok = []
+    for p in paths.split(","):
+        p = p.replace('$HOME', os.environ.get('HOME'))
+        if os.path.exists(p):
+            ok.append(p)
+    return ",".join(ok)
+
+def isolate_spec(rights, default):
+    app.isolate_paths[rights] = select_files(
+        os.environ.get(f'AMC_ISOLATE_{rights}', default))
+
+if app.isolate:
+    isolate_spec('ROX', '/usr,/bin')
+    isolate_spec('RW', '/dev/shm,/dev/null,$HOME/.cache')
+    isolate_spec('RO', '/var/cache/fontconfig,/var/lib,/lib,/lib64,/etc')
+
+    app.logger.info(f"Isolation paths: {app.isolate_paths}")
+
 temp_dir = tempfile.mkdtemp(prefix="amcapp")
 
 app.logger.info(f"Temp dir: {temp_dir}")
