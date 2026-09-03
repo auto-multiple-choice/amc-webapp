@@ -1,4 +1,5 @@
 
+import os
 import re
 import subprocess
 
@@ -10,6 +11,12 @@ def command_str(command):
     return " ".join([ '"'+str(x)+'"' if (x=="" or " " in  x)
                       else str(x)
                       for x in command ])
+
+def select_files(paths):
+    return ",".join([ p for p in paths.split(",") if os.path.exists(p)])
+
+def isolate_spec(rights, default):
+    return select_files(os.environ.get(f'AMC_ISOLATE_{rights}', default))
 
 def amc_command(*args,
                 messages=None, variables=None):
@@ -35,7 +42,7 @@ def amc_command(*args,
     else:
         command = [ "/usr/bin/auto-multiple-choice",
                 *args ]
-        command += ["--profile", "default"]
+        command += ["--no-use-state", "--profile", "default"]
         command += ["--project-dir", project_dir()]
 
     if args[0] == "prepare":
@@ -54,6 +61,24 @@ def amc_command(*args,
             command += [ "--no-allow-commands", "--no-allow-engine-change" ]
         command += [ "--add-package-options", ",".join(package_options) ]
 
+        default_isolation = 1 if os.environ.get("AMC_USERHEADER") else 0
+        if os.environ.get('AMC_ISOLATE', default_isolation):
+            isolate = [
+                'landrun',
+                '--best-effort',
+                '--log-level', 'info',
+                '--rox', isolate_spec('ROX', '/usr,/bin'),
+                '--rw', isolate_spec('RW', '/dev/shm,/dev/null,/var/cache'),
+                '--ro', isolate_spec('RO', '/var/lib,/lib,/lib64,/etc'),
+                '--env', 'HOME', '--env', 'PATH', '--env', 'LANG',
+                '--env', 'AMC_USERCONFDIR', '--env', 'AMC_TXT_DEFAULTFONT',
+                '--rw', projects_dir(),
+            ]
+            if not os.environ.get("AMC_USERHEADER"):
+                isolate += [ '--ro', user_confdir() ]
+            isolate.append('--')
+            command = isolate + command
+
     current_app.logger.info("c-cmd> " + command_str(command))
 
     try:
@@ -65,7 +90,8 @@ def amc_command(*args,
             env=env,
         )
     except Exception as e:
-        messages['ERR'].append(f"Execution error: {str(e)}")
+        current_app.logger.error(f"Command execution error: {str(e)}")
+        messages['ERR'].append(f":Execution error: {str(e)}")
         return messages, variables
     
     prop = 0
@@ -111,10 +137,12 @@ def amc_command(*args,
     except TimeoutExpired:
         ret = None
 
+    current_app.logger.debug(f"Return value: {ret}")
+
     if ret is None:
-        messages['ERR'].append("The process did not end properly.")
+        messages['ERR'].append(":The process did not end properly.")
     elif ret != 0:
-        messages['ERR'].append(f"The process return an error code: {ret}")
+        messages['ERR'].append(f":The process returned an error code: {ret}")
     
     return messages, variables
 

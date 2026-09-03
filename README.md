@@ -33,7 +33,7 @@ Connect you browser to http://locahost:5000
 ## Web server
 
 > [!warning]
-> The server don't handle authentification and session management: you must use a reverse proxy that can restrict access to the AMC web app. Anyone that can use the web app can execute any command on the server, delete all other's work, etc. Give only access to the server to persons you trust.
+> The server don't handle authentification and session management: you must use a reverse proxy that can restrict access to the AMC web app.
 
 You can go as for local installation, adding `-h 0.0.0.0` to the `flask` command so that the server can be accessed from your reverse proxy.
 

@@ -1,6 +1,6 @@
 FROM alpine
 
-ARG AMC_REVISION=ad2b8ecf19970b61e54f4c69085fee7340e58952
+ARG AMC_REVISION=fb361a04c9a3af6a93fe40189036f2c84027a1ae
 ARG TEXLIVE_PKGS
 
 ###############################################################
@@ -58,12 +58,18 @@ RUN apk add netpbm ghostscript poppler-utils unzip font-linux-libertine qpdf
 ###############################################################
 # AMC-web
 
-RUN apk add py3-pip python3-dev uglify-js
+RUN apk add py3-pip python3-dev uglify-js go
 
 COPY requirements.txt .
 RUN python3 -m venv /venv
 RUN /venv/bin/pip3 install -r requirements.txt
 RUN /venv/bin/pip3 install gunicorn
+
+WORKDIR /tmp
+RUN git clone https://github.com/zouuup/landrun.git
+WORKDIR /tmp/landrun
+RUN go build -o landrun cmd/landrun/main.go
+RUN cp landrun /usr/local/bin/
 
 RUN mkdir -p /amc-web/files
 RUN chown -R 1000:1000 /amc-web
@@ -80,6 +86,7 @@ RUN touch /amc-web/files/.keep
 ENV HOME=/amc-web/files
 ENV PATH=/venv/bin:${PATH}
 ENV AMC_TXT_DEFAULTFONT="Linux Libertine"
+ENV AMC_ISOLATE_ROX=/usr,/bin,/lib,/venv/bin
 RUN make
 
 VOLUME /amc-web/files

@@ -1173,6 +1173,8 @@ def select_messages(messages, after=None):
                 text += '<div class="msgcode">'
             text += m[1:]
             in_code = True
+        else:
+            current_app.logger.info(f"Discarded message: {m}")
     if in_code:
         text += "</div>\n"
     return text
@@ -1180,8 +1182,8 @@ def select_messages(messages, after=None):
 def show_messages(messages, variables=None):
     n = 0
     after_err = []
-    if messages.get('ERR'):
-        n += len(messages["ERR"])
+    n += len(messages.get("ERR", []))
+    if n > 0:
         if variables and smooth_int(variables.get('latex_errors')):
             path = project_dir() + "/_latex.log"
             if os.path.isfile(path):
@@ -1192,7 +1194,7 @@ def show_messages(messages, variables=None):
                 )
     n += len(messages.get("WARN", []))
     n += len(messages.get("INFO", []))
-    if n:
+    if n > 0:
         dialog_msg(
             err = select_messages(messages.get("ERR"),
                                   after=after_err),
