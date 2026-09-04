@@ -414,7 +414,7 @@ def fs_file(path):
                 return serve_pil_image(Image.open(path))
             else:
                 mtype = None
-                if path.endswith(".log") or path.endswith(".tex"):
+                if path.lower().endswith( (".log", ".tex", ".py", ".pl") ):
                     mtype = "text/plain"
                 return send_file(path, mimetype=mtype,
                                  as_attachment=attach)
@@ -1028,6 +1028,10 @@ def io_source_code(filename):
         mode = "csv"
     elif re.match(r'.*\.(txt)$', filename, re.IGNORECASE):
         mode = "amc_txt"
+    elif re.match(r'.*\.(pl)$', filename, re.IGNORECASE):
+        mode = "perl"
+    elif re.match(r'.*\.(py)$', filename, re.IGNORECASE):
+        mode = "python"
 
     url = f"/fs/{flask_g.project_name}/{filename}"
 
@@ -1039,7 +1043,7 @@ def file_level(base, main_source, f):
         return 2
     if f == main_source:
         return -1
-    if re.match(r'.*\.(tex|yaml|yml|csv|txt)$', f, re.IGNORECASE):
+    if re.match(r'.*\.(tex|yaml|yml|csv|txt|py|pl)$', f, re.IGNORECASE):
         return 0
     else:
         return 1
