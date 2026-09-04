@@ -37,6 +37,14 @@ The comma-separated list of admins is passed as the content of the
 
 ## Security
 
+### Archive extraction
+
+When creating a new project from an archive supplied by the user, the
+special files (like symlinks, block devices…) are skipped, unless you
+set `AMC_ARCHIVE_SKIP_SPECIAL=0` (you should not have to).
+
+### User-supplied command execution
+
 When preparing the documents (eg. the PDF subject), AMC calls LaTeX
 and possibly other commands (such as python when using PythonTeX). All
 the projects of all users are stored under the same linux user

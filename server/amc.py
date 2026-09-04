@@ -11,6 +11,7 @@ import datetime
 import time
 import shutil
 import tempfile
+import stat
 import sys
 import logging
 import cups
@@ -104,7 +105,7 @@ if proxy_level:
     app.wsgi_app = ProxyFix(app.wsgi_app, **cfg)
 
 def to_bool(s):
-    return not(str(s).lower() in ['0', 'false', 'no', 'none'])
+    return not(str(s).lower() in ['0', 'false', 'no', 'none', ''])
     
 app.isolate = to_bool(os.environ.get('AMC_ISOLATE',
                                      os.environ.get("AMC_USERHEADER")))
@@ -728,11 +729,15 @@ def io_create_project_empty(data):
         remove_uuid(name)
         emit_msg("project-open", [name, True])
 
-def info_remove_root(m, root):
+def info_remove_root(m, root, skip_special=True):
     flask_g.files_n += 1
     n = flask_g.files_n
     total = flask_g.files_total
     emit_msg("p", n/total)
+    if skip_special and m.type not in (tarfile.REGTYPE, tarfile.AREGTYPE,
+                                       tarfile.DIRTYPE):
+        app.logger.info(f"Skip from Tar file: {m.name}")
+        return None
     if m.type in (tarfile.SYMTYPE, tarfile.CHRTYPE, tarfile.BLKTYPE,
                   tarfile.FIFOTYPE, tarfile.GNUTYPE_LONGLINK):
         return None
@@ -746,7 +751,7 @@ def info_remove_root(m, root):
     else:
         return None
         
-def tar_extract_options_siblings(tarf, dest):
+def tar_extract_options_siblings(tarf, dest, skip_special=True):
     emit_msg("t", _('t.options'))
     root = None
     total = 0
@@ -765,13 +770,14 @@ def tar_extract_options_siblings(tarf, dest):
         if not os.path.exists(dest):
             os.mkdir(dest)
         tarf.extractall(
-            dest, filter=lambda m,p: info_remove_root(m, root))
+            dest, filter=lambda m,p: info_remove_root(m, root,
+                                                      skip_special=skip_special))
         return True
     else:
         app.logger.error(f"Can't find options.xml in archive")
         return False
 
-def zip_extract_options_siblings(zipf, dest):
+def zip_extract_options_siblings(zipf, dest, skip_special=True):
     emit_msg("t", _('t.options'))
     root = None
     total = 0
@@ -793,7 +799,15 @@ def zip_extract_options_siblings(zipf, dest):
             if m.filename.startswith(root):
                 m.filename = m.filename.replace(root, "", 1)
                 if m.filename != "":
-                    zipf.extract(m, dest)
+                    skip = False
+                    if skip_special:
+                        mode = m.external_attr >> 16
+                        reg = stat.S_ISDIR(mode) or stat.S_ISREG(mode)
+                        skip = not reg
+                    if skip:
+                        app.logger.info(f"Skip from Zip file: {m.filename}")
+                    else:
+                        zipf.extract(m, dest)
             emit_msg("p", n/total)
         return True
     else:
@@ -854,12 +868,15 @@ def create_from_archive(name, rep, f):
     handle, fn = tempfile.mkstemp()
     f.save(fn)
     ok = False
+    skip = to_bool(os.environ.get('AMC_ARCHIVE_SKIP_SPECIAL', 1))
     if zipfile.is_zipfile(fn):
         zipf = zipfile.ZipFile(fn)
-        ok = zip_extract_options_siblings(zipf, rep)
+        ok = zip_extract_options_siblings(zipf, rep,
+                                          skip_special=skip)
     elif tarfile.is_tarfile(fn):
         tarf = tarfile.open(fn)
-        ok = tar_extract_options_siblings(tarf, rep)
+        ok = tar_extract_options_siblings(tarf, rep,
+                                          skip_special=skip)
     else:
         app.logger.error("Archive type unknown")
     if not ok:
