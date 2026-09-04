@@ -386,17 +386,34 @@ def serve_pil_image(pil_img):
     img_io.seek(0)
     return send_file(img_io, mimetype='image/jpeg')
 
-def fs_path_to_local(path, with_fs=True):
+def fs_path_to_local(path, with_fs=True, current_project=False):
     if with_fs:
         path = lstrip_text(path, "/fs/", "")
-    path = path.replace("..", "").replace('\\', '')
-    path = projects_dir() + "/" + path
-    return path
+
+    if current_project:
+        base = project_dir()
+    else:
+        base = projects_dir()
+
+    if not base:
+        return None
+
+    base = os.path.realpath(base)
+    path = os.path.realpath(os.path.join(base, path))
+    if path == base or path.startswith(base + "/"):
+        return path
+    else:
+        app.logger.error(f"Outside base [{base}]: {path}")
+        return None
 
 @app.route('/fs/<path:path>', methods=['GET', 'POST'])
 def fs_file(path):
     headers_info()
     path = fs_path_to_local(path, with_fs=False)
+
+    if path is None:
+        return { "error": "Path not found" }
+    
     if request.method == 'POST':
         app.logger.info(f"Uploaded file: {path}")
         if 'file' not in request.files:
@@ -1118,17 +1135,16 @@ def u_defects_list():
 @socketio_name("project-delete-file")
 def io_project_delete_file(data):
     filename, all_files = data
-    filename = filename.replace("/", "")
-    base = project_dir()
-    if base:
+    path = fs_path_to_local(filename, with_fs=False, current_project=True)
+    if path:
         try:
-            os.unlink(f"{base}/{filename}")
+            os.unlink(path)
         except Exception as e:
             app.logger.error("Can't delete project file: " + str(e))
             return
         emit_msg("project-files-list")
     else:
-        app.logger.error("Can't delete project file: unknown project")
+        app.logger.error("Can't delete project file: unknown project or wrong path")
 
 @app.route('/document/<doc_type>', methods=['POST'])
 def u_document_type(doc_type):
@@ -1137,7 +1153,7 @@ def u_document_type(doc_type):
     if url:
         opts = {"attach": "0"}
         path = fs_path_to_local(url)
-        if os.path.exists(path):
+        if path is not None and os.path.exists(path):
             opts["t"] = str(os.path.getmtime(path))
         else:
             app.logger.warning(f"Document not found: {path}")
@@ -1816,7 +1832,7 @@ def io_studentslist_delete():
     pdir = project_dir()
     if old.startswith("%PROJET/"):
         old = lstrip_text(old, '%PROJET/', pdir + "/")
-    if old.startswith(pdir + "/"):
+    if os.path.realpath(old).startswith(os.path.realpath(pdir) + "/"):
         try:
             os.unlink(old)
         except Exception as e:
@@ -1827,9 +1843,13 @@ def io_studentslist_delete():
 
 @socketio_name('studentslist-shared')
 def io_studentslist_shared(name):
-    name += ".csv"
+    name = name.replace("/", "") + ".csv"
     path = students_shared_dir() + "/" + name
-    imported = project_dir() + "/" + name
+    imported = fs_path_to_local(name, with_fs=False, current_project=True)
+
+    if not imported:
+        return
+    
     try:
         shutil.copyfile(path, imported)
     except Exception as e:
@@ -1865,6 +1885,11 @@ def students_list_file():
             change_option("listeetudiants", "%PROJET/" + filename)
             path = f"{pdir}/{filename}"
                           
+    if path and not os.path.realpath(path).startswith(os.path.realpath(projects_dir())):
+        app.logger.error(f"Students list file outside base: {path}")
+        path = None
+        change_option("listeetudiants", None)
+
     return path
 
 def list_file_read(path):
