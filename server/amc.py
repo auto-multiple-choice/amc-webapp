@@ -113,7 +113,7 @@ app.isolate_paths = {}
 def select_files(paths):
     ok = []
     for p in paths.split(","):
-        p = p.replace('$HOME', os.environ.get('HOME'))
+        p = os.path.expandvars(p)
         if os.path.exists(p):
             ok.append(p)
     return ",".join(ok)
