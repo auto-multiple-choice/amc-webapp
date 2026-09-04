@@ -436,8 +436,7 @@ function do_create_project() {
         if(f.files.length) {
             upload_files("/upload/create",
                          f.files, "Uploading…",
-                         { "name": name },
-                         function(r) { project_open([name, true]); }
+                         { "name": name }
                         )
         } else {
             alert_msg('create.project.nofile');
