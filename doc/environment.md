@@ -62,9 +62,9 @@ isolate the application users to their projects in two ways:
   folders to give access to for documents preparation. This can be
   done using the `AMC_ISOLATE_*` environment variables, with the
   following default values: `AMC_ISOLATE_ROX=/usr,/bin` (allow access
-  to read and execute), `AMC_ISOLATE_RW=/dev/shm,/dev/null` (allow
+  to read and execute), `AMC_ISOLATE_RW=/dev/shm,/dev/null,$HOME/.cache` (allow
   access to read and write) and
-  `AMC_ISOLATE_RO=/var/lib,/lib,/lib64,/etc/texmf` (allow access to
+  `AMC_ISOLATE_RO=/var/cache/fontconfig,/var/lib,/lib,/lib64,/etc` (allow access to
   read only).
 
 ## Fonts
