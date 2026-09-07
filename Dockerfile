@@ -1,6 +1,6 @@
 FROM alpine
 
-ARG AMC_REVISION=fb361a04c9a3af6a93fe40189036f2c84027a1ae
+ARG AMC_REVISION=62d6c8ba4dca991e133efd9fe76adcacda5d9e1d
 ARG TEXLIVE_PKGS
 
 ###############################################################
@@ -33,7 +33,7 @@ RUN texhash
 
 # Perl dependencies for AMC
 
-RUN apk add perl-locale-gettext perl-xml-simple perl-xml-writer imagemagick imagemagick-perlmagick perl-dbi perl-dbd-sqlite perl-file-mimeinfo perl-text-csv perl-glib perl-archive-zip perl-clone perl-locale-codes perl-yaml-syck perl-hash-merge perl-sys-cpu perl-xml-twig perl-gtk3 gtk+3.0 perl-text-unidecode
+RUN apk add perl-locale-gettext perl-xml-simple perl-xml-writer imagemagick imagemagick-perlmagick perl-dbi perl-dbd-sqlite perl-file-mimeinfo perl-text-csv perl-glib perl-archive-zip perl-clone perl-locale-codes perl-yaml-syck perl-hash-merge perl-sys-cpu perl-xml-twig perl-text-unidecode
 
 # Build and install perl-net-cups
 
@@ -42,14 +42,21 @@ RUN apk add perl-dev cups-dev cups-filters-dev
 RUN curl https://cpan.metacpan.org/authors/id/N/NI/NINE/Net-CUPS-0.64.tar.gz -o NC.tgz
 RUN tar xf NC.tgz
 RUN cd Net-CUPS-0.64 && perl Makefile.PL && make && make install
-RUN rm -rf Net-CUPS-0.64
+RUN rm -rf NC.tgz Net-CUPS-0.64
 
 # Build and install perl-openoffice-oodoc
 
 RUN curl https://cpan.metacpan.org/authors/id/J/JM/JMGDOC/OpenOffice-OODoc-2.125.tar.gz -o OO.tgz
 RUN tar xf OO.tgz
 RUN cd OpenOffice-OODoc-2.125 && perl Makefile.PL && make && make install
-RUN rm -rf OpenOffice-OODoc-2.125
+RUN rm -rf OO.tgz OpenOffice-OODoc-2.125
+
+# Build ans install perl-graphics-colornames
+
+RUN curl https://cpan.metacpan.org/authors/id/R/RR/RRWO/Graphics-ColorNames-v3.5.0.tar.gz -o CN.tgz
+RUN tar xf CN.tgz
+RUN cd Graphics-ColorNames-v3.5.0 && perl Makefile.PL && make && make install
+RUN rm -rf CN.tgz Graphics-ColorNames-v3.5.0
 
 # Other dependencies for AMC
 
