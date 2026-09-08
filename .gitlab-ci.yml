@@ -24,7 +24,7 @@ build-full:
   script:
     - apk add make git
     - make version
-    - docker build -t amc-webapp-full --build-arg TEXLIVE_PKGS=texlive-full .
+    - docker build -t amc-webapp-full --build-arg "TEXLIVE_PKGS=texlive-full font-noto-naskh-arabic" .
 
 tests-single:
   stage: test

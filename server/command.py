@@ -64,7 +64,9 @@ def amc_command(*args,
                 '--rw', current_app.isolate_paths['RW'],
                 '--ro', current_app.isolate_paths['RO'],
                 '--env', 'HOME', '--env', 'PATH', '--env', 'LANG',
-                '--env', 'AMC_USERCONFDIR', '--env', 'AMC_TXT_DEFAULTFONT',
+                '--env', 'AMC_USERCONFDIR',
+                '--env', 'AMC_TXT_DEFAULTFONT',
+                '--env', 'AMC_TXT_DEFAULTFONT_ARABIC',
                 '--rw', projects_dir(),
             ]
             if not os.environ.get("AMC_USERHEADER"):

@@ -1,6 +1,6 @@
 FROM alpine
 
-ARG AMC_REVISION=62d6c8ba4dca991e133efd9fe76adcacda5d9e1d
+ARG AMC_REVISION=acbb25bbf519b866da6f9ba7e635cd3687e5728e
 ARG TEXLIVE_PKGS
 
 ###############################################################
@@ -18,6 +18,9 @@ WORKDIR /tmp
 RUN git clone https://gitlab.com/auto-multiple-choice/auto-multiple-choice.git --revision=$AMC_REVISION
 WORKDIR /tmp/auto-multiple-choice
 
+# Replace font Rasheeq with Noto for arabic templates
+RUN perl -pi -e 's/Rasheeq/Noto Naskh Arabic/' models/ar/*.d/*.tex
+
 # Build dependencies for AMC
 
 RUN apk add make g++ pkgconf rsvg-convert netpbm-dev opencv-dev cairo-dev pango-dev poppler-dev libgcc curl
@@ -31,7 +34,7 @@ RUN rm -rf auto-multiple-choice
 
 RUN texhash
 
-# Perl dependencies for AMC
+# Perl and fonts dependencies for AMC
 
 RUN apk add perl-locale-gettext perl-xml-simple perl-xml-writer imagemagick imagemagick-perlmagick perl-dbi perl-dbd-sqlite perl-file-mimeinfo perl-text-csv perl-glib perl-archive-zip perl-clone perl-locale-codes perl-yaml-syck perl-hash-merge perl-sys-cpu perl-xml-twig perl-text-unidecode
 
@@ -93,6 +96,7 @@ RUN touch /amc-web/files/.keep
 ENV HOME=/amc-web/files
 ENV PATH=/venv/bin:${PATH}
 ENV AMC_TXT_DEFAULTFONT="Linux Libertine"
+ENV AMC_TXT_DEFAULTFONT_ARABIC="Noto Naskh Arabic"
 ENV AMC_ISOLATE_ROX=/usr,/bin,/lib,/venv/bin
 RUN make
 
