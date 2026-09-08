@@ -78,7 +78,7 @@ isolate the application users to their projects in two ways:
 ## Fonts
 
 The default font used for AMC-TXT projects can be set in the
-`AMC_TXT_DEFAULTFONT` environment variable.
+`AMC_TXT_DEFAULTFONT` and `AMC_TXT_DEFAULTFONT_ARABIC` environment variables.
 
 ## Printing
 
