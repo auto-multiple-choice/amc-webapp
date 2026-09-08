@@ -1,6 +1,6 @@
 FROM alpine
 
-ARG AMC_REVISION=acbb25bbf519b866da6f9ba7e635cd3687e5728e
+ARG AMC_REVISION=f7a0ca982f17df1f5f5d3aafcbfcc0771531c7da
 ARG TEXLIVE_PKGS
 
 ###############################################################
@@ -18,8 +18,15 @@ WORKDIR /tmp
 RUN git clone https://gitlab.com/auto-multiple-choice/auto-multiple-choice.git --revision=$AMC_REVISION
 WORKDIR /tmp/auto-multiple-choice
 
-# Replace font Rasheeq with Noto for arabic templates
-RUN perl -pi -e 's/Rasheeq/Noto Naskh Arabic/' models/ar/*.d/*.tex
+# Replace font Rasheeq with Noto for arabic templates, if available
+RUN apk list font-noto-naskh-arabic | grep installed || true && \
+    perl -pi -e 's/Rasheeq/Noto Naskh Arabic/' models/ar/*.d/*.tex
+
+# Delete arabic models if LaTeX support for Arabic is not installed
+RUN apk list texmf-dist-langarabic | grep installed || rm -rf models/ar
+
+# Delete Japanese models if LaTeX support for Japanese is not installed
+RUN apk list texmf-dist-langjapanese | grep installed || rm -rf models/ja
 
 # Build dependencies for AMC
 

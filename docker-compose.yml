@@ -2,6 +2,21 @@ services:
   amc-web:
     build:
       context: .
+      args:
+        ## Add some LaTeX packages (space separated) you need here, as
+        ## Alpine linux dependencies.
+        ##
+        ## AR: To enable Arabic templates, you should include
+        ## texmf-dist-langarabic and font-noto-naskh-arabic
+        ##
+        ## JA: to enable Japanese templates, you should include
+        ## texmf-dist-langjapanese
+        ##
+        - TEXLIVE_PKGS=
+        
+        ## Uncomment this line and choose a commit selector to select a
+        ## particular AMC revision:
+        #  - AMC_REVISION=HEAD
       dockerfile: Dockerfile
     image: amc-web
     ports:
@@ -10,13 +25,8 @@ services:
     volumes:
       - amc-files:/amc-web/files
     environment:
-      # Add some LaTeX packages you need here, as Alpine linux dependencies:
-      - TEXLIVE_PKGS=
       # You can comment out this line to get less logs
       - AMC_SERVER_LOGGING=DEBUG
-    ## Uncomment this line and choose a commit selector to select a
-    ## particular AMC revision:
-    #  - AMC_REVISION=HEAD
     restart: unless-stopped
 
 volumes:
