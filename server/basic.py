@@ -231,3 +231,13 @@ def default_source_file():
 def ncopies():
     return get_option("nombre_copies")
     
+def amc_user_tmp(part=None, is_file=False):
+    tmp = f"{current_app.temp_dir}/{get_session()}"
+    if part:
+        tmp += f"/{part}"
+    if is_file:
+        tmpdir = Path(tmp).parent
+    else:
+        tmpdir = tmp
+    Path(tmpdir).mkdir(parents=True, exist_ok=True)
+    return tmp

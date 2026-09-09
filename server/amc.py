@@ -110,27 +110,11 @@ def to_bool(s):
 app.isolate = to_bool(os.environ.get('AMC_ISOLATE',
                                      os.environ.get("AMC_USERHEADER")))
 app.isolate_paths = {}
-    
-def select_files(paths):
-    ok = []
-    for p in paths.split(","):
-        p = os.path.expandvars(p)
-        if os.path.exists(p):
-            ok.append(p)
-    return ",".join(ok)
 
-def isolate_spec(rights, default):
-    app.isolate_paths[rights] = select_files(
-        os.environ.get(f'AMC_ISOLATE_{rights}', default))
-
-if app.isolate:
-    isolate_spec('ROX', '/usr,/bin')
-    isolate_spec('RW', '/dev/shm,/dev/null,$HOME/.cache')
-    isolate_spec('RO', '/var/cache/fontconfig,/var/lib,/lib,/lib64,/etc')
-
-    app.logger.info(f"Isolation paths: {app.isolate_paths}")
+app.logger.info(f"Isolation: {app.isolate}")
 
 temp_dir = tempfile.mkdtemp(prefix="amcapp")
+app.temp_dir = temp_dir
 
 app.logger.info(f"Temp dir: {temp_dir}")
 
@@ -970,8 +954,7 @@ def file_upload(dest):
         project_name = request.form['project_name']
 
         # use the scans subdirectory to store uploaded files
-        rep = f"{temp_dir}/{get_session()}/scans"
-        Path(rep).mkdir(parents=True, exist_ok=True)
+        rep = amc_user_tmp("scans")
         local_paths = []
         for f in request_files:
             fn, ext = upload_file_parts(f)
@@ -996,7 +979,7 @@ def file_upload(dest):
 
 @socketio_name('data-capture')
 def io_data_capture(list_path):
-    rep = f"{temp_dir}/{get_session()}/scans"
+    rep = amc_user_tmp("scans")
     list_path = lstrip_text(list_path, "%SCANS", rep)
     db = get_db()
     orientation = db.orientation()
@@ -1332,11 +1315,10 @@ def io_doc_update(t):
 
 @app.route("/layout/<student>/<page>/<filename>")
 def get_layout_file(student, page, filename):
-    return send_file(f"{temp_dir}/{get_session()}/{student}/{page}/{filename}")
+    return send_file(amc_user_tmp(f"{student}/{page}/{filename}", is_file=True))
     
 def layout_set_page(student, page):
-    rep = f"{temp_dir}/{get_session()}/{student}/{page}"
-    Path(rep).mkdir(parents=True, exist_ok=True)
+    rep = amc_user_tmp(f"{student}/{page}")
     messages, variables = amc_command(
         "db", "layout-image",
         f"{student}/{page}",
@@ -1442,8 +1424,7 @@ def io_print_to_printer(data):
 def io_print_to_files(data):
     student1, student2 = data
     app.logger.info(f"Printing <{flask_g.project_name}> to files: {student1}--{student2}")
-    rep = f"{temp_dir}/{get_session()}/printed/{flask_g.project_name}"
-    Path(rep).mkdir(parents=True, exist_ok=True)
+    rep = amc_user_tmp(f"printed/{flask_g.project_name}")
     for f in os.listdir(rep):
         os.remove(f"{rep}/{f}")
     emit_msg("begin-command")
@@ -1492,7 +1473,7 @@ def send_dir_as_zip(path, name=None, recursive=True,
         
 @app.route("/printed/<project>/printed.zip")
 def build_printed_zip(project):
-    rep = f"{temp_dir}/{get_session()}/printed/{project}"
+    rep = amc_user_tmp(f"printed/{project}")
     return send_dir_as_zip(rep, name="printed.zip", recursive=False)
 
 @socketio_name('scans-mode-change')
@@ -1662,7 +1643,7 @@ def x_set_thresholds():
 
 @app.route("/manual/<student>/<page>/<copy>/<filename>")
 def get_manual_file(student, page, copy, filename):
-    return send_file(f"{temp_dir}/{get_session()}/{student}/{page}/{copy}/{filename}")
+    return send_file(amc_user_tmp(f"{student}/{page}/{copy}/{filename}", is_file=True))
     
 @app.route('/scans_page_none.html')
 def x_scans_page_none():
@@ -1676,8 +1657,7 @@ def x_scans_page_select():
     page = request.json.get('page')
     copy = request.json.get('copy')
     question = request.json.get('question')
-    rep = f"{temp_dir}/{get_session()}/{student}/{page}/{copy}"
-    Path(rep).mkdir(parents=True, exist_ok=True)
+    rep = amc_user_tmp(f"{student}/{page}/{copy}")
 
     params = [
         f"{student}/{page}:{copy}",

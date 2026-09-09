@@ -5,16 +5,42 @@ import subprocess
 
 from basic import *
 
-from flask import current_app
+from flask import current_app, g as flask_g
 
 def command_str(command):
     return " ".join([ '"'+str(x)+'"' if (x=="" or " " in  x)
                       else str(x)
                       for x in command ])
 
+def select_files(paths):
+    ok = []
+    for p in paths.split(","):
+        p = os.path.expandvars(p)
+        if os.path.exists(p):
+            ok.append(p)
+    return ",".join(ok)
+
+def isolate_spec(rights, default):
+    current_app.isolate_paths[rights] = select_files(
+        os.environ.get(f'AMC_ISOLATE_{rights}', default))
+
+def compute_isolate_paths():
+    if current_app.isolate:
+        isolate_spec('ROX', '/usr,/bin')
+        isolate_spec('RW', '/dev/shm,/dev/null,$AMC_USER_TMP,$HOME/.cache')
+        isolate_spec('RO', '/var/cache/fontconfig,/var/lib,/lib,/lib64,/etc')
+
+        current_app.logger.debug(f"Isolation paths: {current_app.isolate_paths}")
+
 def amc_command(*args,
                 messages=None, variables=None):
 
+    tmpdir = amc_user_tmp()
+    os.environ['AMC_USER_TMP'] = tmpdir
+    os.environ["TMPDIR"] = tmpdir
+
+    compute_isolate_paths()
+    
     env = os.environ.copy()
     env["AMC_USERCONFDIR"] = user_confdir()
     locale = get_locale()
@@ -39,6 +65,27 @@ def amc_command(*args,
         command += ["--no-use-state", "--profile", "default"]
         command += ["--project-dir", project_dir()]
 
+        if current_app.isolate:
+            isolate = [
+                'landrun',
+                '--best-effort',
+                '--log-level', 'info',
+                '--rox', current_app.isolate_paths['ROX'],
+                '--rw', current_app.isolate_paths['RW'],
+                '--ro', current_app.isolate_paths['RO'],
+                '--env', 'HOME', '--env', 'PATH', '--env', 'LANG',
+                '--env', 'TMPDIR',
+                '--env', 'AMC_USER_TMP',
+                '--env', 'AMC_USERCONFDIR',
+                '--env', 'AMC_TXT_DEFAULTFONT',
+                '--env', 'AMC_TXT_DEFAULTFONT_ARABIC',
+                '--rw', projects_dir(),
+            ]
+            if not os.environ.get("AMC_USERHEADER"):
+                isolate += [ '--ro', user_confdir() ]
+            isolate.append('--')
+            command = isolate + command
+
     if args[0] == "prepare":
         command += ["--log", project_dir() + "/_latex.log"]
         po = get_options(["global:force_textpos", "moteur_latex_b"])
@@ -54,25 +101,6 @@ def amc_command(*args,
                 return messages, variables
             command += [ "--no-allow-commands", "--no-allow-engine-change" ]
         command += [ "--add-package-options", ",".join(package_options) ]
-
-        if current_app.isolate:
-            isolate = [
-                'landrun',
-                '--best-effort',
-                '--log-level', 'info',
-                '--rox', current_app.isolate_paths['ROX'],
-                '--rw', current_app.isolate_paths['RW'],
-                '--ro', current_app.isolate_paths['RO'],
-                '--env', 'HOME', '--env', 'PATH', '--env', 'LANG',
-                '--env', 'AMC_USERCONFDIR',
-                '--env', 'AMC_TXT_DEFAULTFONT',
-                '--env', 'AMC_TXT_DEFAULTFONT_ARABIC',
-                '--rw', projects_dir(),
-            ]
-            if not os.environ.get("AMC_USERHEADER"):
-                isolate += [ '--ro', user_confdir() ]
-            isolate.append('--')
-            command = isolate + command
 
     current_app.logger.info("c-cmd> " + command_str(command))
 

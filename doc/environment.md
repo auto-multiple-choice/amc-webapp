@@ -45,11 +45,12 @@ set `AMC_ARCHIVE_SKIP_SPECIAL=0` (you should not have to).
 
 ### User-supplied command execution
 
-When preparing the documents (eg. the PDF subject), AMC calls LaTeX
-and possibly other commands (such as python when using PythonTeX). All
-the projects of all users are stored under the same linux user
-(running the server), so that all users can get read and write access
-to all projects from other users.
+When preparing the documents (eg. the PDF subject) and grading, AMC
+calls LaTeX and possibly other commands (such as python when using
+PythonTeX, and perl commands when grading with `formula`). All the
+projects of all users are stored under the same linux user (running
+the server), so that all users can get read and write access to all
+projects from other users.
 
 While this can be acceptable when you trust all users, you can also
 isolate the application users to their projects in two ways:
@@ -69,11 +70,16 @@ isolate the application users to their projects in two ways:
   Depending on the installation, you may have to set the list of
   folders to give access to for documents preparation. This can be
   done using the `AMC_ISOLATE_*` environment variables, with the
-  following default values: `AMC_ISOLATE_ROX=/usr,/bin` (allow access
-  to read and execute), `AMC_ISOLATE_RW=/dev/shm,/dev/null,$HOME/.cache` (allow
-  access to read and write) and
-  `AMC_ISOLATE_RO=/var/cache/fontconfig,/var/lib,/lib,/lib64,/etc` (allow access to
-  read only).
+  following default values: `AMC_ISOLATE_ROX=/usr,/bin` (allow read
+  and execute access),
+  `AMC_ISOLATE_RW=/dev/shm,/dev/null,$AMC_USER_TMP,$HOME/.cache`
+  (allow read and write access) and
+  `AMC_ISOLATE_RO=/var/cache/fontconfig,/var/lib,/lib,/lib64,/etc`
+  (allow read only access).
+  
+  Isolation uses [landrun](https://github.com/Zouuup/landrun), that
+  needs a recent linux kernel: check that your AMC-webapp server runs
+  on Linux 6.7 or newer.
 
 ## Fonts
 
