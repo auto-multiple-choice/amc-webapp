@@ -1412,6 +1412,7 @@ def io_print_to_printer(data):
         "--student-max", student2,
         "--progression", "1",
         "--progression-id", "print",
+        allow_cups=True
     )
     log_messages(messages)
     emit_msg("end-command")

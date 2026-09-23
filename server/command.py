@@ -33,7 +33,8 @@ def compute_isolate_paths():
         current_app.logger.debug(f"Isolation paths: {current_app.isolate_paths}")
 
 def amc_command(*args,
-                messages=None, variables=None):
+                messages=None, variables=None,
+                allow_cups=False):
 
     tmpdir = amc_user_tmp()
     os.environ['AMC_USER_TMP'] = tmpdir
@@ -81,6 +82,8 @@ def amc_command(*args,
                 '--env', 'AMC_TXT_DEFAULTFONT_ARABIC',
                 '--rw', projects_dir(),
             ]
+            if allow_cups:
+                isolate += [ '--env', 'CUPS_SERVER', '--connect-tcp', '631' ]
             if not os.environ.get("AMC_USERHEADER"):
                 isolate += [ '--ro', user_confdir() ]
             isolate.append('--')
