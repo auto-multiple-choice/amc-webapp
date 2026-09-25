@@ -1475,6 +1475,10 @@ function association_manual_done() {
     u_identification();
 }
 
+function association_manual_pass() {
+    first_not_associated();
+}
+
 function association_clear() {
     confirm_msg('confirm.rmassociation', [],
                 'yes:warning', 'cancel:neutral',

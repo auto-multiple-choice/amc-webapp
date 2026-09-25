@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-01 15:07+0200\n"
-"PO-Revision-Date: 2026-09-01 15:09+0200\n"
+"POT-Creation-Date: 2026-09-25 10:25+0200\n"
+"PO-Revision-Date: 2026-09-25 10:30+0200\n"
 "Last-Translator: \n"
 "Language-Team: en <LL@li.org>\n"
 "Language: en\n"
@@ -16,7 +16,7 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"Generated-By: Babel 2.17.0\n"
+"Generated-By: Babel 2.18.0\n"
 "X-Generator: Poedit 3.9\n"
 
 #: extra.py:1
@@ -31,138 +31,138 @@ msgstr "No"
 msgid "btn.continue"
 msgstr "Continue"
 
-#: server/amc.py:233
+#: server/amc.py:244
 msgid "dialog.cancel"
 msgstr "Cancel"
 
-#: server/amc.py:236
+#: server/amc.py:247
 msgid "dialog.ok"
 msgstr "OK"
 
-#: server/amc.py:246
+#: server/amc.py:257
 msgid "inactivity.disconnect"
 msgstr ""
 "Following a long period of inactivity, you have been disconnected from the "
 "server. Reload to reconnect."
 
-#: server/amc.py:248
+#: server/amc.py:259
 msgid "inactivity.reload"
 msgstr "Reload"
 
-#: server/amc.py:489
+#: server/amc.py:517
 msgid "t.cloning"
 msgstr "Cloning project…"
 
-#: server/amc.py:496
+#: server/amc.py:524
 msgid "msg.cloned"
 msgstr "Project cloned to %(name)s."
 
-#: server/amc.py:499
+#: server/amc.py:527
 msgid "msg.clone.err"
 msgstr ""
 "Errors while cloning to %(name)s: only %(n)s files copied out of %(ntotal)s."
 
-#: server/amc.py:524
+#: server/amc.py:552
 msgid "msg.rename.exists"
 msgstr "Can't rename \"%(old)s\" to \"%(new)s\": \"%(new)s\" already exists."
 
-#: server/amc.py:612
+#: server/amc.py:640
 msgid "msg.create.exists"
 msgstr ""
 "Can't create project \"%(name)s\": some file or directory already exists "
 "with this name."
 
-#: server/amc.py:707 server/amc.py:732
+#: server/amc.py:739 server/amc.py:765
 msgid "t.options"
 msgstr "Looking for the options file…"
 
-#: server/amc.py:720 server/amc.py:743
+#: server/amc.py:752 server/amc.py:776
 msgid "t.extract"
 msgstr "Extracting…"
 
-#: server/amc.py:810
+#: server/amc.py:851
 msgid "t.archive.save"
 msgstr "Saving archive…"
 
-#: server/amc.py:953
+#: server/amc.py:999
 msgid "t.scans.extract"
 msgstr "Extracting scans images…"
 
-#: server/amc.py:962
+#: server/amc.py:1008
 msgid "t.automatic"
 msgstr "Automatic data capture…"
 
-#: server/amc.py:1187
+#: server/amc.py:1239
 msgid "latex.log"
 msgstr "See full LaTeX log"
 
-#: server/amc.py:1219
+#: server/amc.py:1270
 msgid "t.clear"
 msgstr "Clear project data…"
 
-#: server/amc.py:1244
+#: server/amc.py:1295
 msgid "t.layouts"
 msgstr "Detecting layouts…"
 
-#: server/amc.py:1353
+#: server/amc.py:1403
 msgid "t.print_to"
 msgstr "Printing subject to %(printer)s…"
 
-#: server/amc.py:1371
+#: server/amc.py:1422
 msgid "msg.printing.done"
 msgstr "Printing done!"
 
-#: server/amc.py:1382
+#: server/amc.py:1432
 msgid "t.print.files"
 msgstr "Printing subject to files…"
 
-#: server/amc.py:1687
+#: server/amc.py:1736
 msgid "add.student.syntax"
 msgstr ""
 "The student to be added must be given as an integer (student sheet number) "
 "or two integers (student sheet number and copy) separated by a colon."
 
-#: server/amc.py:1758
+#: server/amc.py:1807
 msgid "t.mark.extract"
 msgstr "Extracting scoring strategy…"
 
-#: server/amc.py:1766
+#: server/amc.py:1815
 msgid "t.mark.compute"
 msgstr "Calculating…"
 
-#: server/amc.py:1916
+#: server/amc.py:1974
 msgid "student.list.number"
 msgstr "Student #{}"
 
-#: server/amc.py:2021
+#: server/amc.py:2079
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] "One new student were identified."
 msgstr[1] "New students identified: %(num)s"
 
-#: server/amc.py:2024
+#: server/amc.py:2082
 msgid "assoc.auto.none"
 msgstr "No new students were identified."
 
-#: server/amc.py:2097
+#: server/amc.py:2155
 msgid "newstudent.exists"
 msgstr ""
 "You can't add a new student with ID %(sid)s, because a student already "
 "exists with this ID."
 
-#: server/amc.py:2162
+#: server/amc.py:2220
 msgid "files.all"
 msgstr "Download all"
 
-#: server/amc.py:2169
+#: server/amc.py:2227
 msgid "t.export"
 msgstr "Exporting…"
 
-#: server/amc.py:2205
+#: server/amc.py:2263
 msgid "t.annotate"
 msgstr "Annotating…"
 
-#: server/amc.py:2224
+#: server/amc.py:2282
 msgid "files.indiv"
 msgstr "Download all individual files"
 
@@ -171,6 +171,10 @@ msgid "confirm.deleteproject"
 msgstr ""
 "Are you sure you want to delete project \"{}\"? This will permanently "
 "delete all related files."
+
+#: server/static/amc.js:384
+msgid "error"
+msgstr ""
 
 #: server/static/amc.js:411
 msgid "confirm.deletefile"
@@ -184,29 +188,29 @@ msgstr "You forgot to choose a name for your new project!"
 msgid "create.project.notemplate"
 msgstr "You forgot to choose a template!"
 
-#: server/static/amc.js:443
+#: server/static/amc.js:442
 msgid "create.project.nofile"
 msgstr "You forgot to choose a file to be sent!"
 
-#: server/static/amc.js:664
+#: server/static/amc.js:663
 msgid "confirm.rebuild"
 msgstr ""
 "Rebuilding the subject will remove all the project data. To allow the use "
 "of an already printed question, cancel! Are you sure you want to continue?"
 
-#: server/static/amc.js:1371
+#: server/static/amc.js:1370
 msgid "confirm.rmstudentslist"
 msgstr ""
 "Are you sure you want to delete the students list file? This will delete "
 "all association data."
 
-#: server/static/amc.js:1439
+#: server/static/amc.js:1438
 msgid "confirm.lkey"
 msgstr ""
 "Do you really want to change this key? This will cancel all the papers/"
 "students associations!"
 
-#: server/static/amc.js:1480
+#: server/static/amc.js:1483
 msgid "confirm.rmassociation"
 msgstr "Are you sure you want to delete all association data?"
 
@@ -755,27 +759,31 @@ msgstr "Annotate"
 msgid "assoc.done"
 msgstr "Done"
 
-#: server/templates/tab_grading.html:149
+#: server/templates/tab_grading.html:144
+msgid "assoc.pass"
+msgstr "Pass"
+
+#: server/templates/tab_grading.html:154
 msgid "student.type-to-select"
 msgstr "Type to select…"
 
-#: server/templates/tab_grading.html:155
+#: server/templates/tab_grading.html:160
 msgid "config.association.filter_beginning"
 msgstr "At the beginning"
 
-#: server/templates/tab_grading.html:158
+#: server/templates/tab_grading.html:163
 msgid "assoc.new.id"
 msgstr "ID:"
 
-#: server/templates/tab_grading.html:160
+#: server/templates/tab_grading.html:165
 msgid "assoc.new.surname"
 msgstr "Surname:"
 
-#: server/templates/tab_grading.html:161
+#: server/templates/tab_grading.html:166
 msgid "assoc.new.name"
 msgstr "Name:"
 
-#: server/templates/tab_grading.html:162
+#: server/templates/tab_grading.html:167
 msgid "assoc.new.go"
 msgstr "Add student to list"
 

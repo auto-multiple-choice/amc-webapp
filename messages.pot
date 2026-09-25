@@ -8,14 +8,14 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-01 15:07+0200\n"
+"POT-Creation-Date: 2026-09-25 10:25+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.17.0\n"
+"Generated-By: Babel 2.18.0\n"
 
 #: extra.py:1
 msgid "btn.yes"
@@ -29,134 +29,138 @@ msgstr ""
 msgid "btn.continue"
 msgstr ""
 
-#: server/amc.py:233
+#: server/amc.py:244
 msgid "dialog.cancel"
 msgstr ""
 
-#: server/amc.py:236
+#: server/amc.py:247
 msgid "dialog.ok"
 msgstr ""
 
-#: server/amc.py:246
+#: server/amc.py:257
 msgid "inactivity.disconnect"
 msgstr ""
 
-#: server/amc.py:248
+#: server/amc.py:259
 msgid "inactivity.reload"
 msgstr ""
 
-#: server/amc.py:489
+#: server/amc.py:517
 msgid "t.cloning"
 msgstr ""
 
-#: server/amc.py:496
+#: server/amc.py:524
 msgid "msg.cloned"
 msgstr ""
 
-#: server/amc.py:499
+#: server/amc.py:527
 msgid "msg.clone.err"
 msgstr ""
 
-#: server/amc.py:524
+#: server/amc.py:552
 msgid "msg.rename.exists"
 msgstr ""
 
-#: server/amc.py:612
+#: server/amc.py:640
 msgid "msg.create.exists"
 msgstr ""
 
-#: server/amc.py:707 server/amc.py:732
+#: server/amc.py:739 server/amc.py:765
 msgid "t.options"
 msgstr ""
 
-#: server/amc.py:720 server/amc.py:743
+#: server/amc.py:752 server/amc.py:776
 msgid "t.extract"
 msgstr ""
 
-#: server/amc.py:810
+#: server/amc.py:851
 msgid "t.archive.save"
 msgstr ""
 
-#: server/amc.py:953
+#: server/amc.py:999
 msgid "t.scans.extract"
 msgstr ""
 
-#: server/amc.py:962
+#: server/amc.py:1008
 msgid "t.automatic"
 msgstr ""
 
-#: server/amc.py:1187
+#: server/amc.py:1239
 msgid "latex.log"
 msgstr ""
 
-#: server/amc.py:1219
+#: server/amc.py:1270
 msgid "t.clear"
 msgstr ""
 
-#: server/amc.py:1244
+#: server/amc.py:1295
 msgid "t.layouts"
 msgstr ""
 
-#: server/amc.py:1353
+#: server/amc.py:1403
 msgid "t.print_to"
 msgstr ""
 
-#: server/amc.py:1371
+#: server/amc.py:1422
 msgid "msg.printing.done"
 msgstr ""
 
-#: server/amc.py:1382
+#: server/amc.py:1432
 msgid "t.print.files"
 msgstr ""
 
-#: server/amc.py:1687
+#: server/amc.py:1736
 msgid "add.student.syntax"
 msgstr ""
 
-#: server/amc.py:1758
+#: server/amc.py:1807
 msgid "t.mark.extract"
 msgstr ""
 
-#: server/amc.py:1766
+#: server/amc.py:1815
 msgid "t.mark.compute"
 msgstr ""
 
-#: server/amc.py:1916
+#: server/amc.py:1974
 msgid "student.list.number"
 msgstr ""
 
-#: server/amc.py:2021
+#: server/amc.py:2079
 msgid "assoc.auto.one"
 msgid_plural "assoc.auto.plural"
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/amc.py:2024
+#: server/amc.py:2082
 msgid "assoc.auto.none"
 msgstr ""
 
-#: server/amc.py:2097
+#: server/amc.py:2155
 msgid "newstudent.exists"
 msgstr ""
 
-#: server/amc.py:2162
+#: server/amc.py:2220
 msgid "files.all"
 msgstr ""
 
-#: server/amc.py:2169
+#: server/amc.py:2227
 msgid "t.export"
 msgstr ""
 
-#: server/amc.py:2205
+#: server/amc.py:2263
 msgid "t.annotate"
 msgstr ""
 
-#: server/amc.py:2224
+#: server/amc.py:2282
 msgid "files.indiv"
 msgstr ""
 
 #: server/static/amc.js:291
 msgid "confirm.deleteproject"
+msgstr ""
+
+#: server/static/amc.js:384
+msgid "error"
 msgstr ""
 
 #: server/static/amc.js:411
@@ -171,23 +175,23 @@ msgstr ""
 msgid "create.project.notemplate"
 msgstr ""
 
-#: server/static/amc.js:443
+#: server/static/amc.js:442
 msgid "create.project.nofile"
 msgstr ""
 
-#: server/static/amc.js:664
+#: server/static/amc.js:663
 msgid "confirm.rebuild"
 msgstr ""
 
-#: server/static/amc.js:1371
+#: server/static/amc.js:1370
 msgid "confirm.rmstudentslist"
 msgstr ""
 
-#: server/static/amc.js:1439
+#: server/static/amc.js:1438
 msgid "confirm.lkey"
 msgstr ""
 
-#: server/static/amc.js:1480
+#: server/static/amc.js:1483
 msgid "confirm.rmassociation"
 msgstr ""
 
@@ -732,27 +736,31 @@ msgstr ""
 msgid "assoc.done"
 msgstr ""
 
-#: server/templates/tab_grading.html:149
+#: server/templates/tab_grading.html:144
+msgid "assoc.pass"
+msgstr ""
+
+#: server/templates/tab_grading.html:154
 msgid "student.type-to-select"
 msgstr ""
 
-#: server/templates/tab_grading.html:155
+#: server/templates/tab_grading.html:160
 msgid "config.association.filter_beginning"
 msgstr ""
 
-#: server/templates/tab_grading.html:158
+#: server/templates/tab_grading.html:163
 msgid "assoc.new.id"
 msgstr ""
 
-#: server/templates/tab_grading.html:160
+#: server/templates/tab_grading.html:165
 msgid "assoc.new.surname"
 msgstr ""
 
-#: server/templates/tab_grading.html:161
+#: server/templates/tab_grading.html:166
 msgid "assoc.new.name"
 msgstr ""
 
-#: server/templates/tab_grading.html:162
+#: server/templates/tab_grading.html:167
 msgid "assoc.new.go"
 msgstr ""
 
