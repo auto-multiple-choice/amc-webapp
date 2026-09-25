@@ -1589,7 +1589,10 @@ function select_assoc_sheet(e, student, copy) {
 }
 
 function first_not_associated() {
-    var e = document.querySelector('#assoc-sheets tr[amc-auto="None"][amc-manual="None"]');
+    var e = document.querySelector('#assoc-sheets tr.selected ~ tr[amc-auto="None"][amc-manual="None"]');
+    if(!e) {
+        e = document.querySelector('#assoc-sheets tr[amc-auto="None"][amc-manual="None"]');
+    }
     if(e) {
         select_assoc_sheet(e,
                            parseInt(e.getAttribute("amc-student")),
@@ -1659,7 +1662,7 @@ socket.on("update-association", function(data) {
     var to_rm = data[3];
     
     for(sc of to_rm) {
-        set_association(sc[0], sc[1], "");
+        set_association(sc[0], sc[1], "None");
     }
     set_association(student, copy, student_id);
     if(student == assoc_sheet[0]
