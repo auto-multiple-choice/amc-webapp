@@ -2255,7 +2255,8 @@ def unlink_indiv_annotated():
 @socketio_name("do-annotate")
 def io_do_annotate():
     single = (get_option("regroupement_type") == "ALL")
-    if not single:
+    keep = to_bool(get_option("annotate_dont_overwrite"))
+    if not (single or keep):
         unlink_indiv_annotated()
     t = int(datetime.datetime.now().timestamp())
     args = []
