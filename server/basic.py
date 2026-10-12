@@ -170,6 +170,7 @@ def option_file_from_name(name, p=None):
 def change_option(name, value, p=None):
     options_file, name = option_file_from_name(name, p=p)
     lock = FileLock(options_file + ".lock")
+    success = False
     with lock:
         options = etree.parse(options_file)
         x = first_or_none(options.xpath("/*/" + name))
@@ -181,6 +182,8 @@ def change_option(name, value, p=None):
         else:
             x.text = str(value)
         options.write(options_file)
+        success = True
+    return success, name
 
 def get_option_from_xml(xml_file, name):
     options = etree.parse(xml_file)

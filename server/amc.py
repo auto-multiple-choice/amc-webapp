@@ -945,7 +945,7 @@ def file_upload(dest):
         fn, ext = upload_file_parts(request_files[0])
         if rep:
             request_files[0].save(f"{rep}/{fn}");
-            change_option("listeetudiants", "%PROJET/" + fn)
+            set_students_list("%PROJET/" + fn)
             return { "ok": True }
         else:
             return { "error": f"Project unknown" }
@@ -1836,7 +1836,7 @@ def io_studentslist_delete():
         except Exception as e:
             app.logger.error(f"Can't delete students list file {old}: {e}")
     clear_data("assoc")
-    change_option("listeetudiants", "")
+    set_students_list("")
     emit_msg("update-identification")
 
 @socketio_name('studentslist-shared')
@@ -1853,7 +1853,7 @@ def io_studentslist_shared(name):
     except Exception as e:
         app.logger.error("Error while copying {path} to {imported}: {e}")
         return
-    change_option("listeetudiants", "%PROJET/" + name)
+    set_students_list("%PROJET/" + name)
     emit_msg("update-identification")
 
 def students_list_file():
@@ -1865,7 +1865,8 @@ def students_list_file():
 
         if not os.path.isfile(path):
             path = None
-            change_option("listeetudiants", None)
+            set_students_list(None)
+
     if not path:
         filename = None
         for x in ('students.csv', 'students.txt',
@@ -1880,13 +1881,13 @@ def students_list_file():
                 filename = cand[0]
                 
         if filename:
-            change_option("listeetudiants", "%PROJET/" + filename)
+            set_students_list("%PROJET/" + filename)
             path = f"{pdir}/{filename}"
                           
     if path and not os.path.realpath(path).startswith(os.path.realpath(projects_dir())):
         app.logger.error(f"Students list file outside base: {path}")
         path = None
-        change_option("listeetudiants", None)
+        set_students_list(None)
 
     return path
 
@@ -2183,10 +2184,47 @@ def io_export_config():
                       "app_public_marks"
                       ]))
 
+ANNOTATION_OPTIONS = (
+    'annote_chsign',
+    'annote_color',
+    'annote_ecart',
+    'annote_font_name',
+    'annote_position',
+    'annote_rtl',
+    'embedded_format',
+    'embedded_jpeg_quality',
+    'embedded_max_size',
+    'regroupement_compose',
+    'symbole_0_0_color',
+    'symbole_0_0_type',
+    'symbole_0_1_color',
+    'symbole_0_1_type',
+    'symbole_1_0_color',
+    'symbole_1_0_type',
+    'symbole_1_1_color',
+    'symbole_1_1_type',
+    'symboles_indicatives',
+    'symboles_trait',
+    'verdict',
+    'verdict_q',
+    )
+
+def annotate_source_change(db=None):
+    if db is None:
+        db = get_db()
+    if db:
+        db.annotate_source_change()
+
+def set_students_list(filepath):
+    change_option("listeetudiants", filepath)
+    annotate_source_change()
+
 @socketio_name('set-config')
 def io_set_config(data):
-    change_option(*data)
-    if data[0] == "global:activate_ahead":
+    success, name = change_option(*data)
+    if success and (name in ANNOTATION_OPTIONS):
+        annotate_source_change()
+    if name == "activate_ahead":
         io_adapt_menu()
 
 def send_dir_list(t, subdir,
@@ -2269,9 +2307,12 @@ def io_do_annotate():
         *args,
         "--progression-id", "ANNOT",
         "--progression", "1",
+        "--changes-only",
     )
     emit_msg("end-command")
     emit_msg("update-annotated-files", t)
+    if len(messages.get("ERR", [])) > 0:
+        annotate_source_change()
     show_messages(messages)
 
 @app.route('/annotated_files.html', methods=['POST'])

@@ -401,6 +401,7 @@ class Amcdb:
         self.set_variable_nocommit("association", "key_in_list", None)
         self.set_variable_nocommit("association", "code", None)
         self.db.commit()
+        self.annotate_source_change()
 
     def get_assoc_sheets(self):
         self.use_module("association")
@@ -444,6 +445,7 @@ class Amcdb:
             (student, copy, manual) VALUES (?,?,?)""",
             (student, copy, student_id))
         self.db.commit()
+        self.annotate_source_change()
         return to_rm
 
     def defects_class(self):
@@ -581,3 +583,8 @@ class Amcdb:
             """DELETE FROM capture.capture_page
             WHERE student=? AND page=? AND copy=?
             """, (student, page, copy))
+
+    def annotate_source_change(self):
+        now = int(datetime.datetime.now().timestamp())
+        current_app.logger.debug(f"Annotate source has changed! Time={now}")
+        self.set_variable("capture", "annotate_source_change", now)
