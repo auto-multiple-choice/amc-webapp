@@ -102,17 +102,22 @@ function fetch_content(url, opts) {
 
 function fetch_to_dom(id, url, opts) {
     reset_inactivity();
+    var i;
+    if(!( id instanceof Array )) {
+        id = [ id ];
+    }
+    for(i of id) {
+        wait_for_response(i);
+    }
     return fetch_content(url, opts)
         .then(html => {
-            if(!( id instanceof Array )) {
-                id = [ id ];
-            }
             for(i of id) {
                 var e = document.getElementById(i);
                 if(e) {
                     e.innerHTML = html;
                 }
                 else console.error(`Element ${id} not found!`);
+                answered(i);
             }
         })
         .catch(error => {
@@ -1774,6 +1779,31 @@ function u_annotated_files(t) {
         });
 }
 socket.on("update-annotated-files", u_annotated_files);
+
+// ----------------------- cursor
+
+var wait_timer = {};
+
+function isEmpty(obj) {
+  return Object.keys(obj).length === 0;
+}
+
+function get_body() {
+    return document.getElementById("app-body");
+}
+
+function wait_for_response(k) {
+    wait_timer[k] = setTimeout(() => { answered(k) }, 20000);
+    get_body().classList.add("waiting");
+}
+
+function answered(k) {
+    clearTimeout(wait_timer[k]);
+    delete(wait_timer[k]);
+    if(isEmpty(wait_timer)) {
+        get_body().classList.remove("waiting");
+    }
+}
 
 // ----------------------- keys
 
