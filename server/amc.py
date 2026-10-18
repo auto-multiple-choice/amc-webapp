@@ -58,7 +58,11 @@ app.config.from_mapping(
     SECRET_KEY='dev',
     FLASK_STATIC_DIGEST_BLACKLIST_FILTER = [ ".png", ".svg", ".css~", ".js~" ],
 )
-socketio = SocketIO(app, async_mode='gevent')
+
+origins = None
+if os.environ.get('ALLOWED_ORIGINS', ''):
+    origins = os.environ['ALLOWED_ORIGINS'].split(',')
+socketio = SocketIO(app, async_mode='gevent', cors_allowed_origins=origins)
 app.socketio = socketio
 
 babel = Babel(app, locale_selector=get_locale)

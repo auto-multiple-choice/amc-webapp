@@ -80,6 +80,14 @@ isolate the application users to their projects in two ways:
   Isolation uses [landrun](https://github.com/Zouuup/landrun), that
   needs a recent linux kernel: check that your AMC-webapp server runs
   on Linux 6.7 or newer.
+  
+### CORS
+
+The websocket connection between the browser and the server is
+restricted by your browser to the (comma-separated) origins given in
+the environment variable `ALLOWED_ORIGINS`. If your server is behind a
+reverse proxy, you should set this variable to the external base url
+for the service, eg. `https://amc.example.com`.
 
 ## Fonts
 
