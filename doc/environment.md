@@ -119,3 +119,10 @@ specified in hours in the `AMC_TEMP_CLEAN_H` environment variable
 (defaulting to 3, that is 03:00AM). The time zone used for this time
 can be specified in the `TZ` environment variable.
 
+## Logging
+
+The server logging level can be set with the environment variable
+`AMC_SERVER_LOGGING`. Available values are `ERROR`, `WARNING`, `INFO`,
+`DEBUG`.
+
+Full SocketIO logging can be activated with `SOCKETIO_LOG=True`.

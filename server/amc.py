@@ -62,7 +62,10 @@ app.config.from_mapping(
 origins = None
 if os.environ.get('ALLOWED_ORIGINS', ''):
     origins = os.environ['ALLOWED_ORIGINS'].split(',')
-socketio = SocketIO(app, async_mode='gevent', cors_allowed_origins=origins)
+socketio_log = (os.environ.get('SOCKETIO_LOG', 'False').lower() == 'true')
+socketio = SocketIO(app, async_mode='gevent',
+                    cors_allowed_origins=origins,
+                    logger=socketio_log, engineio_logger=socketio_log)
 app.socketio = socketio
 
 babel = Babel(app, locale_selector=get_locale)
