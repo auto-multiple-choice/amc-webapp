@@ -1,0 +1,29 @@
+# Local settings layered on top of upstream's docker-compose.yml.
+#
+# Docker Compose reads this file automatically, so upstream's file stays
+# untouched and pulling updates from the AMC team doesn't conflict.
+# Values come from .env, which the launcher (./amc or amc.cmd) creates on
+# first run; see .env.example for what each one means.
+#
+# `!override` replaces upstream's list instead of appending to it
+# (needs Docker Compose 2.24.4 or newer).
+services:
+  amc-web:
+    ports: !override
+      - "${AMC_BIND:-127.0.0.1}:${AMC_PORT:-8090}:8080"
+
+    # Defaults match the image's own user (uid 1000, group root). On Linux
+    # the launcher sets these to your user, so files in AMC_DATA_DIR belong
+    # to you.
+    user: "${AMC_UID:-1000}:${AMC_GID:-0}"
+
+    # A visible folder on the host instead of upstream's hidden Docker
+    # volume. It is mounted as the container's home directory, so it holds
+    # the projects (MC-Projects/) and AMC's settings (.AMC.d/), the same
+    # layout AMC uses in a home directory.
+    volumes: !override
+      - "${AMC_DATA_DIR:?AMC_DATA_DIR is not set. Start the app with ./amc start (amc.cmd start on Windows)}:/amc-web/files"
+
+    environment:
+      TZ: ${TZ:-UTC}
+      AMC_SERVER_LOGGING: ${AMC_SERVER_LOGGING:-INFO}
