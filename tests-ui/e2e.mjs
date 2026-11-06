@@ -245,8 +245,8 @@ async function main() {
   check('The editor offers building again', await waitFor(`!!document.querySelector('[data-act="build"]')`, 10000));
 
   // A step from a later phase
-  await click('.step[href$="/upload-scans"]');
-  check('Later steps explain when they arrive', await waitFor(`document.querySelector('#main').textContent.includes('Coming in phase 3')`));
+  await click('.step[href$="/mark"]');
+  check('Later steps explain when they arrive', await waitFor(`document.querySelector('#main').textContent.includes('Coming in phase 4')`));
   check('Leaving Questions closed the editor', await js('editor === null'));
 
   // Preview panel: close, reopen

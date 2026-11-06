@@ -10,6 +10,7 @@ data that upstream only renders as HTML fragments.
 Kept in its own file so merging AMC team updates stays easy.
 """
 
+import base64
 import html
 import json
 import os
@@ -618,10 +619,179 @@ def on_scoring_defaults(data):
     core.emit_msg("ui-scoring-saved", values)
 
 
+# ---------------------------------------------------------------- scans
+
+def _thresholds():
+    return _float_option("seuil", 0.15), _float_option("seuil_up", 1.0)
+
+
+def box_uncertain(prop, low, high):
+    """Same rule as AMC's page "sensitivity" (8 or more out of 10): the
+    box's darkness is within 20% of a threshold."""
+    if prop is None:
+        return False
+    rel = []
+    if low > 0:
+        rel.append(abs(prop - low) / low)
+    if high < 1:
+        rel.append(abs(prop - high) / (1 - high))
+    return bool(rel) and min(rel) <= 1 - SENSITIVITY_TO_CHECK / 10
+
+
+def _rows(db, sql, args=()):
+    db.db.row_factory = sqlite3.Row
+    return [dict(r) for r in db.db.execute(sql, args).fetchall()]
+
+
+def _local_scan(pdir, path):
+    """A scan's path as stored by AMC, relative to the exam folder."""
+    if path.startswith("%PROJET/"):
+        return path[len("%PROJET/"):]
+    if path.startswith(pdir + "/"):
+        return path[len(pdir) + 1:]
+    return None
+
+
+def page_boxes(db, student, page, copy, images=False):
+    low, high = _thresholds()
+    db.use_module("capture")
+    db.use_module("layout")
+    rows = _rows(db, """
+        SELECT z.id_a AS question, z.id_b AS answer, z.black, z.total, z.manual,
+               """ + ("z.imagedata," if images else "") + """
+               b.char AS label, q.name AS name
+        FROM capture.capture_zone AS z
+        LEFT JOIN layout.layout_box AS b
+          ON b.student=z.student AND b.page=z.page AND b.question=z.id_a
+             AND b.answer=z.id_b AND b.role=1
+        LEFT JOIN layout.layout_question AS q ON q.question=z.id_a
+        WHERE z.student=? AND z.page=? AND z.copy=? AND z.type=4
+        ORDER BY z.id_a, z.id_b""", (student, page, copy))
+    boxes = []
+    for r in rows:
+        prop = r["black"] / r["total"] if r["total"] and r["total"] > 0 else None
+        auto = prop is not None and low <= prop <= high
+        manual = r["manual"] if r["manual"] is not None and r["manual"] >= 0 else None
+        box = {"question": r["question"], "answer": r["answer"],
+               "name": r["name"], "label": r["label"],
+               "prop": None if prop is None else round(prop, 3),
+               "auto": auto, "manual": None if manual is None else bool(manual),
+               "ticked": auto if manual is None else bool(manual),
+               "uncertain": box_uncertain(prop, low, high)}
+        if images and r.get("imagedata"):
+            box["image"] = "data:image/png;base64," + base64.b64encode(r["imagedata"]).decode()
+        boxes.append(box)
+    return boxes
+
+
+def _pages_to_check(db):
+    low, high = _thresholds()
+    return [p for p in db.capture_pages(low, high)
+            if (p.get("sensitivity") or 0) >= SENSITIVITY_TO_CHECK
+            and not (p.get("timestamp_manual") or 0) > 0]
+
+
+@bp.route("/ui/api/scans")
+def api_scans():
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    low, high = _thresholds()
+    try:
+        mode = int(core.get_option("auto_capture_mode"))
+    except (TypeError, ValueError):
+        mode = -1
+    out = {"project": name, "low": low, "high": high, "photocopy": mode == 1,
+           "mode_locked": False, "multi_scan_mode": core.get_option("multi_scan_mode") or "",
+           "pages": [], "failed": [], "missing": [], "complete": 0, "incomplete": 0,
+           "max_pages": None}
+    db = core.Amcdb(pdir)
+    if _has_db(pdir, "layout"):
+        out["max_pages"] = _query(db.npages_max)
+    if not _has_db(pdir, "capture"):
+        return jsonify(out)
+    for p in _query(lambda: db.capture_pages(low, high), []):
+        out["pages"].append({
+            "student": p["student"], "page": p["page"], "copy": p["copy"],
+            "checked": bool((p.get("timestamp_manual") or 0) > 0),
+            "sensitivity": None if p.get("sensitivity") is None else round(p["sensitivity"], 1),
+            "to_check": (p.get("sensitivity") or 0) >= SENSITIVITY_TO_CHECK
+                        and not (p.get("timestamp_manual") or 0) > 0})
+    out["mode_locked"] = bool(out["pages"])
+    for f in _query(db.failed_scans, []):
+        local = _local_scan(pdir, f[0])
+        out["failed"].append({"path": f[0], "file": os.path.basename(f[0]),
+                              "local": local, "time": f[1]})
+    counts = _query(db.counts)
+    if counts:
+        out["complete"], out["incomplete"] = counts[0], counts[1]
+        out["missing"] = [{"student": m[0], "page": m[1], "copy": m[2]} for m in counts[2]]
+    return jsonify(out)
+
+
+@bp.route("/ui/api/scan-page")
+def api_scan_page():
+    if not _open_project():
+        return jsonify(project=None)
+    try:
+        student, page, copy = (int(request.args[k]) for k in ("student", "page", "copy"))
+    except (KeyError, ValueError):
+        return jsonify(error="student, page and copy are needed"), 400
+    db = core.Amcdb(core.project_dir())
+    try:
+        boxes = page_boxes(db, student, page, copy, images=True)
+    except sqlite3.Error:
+        boxes = []
+    return jsonify(project=flask_g.project_name, student=student, page=page,
+                   copy=copy, boxes=boxes)
+
+
+def on_review_page(data):
+    """Record a page as checked by a person: the given boxes are set as
+    decided; with no decisions, every box keeps what was detected."""
+    data = data if isinstance(data, dict) else {}
+    try:
+        student, page, copy = (int(data[k]) for k in ("student", "page", "copy"))
+        decisions = [(int(q), int(a), bool(t)) for q, a, t in data.get("decisions", [])][:1000]
+    except (KeyError, TypeError, ValueError):
+        core.dialog_msg(warn="This page couldn't be recorded.")
+        return
+    db = core.get_db()
+    if not decisions:
+        boxes = page_boxes(db, student, page, copy)
+        if boxes:
+            decisions = [(boxes[0]["question"], boxes[0]["answer"], boxes[0]["ticked"])]
+    for question, answer, ticked in decisions:
+        # The first one also copies what was detected to the whole page.
+        db.set_manual(student, page, copy, question, answer, ticked, True)
+    core.emit_msg("ui-changed", "review")
+
+
+def on_accept_detected(data):
+    """Record every page still to check as checked, keeping what was detected."""
+    db = core.get_db()
+    pages = _pages_to_check(db)
+    if pages:
+        core.emit_msg("t", f"Accepting {len(pages)} pages as detected")
+        core.emit_msg("begin-command")
+        for i, p in enumerate(pages):
+            boxes = page_boxes(db, p["student"], p["page"], p["copy"])
+            if boxes:
+                db.set_manual(p["student"], p["page"], p["copy"], boxes[0]["question"],
+                              boxes[0]["answer"], boxes[0]["ticked"], True)
+            core.emit_msg("p", (i + 1) / len(pages))
+        core.emit_msg("end-command")
+        add_activity(core.project_dir(), f"{len(pages)} pages accepted as detected")
+    core.emit_msg("ui-changed", "review")
+
+
 SOCKET_EVENTS = {
     "ui-layout-ok": on_layout_ok,
     "ui-mark-printed": on_mark_printed,
     "ui-printed": on_printed,
     "ui-unlock": on_unlock,
     "ui-scoring-defaults": on_scoring_defaults,
+    "ui-review-page": on_review_page,
+    "ui-accept-detected": on_accept_detected,
 }
