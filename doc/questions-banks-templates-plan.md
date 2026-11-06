@@ -98,7 +98,7 @@ lastpage, enumitem, mathtools, tikz).
 | Source of truth | The exam's LaTeX files. The form, the structure panel and the bank picker write targeted edits into them; nothing is kept only in a database. Hand-written LaTeX keeps working, and so does the desktop app. |
 | Formats | Form editor, structure panel and banks: LaTeX exams. AMC-TXT exams keep the text editor. |
 | Unreadable LaTeX | Shown read-only in the form with "Edit in LaTeX", as the marking panel does. Never rewritten. |
-| History | Inside the exam folder (`.history/`), so it follows rename, copy, delete and backup. Kept 60 days and at least the last 30 versions per file. |
+| History | Inside the exam folder (`.history/`), so it follows rename, copy, delete and backup. Kept 7 days; a file that hasn't changed for longer keeps its last 12 versions; never more than 100 per file. |
 | Banks | Personal first (`MC-Projects/<user>/_banks/`). Shared school banks, published by admins, a later step. |
 | Bank format | One LaTeX file per question plus `bank.json` (tags, usage), rebuilt from the files if lost. Readable with any editor, diffable, matches how the RJ files are kept. |
 | Builder | Blocks that are toggled, ordered and filled in, with the PDF preview, not a free-form canvas (section 8). |
@@ -128,8 +128,10 @@ write_source(pdir, filename, new_text, by, what, based_on=None)
 - **Built OK:** after a successful build of the question paper, the
   server marks the history entry matching the built digest as
   `built: true`. "Restore the last version that built" is one click.
-- **Retention:** 60 days, never fewer than the last 30 versions of a
-  file, pruned after each write. Sizes are small (sources are text).
+- **Retention:** the last 7 days; a file that hasn't changed for longer
+  keeps its last 12 versions whatever their age; never more than 100
+  versions of a file (a week of marking-panel clicks). Pruned after each
+  write. Sizes are small (sources are text).
 - **Restore** is itself a write through the same path, so the version
   being replaced is kept too. On a printed exam, restoring goes through
   the lock: only scoring and answer-key differences pass.
@@ -166,8 +168,9 @@ How it was built (phase 6):
   the file now (longest common subsequence, unchanged runs folded),
   Download and Restore. Restoring while the editor has unsaved changes
   is refused.
-- Retention: 60 days and at least the last 30 versions of a file, pruned
-  after each write; the newest version that built and the version of a
+- Retention: the last 7 days, at least the last 12 versions, at most
+  100 (`KEEP_DAYS`, `KEEP_AT_LEAST`, `MAX_VERSIONS` in `ui_source.py`),
+  pruned after each write; the newest version that built and the version of a
   deleted file are always kept. The exam zip (`send_dir_as_zip`) leaves
   `.history/` out; `./amc backup` keeps it.
 - Not done: history for files in subfolders (`\input{sub/file}`), and a
@@ -466,8 +469,9 @@ be built in parallel by two people once 6 is merged; 9 needs both.
 1. Personal banks first, shared ones later, as proposed?
 2. Form editor and banks for LaTeX exams only (AMC-TXT keeps the text
    editor)?
-3. History: 60 days and at least 30 versions per file, inside the exam
-   folder, excluded from the downloadable zip?
+3. History: 7 days, at least the last 12 versions and at most 100 per
+   file (decided 7 Nov), inside the exam folder, excluded from the
+   downloadable zip?
 4. Blocks rather than a free-form canvas for the paper builder?
 5. Build the image with `texmf-dist-fontsextra` for the icons, or accept
    the `pifont` look?

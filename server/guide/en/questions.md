@@ -40,7 +40,7 @@ Once the exam is printed, the questions are read-only. Correct the answer key an
 
 Every time a source file is saved, the version it replaces is kept. **History** (in the bar above the editor) lists them with who saved them and when; the version the question paper was last built from is marked **built OK**. Click a version to see what changed since, and **Restore this version** to make it the file again (the file as it is now is kept too).
 
-A file deleted with **Delete** also goes to History and can be restored from there. The exam's main source file can't be deleted. Versions are kept for 60 days, and at least the last 30 of each file.
+A file deleted with **Delete** also goes to History and can be restored from there. The exam's main source file can't be deleted. Versions from the last 7 days are kept; a file that hasn't changed for longer keeps its last 12 versions.
 
 Text typed but not saved is kept in your browser: if the page is closed by accident, the editor offers it back the next time the file is opened.
 

@@ -354,33 +354,35 @@ try:
     check("history: restoring a deleted file brings it back", open(os.path.join(exam, "extra.tex"), "rb").read() == b"e1\n")
     open(os.path.join(exam, "logo.png"), "wb").write(b"png")
     check("history: deleting an untracked file just removes it", hist.delete_source(exam, "logo.png") is None and not os.path.exists(os.path.join(exam, "logo.png")))
-    # pruning: fake old versions
+    # pruning: fake old versions (older than KEEP_DAYS)
     d = os.path.join(exam, hist.HISTORY_DIR, "exam.tex")
     now = time.time()
     real = len(hist.versions(exam, "exam.tex"))
-    for i in range(45):
-        vid = "20200101T%06dZ" % i
-        open(os.path.join(d, vid + ".tex"), "wb").write(b"old")
-        json.dump({"id": vid, "file": "exam.tex", "at": int(now - (200 - i) * 86400), "by": None, "what": "Saved",
-                   "size": 3, "digest": "x%d" % i, "built": i == 3, "deleted": False}, open(os.path.join(d, vid + ".json"), "w"))
+    def fake(d, name, ext, n, days_ago, built_i):
+        for i in range(n):
+            vid = "20200101T%06dZ" % i
+            open(os.path.join(d, vid + "." + ext), "wb").write(b"old")
+            json.dump({"id": vid, "file": name, "at": int(now - days_ago(i) * 86400), "by": None, "what": "Saved",
+                       "size": 3, "digest": "%s%d" % (name, i), "built": i == built_i, "deleted": False}, open(os.path.join(d, vid + ".json"), "w"))
+    fake(d, "exam.tex", "tex", 45, lambda i: 200 - i, 3)
     before_vs = hist.versions(exam, "exam.tex")
     newest_built = next(v["id"] for v in before_vs if v["built"])
     hist.prune(exam, "exam.tex", now=now)
     after = hist.versions(exam, "exam.tex")
-    check("history: pruning keeps the newest 30 and the newest built version, and drops older ones (a built one too)",
-          len(before_vs) == real + 45 and len(after) == 30 and any(v["id"] == newest_built for v in after)
+    check("history: pruning keeps the newest KEEP_AT_LEAST and the newest built version, and drops older ones (a built one too)",
+          len(before_vs) == real + 45 and len(after) == hist.KEEP_AT_LEAST and any(v["id"] == newest_built for v in after)
           and not any(v["id"] == "20200101T000003Z" for v in after))
     # ...but an old built version is kept when no newer one built
     hist.write_source(exam, "c.csv", b"a\n", what="Uploaded"); hist.write_source(exam, "c.csv", b"b\n", what="Uploaded")
-    d = os.path.join(exam, hist.HISTORY_DIR, "c.csv")
-    for i in range(40):
-        vid = "20200101T%06dZ" % i
-        open(os.path.join(d, vid + ".csv"), "wb").write(b"old")
-        json.dump({"id": vid, "file": "c.csv", "at": int(now - (200 - i) * 86400), "by": None, "what": "Uploaded",
-                   "size": 3, "digest": "y%d" % i, "built": i == 2, "deleted": False}, open(os.path.join(d, vid + ".json"), "w"))
+    fake(os.path.join(exam, hist.HISTORY_DIR, "c.csv"), "c.csv", "csv", 40, lambda i: 200 - i, 2)
     hist.prune(exam, "c.csv", now=now)
     after = hist.versions(exam, "c.csv")
-    check("history: the newest version that built survives pruning however old", len(after) == 31 and any(v["id"] == "20200101T000002Z" for v in after))
+    check("history: the newest version that built survives pruning however old", len(after) == hist.KEEP_AT_LEAST + 1 and any(v["id"] == "20200101T000002Z" for v in after))
+    # recent versions are all kept, up to MAX_VERSIONS
+    hist.write_source(exam, "d.tex", b"a\n", what="Saved")
+    fake(os.path.join(exam, hist.HISTORY_DIR, "d.tex"), "d.tex", "tex", hist.MAX_VERSIONS + 20, lambda i: (hist.MAX_VERSIONS + 20 - i) / 1000.0, -1)
+    hist.prune(exam, "d.tex", now=now)
+    check("history: versions from the last days are kept, but never more than MAX_VERSIONS", len(hist.versions(exam, "d.tex")) == hist.MAX_VERSIONS)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

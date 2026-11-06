@@ -22,8 +22,12 @@ import time
 from filelock import FileLock
 
 HISTORY_DIR = ".history"
-KEEP_DAYS = 60
-KEEP_AT_LEAST = 30
+# Versions from the last KEEP_DAYS are kept; a file that hasn't changed for
+# longer keeps its last KEEP_AT_LEAST versions whatever their age; and no
+# file keeps more than MAX_VERSIONS (a busy week of marking-panel clicks).
+KEEP_DAYS = 7
+KEEP_AT_LEAST = 12
+MAX_VERSIONS = 100
 # Files whose earlier versions are kept: the sources and what they
 # include, and class lists. Images and PDFs are not.
 EXTENSIONS = ("tex", "latex", "txt", "sty", "cls", "yml", "yaml", "csv")
@@ -271,17 +275,17 @@ def mark_built(pdir, digests):
 
 
 def prune(pdir, filename, now=None):
-    """Drop versions older than KEEP_DAYS beyond the newest KEEP_AT_LEAST.
-    The newest version that built, and the version of a deleted file,
-    are always kept."""
+    """Drop versions older than KEEP_DAYS beyond the newest KEEP_AT_LEAST,
+    and any beyond MAX_VERSIONS. The newest version that built, and the
+    version of a deleted file, are always kept."""
     now = time.time() if now is None else now
     vs = versions(pdir, filename)
     newest_built = next((e["id"] for e in vs if e.get("built")), None)
     d = _dir(pdir, filename)
     for i, e in enumerate(vs):
-        if i < KEEP_AT_LEAST or e["id"] == newest_built or e.get("deleted"):
+        if e["id"] == newest_built or e.get("deleted"):
             continue
-        if e.get("at", 0) < now - KEEP_DAYS * 86400:
+        if i >= MAX_VERSIONS or (i >= KEEP_AT_LEAST and e.get("at", 0) < now - KEEP_DAYS * 86400):
             for suffix in (".json", "." + filename.rsplit(".", 1)[-1].lower()):
                 try:
                     os.unlink(os.path.join(d, e["id"] + suffix))
