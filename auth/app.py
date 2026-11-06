@@ -19,6 +19,7 @@ import secrets
 import sqlite3
 import threading
 import time
+from urllib.parse import urlsplit
 
 import click
 from flask import (Flask, abort, flash, g, make_response, redirect,
@@ -222,6 +223,13 @@ def safe_next(target):
     if (not target or not target.startswith("/") or target.startswith("//")
             or "\\" in target or target.startswith("/auth/")):
         return "/"
+    # Browsers drop tabs and newlines when they read an address, so
+    # "/\t/evil.example" would become "//evil.example".
+    if any(ord(c) < 0x20 or ord(c) == 0x7f for c in target):
+        return "/"
+    parts = urlsplit(target)
+    if parts.scheme or parts.netloc:
+        return "/"
     return target
 
 
@@ -263,7 +271,7 @@ app.jinja_env.globals["csrf_token"] = csrf_token
 def check_csrf():
     if request.method == "POST":
         sent = request.form.get("csrf", "")
-        if not sent or not secrets.compare_digest(sent, session.get("csrf", "")):
+        if not sent or not secrets.compare_digest(sent.encode("utf-8"), session.get("csrf", "").encode("utf-8")):
             abort(400, "This form has expired. Go back, reload the page and try again.")
 
 
@@ -271,9 +279,15 @@ class FailedSignIns:
     """Failed sign-ins over the last 15 minutes, kept in memory (the service
     runs as a single process)."""
 
+    # On Docker Desktop (macOS, Windows) every computer on the network
+    # reaches this service from the same address, so the per-address limit
+    # is wide: it only stops a flood, while the per-account limit does the
+    # protecting. A failed sign-in locks (username, address) for a while,
+    # which someone sharing an address could use to lock a colleague out
+    # for WINDOW; that is the usual trade-off of a lockout.
     WINDOW = 15 * 60
     PER_ACCOUNT = 5     # per username from one address
-    PER_ADDRESS = 30    # from one address, whatever the usernames
+    PER_ADDRESS = 100   # from one address, whatever the usernames
 
     def __init__(self):
         self._lock = threading.Lock()
