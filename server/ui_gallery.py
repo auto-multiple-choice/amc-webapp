@@ -38,6 +38,16 @@ def latex_escape(text):
     return "".join(out)
 
 
+def needs_unicode_engine(school_name):
+    """pdflatex with inputenc/fontenc (T1) prints Latin-1 letters; anything
+    else (Cyrillic, Greek, Devanagari...) needs XeLaTeX with a Unicode font."""
+    try:
+        str(school_name or "").encode("latin-1")
+        return False
+    except UnicodeEncodeError:
+        return True
+
+
 NAME_FIELD = (r"\namefield{\fbox{\begin{minipage}{%s\linewidth}" "\n"
               r"  \vspace*{1mm}Name:\par\vspace*{6mm}\namefielddots\vspace*{1mm}" "\n"
               r"\end{minipage}}}")
@@ -115,12 +125,12 @@ def _pages(pdf):
 
 def _store(pdf, dest):
     os.makedirs(dest, exist_ok=True)
-    shutil.copyfile(pdf, os.path.join(dest, "paper.pdf"))
     subprocess.run(["pdftoppm", "-png", "-f", "1", "-l", "1", "-scale-to-y", str(THUMB_HEIGHT),
                     "-scale-to-x", "-1", pdf, os.path.join(dest, "thumb")], check=True, timeout=120)
     for f in os.listdir(dest):  # pdftoppm names it thumb-1.png (or thumb-01.png)
         if f.startswith("thumb-") and f.endswith(".png"):
             os.replace(os.path.join(dest, f), os.path.join(dest, "thumb.png"))
+    shutil.copyfile(pdf, os.path.join(dest, "paper.pdf"))  # last: a folder is complete or absent
 
 
 def build(amc_dir, starters_dir, out):
@@ -136,6 +146,7 @@ def build(amc_dir, starters_dir, out):
     if os.path.isdir(starters_dir):
         jobs += [(STARTER_GROUP, d, os.path.join(starters_dir, d)) for d in sorted(os.listdir(starters_dir))
                  if os.path.isdir(os.path.join(starters_dir, d))]
+    failed = []
     for group, tid, src in jobs:
         work = tempfile.mkdtemp()
         try:
@@ -163,14 +174,23 @@ def build(amc_dir, starters_dir, out):
                 print(f"gallery: {group}/{tid} ok")
             else:
                 print(f"gallery: {group}/{tid} didn't compile")
-        except Exception as e:  # one broken template mustn't stop the build
+                failed.append(f"{group}/{tid}")
+                shutil.rmtree(os.path.join(out, group, tid), ignore_errors=True)
+        except Exception as e:  # one broken AMC template mustn't stop the build
             print(f"gallery: {group}/{tid} failed: {e}")
+            failed.append(f"{group}/{tid}")
+            shutil.rmtree(os.path.join(out, group, tid), ignore_errors=True)
         finally:
             shutil.rmtree(work, ignore_errors=True)
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, "index.json"), "w", encoding="utf-8") as f:
         json.dump(index, f, indent=1)
     print(f"gallery: {len(index)} of {len(jobs)} templates")
+    # Our own starters must build (the wizard relies on them), and a
+    # gallery with nothing in it means AMC itself is broken.
+    bad_starters = [t for t in failed if t.startswith(STARTER_GROUP + "/")]
+    if bad_starters or not index:
+        sys.exit(f"gallery: build failed: {', '.join(bad_starters) or 'no template compiled'}")
 
 
 if __name__ == "__main__":

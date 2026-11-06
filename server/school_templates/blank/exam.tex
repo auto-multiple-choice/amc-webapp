@@ -1,7 +1,14 @@
 \documentclass[a4paper]{article}
 
-\usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
+% pdflatex by default; XeLaTeX when the school name needs it (set by the app).
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+\else
+  \usepackage{fontspec}
+  \setmainfont{Linux Libertine O}
+\fi
 \usepackage{graphicx}
 \usepackage[box,completemulti]{automultiplechoice}
 

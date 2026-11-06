@@ -20,6 +20,7 @@ async function main() {
   await b.signIn();
   await b.goto('/');
   b.check('The app opens', await b.waitFor('S.online === true && S.projects !== null'));
+  await b.preflight({ exams: [EXAM] });
   b.check('The guide is loaded', await b.waitFor('Array.isArray(S.guidePages) && S.guidePages.length === 11', 10000), J(await b.js('S.guidePages && S.guidePages.map(p => p.id)')));
   b.check('No tour on the dashboard by itself', await b.js('!document.querySelector("#tour")'));
 
@@ -38,8 +39,7 @@ async function main() {
   b.check('Guide text is escaped, not run', await b.js(`md('<img src=x onerror="window.bad=1"> **bold** [a](javascript:alert(1))').includes('&lt;img') && !md('[a](javascript:alert(1))').includes('href="javascript')`));
 
   // ---- The first-run tour, on the first exam page
-  await b.js(`S.creating = ${J(EXAM)}; socket_emit('create-project-template', [${J(EXAM)}, 'en/simple']); true`);
-  b.check('An exam opens', await b.waitFor(`S.project === ${J(EXAM)} && S.route.step === 'questions'`, 30000));
+  b.check('An exam opens', (await b.createFromTemplate(EXAM)) && (await b.waitFor(`S.route.step === 'questions'`, 10000)));
   b.check('The tour starts by itself', await b.waitFor(`!!document.querySelector('#tour .tour-card') && document.querySelector('#tour-title').textContent === 'The ten steps'`, 8000));
   const n = await b.js(`tour.steps.length`);
   b.check('It points out the steps, the guide box, the preview panel and the guide', n === 4 && (await b.js(`tour.steps.map(s => s.title).join('|')`)) === 'The ten steps|What to do here|The preview panel|The guide', await b.js(`tour.steps.map(s => s.title).join('|')`));
@@ -60,6 +60,8 @@ async function main() {
 
   // ---- Step boxes and the guide inside an exam
   b.check('"What to do here" comes from the guide', await b.waitFor(`document.querySelector('#main .guide').textContent.includes('Write each question with its answers')`, 5000));
+  // The same sentence is in the built-in fallback, so prove the box reads the guide: change the guide's text and redraw.
+  b.check('...really from the guide, not the built-in fallback', await b.js(`(() => { const p = S.guidePages.find(x => x.id === 'questions'); p.markdown = p.markdown.replace('Write each question', 'Write each GUIDE-TEST question'); renderMain(); return document.querySelector('#main .guide').textContent.includes('GUIDE-TEST question'); })()`));
   await b.click('#main .guide [data-act="guide-open"][data-page="questions"]');
   b.check('"More in the guide" opens the step\'s page', await b.waitFor(`document.querySelector('#preview .guide-page h2') && document.querySelector('#preview .guide-page h2').textContent === 'Questions'`, 3000));
   await b.click('.step[href$="/marking-scheme"]');
@@ -70,8 +72,7 @@ async function main() {
   b.check('"About this step" opens the current step\'s page', await b.waitFor(`document.querySelector('#preview .guide-page h2').textContent === 'Marking scheme'`, 3000));
   await b.shot('g3-guide-in-exam');
 
-  await b.js(`socket_emit('project-delete', ${J(EXAM)}); true`);
-  b.check('The test exam is deleted', await b.waitFor(`fetch('/ui/api/projects', {cache: 'no-store'}).then(r => r.json()).then(r => !r.projects.some(p => p.name === ${J(EXAM)}))`, 20000));
+  b.check('The test exam is deleted', await b.deleteExam(EXAM));
 }
 
 main().then(() => b.finish(), (e) => b.finish(e));

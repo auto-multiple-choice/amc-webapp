@@ -8,10 +8,16 @@ Run with the app's image (it has Flask):
   docker run --rm -v "$PWD/server:/s:ro" -v "$PWD/tests-ui/test_ui_logic.py:/t.py:ro" \
     --entrypoint /venv/bin/python amc-web /t.py
 """
+import os
 import re
 import sys
-sys.path.insert(0, "/s")
-import ui
+# The server code: /s in the README's docker command, or next to this file.
+SERVER = os.environ.get("AMC_UI_SERVER") or ("/s" if os.path.isdir("/s") else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server"))
+sys.path.insert(0, SERVER)
+try:
+    import ui
+except ImportError as e:
+    sys.exit(f"Can't import the server code from {SERVER} ({e}). Run this with the app's image, see the docstring.")
 ok = fail = 0
 def check(name, cond):
     global ok, fail
@@ -96,6 +102,7 @@ ui.core = types.SimpleNamespace(
     get_options=lambda names: {n: opts.get(n, "") for n in names},
     get_option=lambda n: opts.get(n, "latex" if n == "filter" else None),
     main_source_file=lambda: opts.get("main", "source.tex"),
+    students_list_file=lambda: None,
     project_dir=lambda: pdir,
     Amcdb=amcdb.Amcdb,
     first_of=first_of,
@@ -285,15 +292,22 @@ check("logo: SVG recognised", ui._logo_kind(b'<?xml version="1.0"?>\n<svg xmlns=
 check("logo: anything else refused", ui._logo_kind(b"GIF89a...") is None and ui._logo_kind(b"<html><script>") is None)
 
 import ui_gallery as g
-tpl = open("/s/school_templates/blank/exam.tex").read()
+tpl = open(os.path.join(SERVER, "school_templates/blank/exam.tex")).read()
 out = g.starter_source(tpl, "latex", school_name="St. Mary's & Co_ 100%", logo_file="school-logo.png", code_digits=6)
 check("starter: school name escaped for LaTeX", r"St. Mary's \& Co\_ 100\%" in out)
 check("starter: logo and code boxes", "\\includegraphics[height=12mm]{school-logo.png}" in out and "\\AMCcodeGridInt{student}{6}" in out)
 check("starter: no markers left", "%%AMCUI" not in out)
 plain = g.starter_source(tpl, "latex")
 check("starter: without branding, no school line and a plain name field", "includegraphics[" not in plain and "AMCcodeGridInt" not in plain and "\\namefield" in plain)
-txt = g.starter_source(open("/s/school_templates/blank-txt/exam.txt").read(), "plain", code_digits=8, separate=True)
+txt = g.starter_source(open(os.path.join(SERVER, "school_templates/blank-txt/exam.txt")).read(), "plain", code_digits=8, separate=True)
 check("starter: AMC-TXT options", "Code: 8\nSeparateAnswerSheet: 1\n" in txt and "%%AMCUI" not in txt)
+hard = g.starter_source(tpl, "latex", school_name="A\\B {C} $1 #2 ~x ^y")
+check("starter: every LaTeX special escaped", "\\textbackslash{}B \\{C\\} \\$1 \\#2 \\textasciitilde{}x \\textasciicircum{}y" in hard)
+check("starter: a Latin name keeps pdflatex", not g.needs_unicode_engine("Lycée Évariste Galois") and g.needs_unicode_engine("Школа № 5") and g.needs_unicode_engine("विद्यालय"))
+import basic
+check("names: '_branding', '.hidden', '-x' refused", all(basic.project_name_problem(n) for n in ("_branding", ".hidden", "-x", "", "  ", "a/b", "a\\b", "a:b", "x" * 130, "tab\there")))
+check("names: ordinary names allowed", all(basic.project_name_problem(n) is None for n in ("Physics 10B", "Quiz #3", "Épreuve n°2 (2026)", "exam.v2")))
+
 
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

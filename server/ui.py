@@ -12,6 +12,7 @@ Kept in its own file so merging AMC team updates stays easy.
 
 import base64
 import colorsys
+import functools
 import hashlib
 import html
 import json
@@ -49,7 +50,7 @@ def init_app(app, server_module):
     core = server_module
     app.register_blueprint(bp)
     for event, handler in SOCKET_EVENTS.items():
-        core.socketio_name(event)(handler)
+        core.socketio_name(event)(_guarded(event, handler))
 
 
 # ---------------------------------------------------------------- pages
@@ -218,7 +219,8 @@ def api_status():
             counts[s["state"]] += 1
         out["matched"] = counts["auto"] + counts["manual"]
         out["not_in_list"] = counts["none"]
-        out["unmatched"] = counts["unmatched"]
+        # Without a class list there is nothing to match them to.
+        out["unmatched"] = counts["unmatched"] if core.students_list_file() else 0
     if out["marked"]:
         out.update(results_freshness(pdir, rec, out))
     out["lock"] = exam_lock(pdir, rec)
@@ -309,11 +311,21 @@ def _record_file(pdir):
 
 
 def read_record(pdir):
+    path = _record_file(pdir)
     try:
-        with open(_record_file(pdir), encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             rec = json.load(f)
         return rec if isinstance(rec, dict) else {}
-    except (OSError, ValueError):
+    except OSError:
+        return {}
+    except ValueError:
+        # Damaged: keep it for a look instead of writing over it (it may
+        # hold the lock) at the next change.
+        try:
+            os.replace(path, path + ".corrupt")
+            core.app.logger.error(f"Unreadable {path}, kept as {RECORD}.corrupt")
+        except OSError:
+            pass
         return {}
 
 
@@ -363,6 +375,9 @@ def layout_confirmation(pdir, rec=None):
     ok = rec.get("layout_ok") or {}
     stamp = _build_stamp(pdir)
     if stamp and ok.get("stamp") == stamp:
+        # A rebuild that failed clears the layout and keeps the old PDF.
+        if not (_has_db(pdir, "layout") and _query(core.Amcdb(pdir).layout_npages, 0)):
+            return None
         return {"at": ok.get("at"), "by": ok.get("by")}
     return None
 
@@ -424,22 +439,45 @@ def refuse_if_locked(what):
 
 
 def option_refused(name):
-    return (str(name) in LOCKED_OPTIONS
+    # change_option() drops a "project:" prefix and puts the name into an
+    # XPath, so compare the bare name and allow only plain option names.
+    bare = re.sub(r"^(?:project|global):", "", str(name))
+    if not re.fullmatch(r"[A-Za-z0-9_]+", bare):
+        core.dialog_msg(warn="Unknown setting.")
+        return True
+    return (bare in LOCKED_OPTIONS
             and refuse_if_locked("This setting changes the papers."))
 
 
 def delete_refused(filename):
-    ext = str(filename).rsplit(".", 1)[-1].lower()
+    filename = str(filename)
+    if filename in (RECORD, "options.xml"):
+        return refuse_if_locked("The exam's settings and record can't be deleted.")
+    ext = filename.rsplit(".", 1)[-1].lower()
     return (ext in SOURCE_EXTENSIONS
             and refuse_if_locked("Source files can't be deleted."))
 
 
-def upload_refusal(upload, dest):
-    """In /upload: the reason this file can't be saved, or None."""
-    if not _current_lock():
+def _lock_for_path(path):
+    """The lock of the exam whose folder holds PATH, or None."""
+    root = os.path.realpath(core.projects_dir())
+    d = os.path.realpath(os.path.dirname(path))
+    while d.startswith(root + os.sep):
+        if _is_exam(d):
+            return exam_lock(d)
+        d = os.path.dirname(d)
+    return None
+
+
+def write_refusal(path, upload):
+    """In /upload and /fs (POST): the reason this file can't be written
+    to PATH, or None."""
+    if not _lock_for_path(path):
         return None
-    fn, ext = core.upload_file_parts(upload)
-    path = os.path.join(core.project_dir(), fn)
+    fn = os.path.basename(path)
+    ext = fn.rsplit(".", 1)[-1].lower() if "." in fn else ""
+    if fn in (RECORD, "options.xml"):
+        return LOCKED.format(what="This file holds the exam's settings and record.")
     if ext not in SOURCE_EXTENSIONS or not os.path.isfile(path):
         return None  # a new file isn't used by the printed papers
     new = upload.stream.read()
@@ -450,6 +488,12 @@ def upload_refusal(upload, dest):
                    new.decode("utf-8", "replace"), ext):
         return None
     return ONLY_SCORING
+
+
+def upload_refusal(upload, dest):
+    """In /upload: the reason this file can't be saved, or None."""
+    fn, _ = core.upload_file_parts(upload)
+    return write_refusal(os.path.join(core.project_dir(), fn), upload)
 
 
 BRACED = r"\{(?:[^{}]|\{[^{}]*\})*\}"
@@ -604,6 +648,12 @@ def on_printed(data):
     how = "printer" if data.get("how") == "printer" else "files"
     copies = str(data.get("copies", ""))[:20]
     pdir = core.project_dir()
+    if how == "printer" and not (_has_db(pdir, "layout") and _query(core.Amcdb(pdir).print_timestamp)):
+        # AMC records the print time once the job reached the print system;
+        # none means the print failed (the error has been shown), so the
+        # exam stays unlocked.
+        add_activity(pdir, "Printing failed: nothing reached the printer")
+        return
     lock = {"since": int(time.time()), "by": _who(), "how": how}
     _update_record(pdir, lambda rec: rec.setdefault("lock", lock))
     add_activity(pdir, ("Printed on the shared machine" if how == "printer"
@@ -623,11 +673,21 @@ def on_unlock(data):
     core.clear_data("mep:")
     core.get_db().clear_print_timestamp()
 
+    # Exported marks and annotated sheets came from those marks: without
+    # them the exam would still look "exported".
+    for sub in ("exports", PREVIEW_DIR, f"{PREVIEW_DIR}/pdf", f"{PREVIEW_DIR}/jpg"):
+        d = os.path.join(pdir, sub)
+        for f in _files(d):
+            try:
+                os.unlink(os.path.join(d, f))
+            except OSError:
+                pass
+
     def change(rec):
-        rec.pop("lock", None)
-        rec.pop("layout_ok", None)
+        for k in ("lock", "layout_ok", "marks"):
+            rec.pop(k, None)
     _update_record(pdir, change)
-    add_activity(pdir, "Unlocked: layout, scans, marks and matches removed")
+    add_activity(pdir, "Unlocked: layout, scans, marks, matches, exported marks and annotated sheets removed")
     core.emit_msg("ui-changed", "unlock")
 
 
@@ -640,15 +700,18 @@ def on_scoring_defaults(data):
             return
     fmt, path = _main_source()
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", newline="") as f:
             text = f.read()
         new = write_scoring_defaults(text, fmt, values)
+    except UnicodeDecodeError:
+        core.dialog_msg(warn="The main source file isn't UTF-8 text, so it can't be changed here.")
+        return
     except (OSError, TypeError, ValueError) as e:
-        core.dialog_msg(warn=str(e) if isinstance(e, ValueError) else "The main source file can't be changed.")
+        core.dialog_msg(warn=html.escape(str(e)) if isinstance(e, ValueError) else "The main source file can't be changed.")
         return
     if new != text:
         tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
+        with open(tmp, "w", encoding="utf-8", newline="") as f:
             f.write(new)
         os.replace(tmp, path)
         add_activity(core.project_dir(), "Default scoring changed: single "
@@ -934,9 +997,16 @@ def class_list():
     out = {"file": os.path.basename(path), "columns": [], "rows": [], "unique": [],
            "key": None, "error": None}
     try:
-        rows = [{k: (v or "").strip() for k, v in r.items() if k is not None}
+        # A file saved by Excel as "CSV UTF-8" starts with a byte-order
+        # mark, which would stick to the first column's name.
+        bom = lambda k: k.lstrip("\ufeff") if isinstance(k, str) else k
+        rows = [{bom(k): (v or "").strip() for k, v in r.items() if k is not None}
                 for r in core.list_file_read(path)]
-        columns = core.list_file_headers(path)[1]
+        columns = [bom(c) for c in core.list_file_headers(path)[1]]
+    except UnicodeDecodeError:
+        out["error"] = ("The class list isn't UTF-8 text. Save it again as CSV UTF-8 "
+                        "(in Excel: \"CSV UTF-8\"), then upload it.")
+        return out
     except Exception as e:  # unreadable, empty, or no separator found
         core.app.logger.warning(f"Can't read class list {path}: {e}")
         out["error"] = ("The class list can't be read. Save it as CSV with column "
@@ -1404,8 +1474,10 @@ def class_list_refusal(filename):
         return "A class list is a CSV file (.csv or .txt)."
     pdir = core.project_dir()
     main = core.main_source_file()
+    current = os.path.basename(core.students_list_file() or "")
     if filename in (RECORD, "options.xml", main) or (
-            os.path.isfile(os.path.join(pdir, filename)) and ext == "txt"
+            filename != current
+            and os.path.isfile(os.path.join(pdir, filename)) and ext == "txt"
             and core.get_option("filter") == "plain"):
         return f"{filename} is one of the exam's own files. Rename the class list and upload it again."
     return None
@@ -1466,12 +1538,19 @@ def source_questions(pdir):
     found = {}
     files = [core.main_source_file()] if fmt == "plain" else _source_files(pdir)
     for f in files:
+        problem = None
         try:
-            with open(os.path.join(pdir, f), encoding="utf-8", errors="replace") as fh:
-                text = fh.read()
+            with open(os.path.join(pdir, f), "rb") as fh:
+                raw = fh.read()
         except (OSError, TypeError):
             continue
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("utf-8", "replace")
+            problem = "The file isn't UTF-8 text."  # shown read-only
         for item in (scale.read_txt(text, f) if fmt == "plain" else scale.read_latex(text, f)):
+            item["problem"] = item["problem"] or problem
             found.setdefault(item["id"], []).append(item)
     return found
 
@@ -1596,7 +1675,7 @@ def refresh_scale(pdir, report_errors=False):
             _scale_jobs[pdir]["pending"] = False
     finally:
         _scale_jobs.pop(pdir, None)
-    core.emit_msg("ui-scale", "done")
+        core.emit_msg("ui-scale", "done")
 
 
 def on_scale_refresh(data=None):
@@ -1615,8 +1694,12 @@ def on_question_edit(data):
         return
     q = found[0]
     path = os.path.join(pdir, q["file"])
-    with open(path, encoding="utf-8") as f:
-        old = f.read()
+    try:
+        with open(path, encoding="utf-8", newline="") as f:
+            old = f.read()
+    except (OSError, UnicodeDecodeError):
+        core.dialog_msg(warn="This file isn't UTF-8 text, so it can't be changed here. Edit it in Questions.")
+        return
     rec = read_record(pdir)
     neutral = dict(rec.get("neutral") or {})
     try:
@@ -1658,7 +1741,7 @@ def on_question_edit(data):
         core.dialog_msg(warn=ONLY_SCORING)
         return
     tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
+    with open(tmp, "w", encoding="utf-8", newline="") as f:
         f.write(new)
     os.replace(tmp, path)
     _update_record(pdir, lambda r: r.__setitem__("neutral", neutral))
@@ -1980,11 +2063,12 @@ def on_create_exam(data):
         return
     if not rep:
         return  # upstream has said the name is taken
-    try:
-        copies = max(0, min(int(data.get("copies") or 0), 9999))
-        code_digits = max(0, min(int(data.get("code") or 0), 12))
-    except (TypeError, ValueError):
-        copies = code_digits = 0
+    def number(v, most):
+        try:
+            return max(0, min(int(v or 0), most))
+        except (TypeError, ValueError):
+            return 0
+    copies, code_digits = number(data.get("copies"), 9999), number(data.get("code"), 12)
     style = "separate" if data.get("style") == "separate" else "paper"
     if gid == STARTER_GROUP:
         if tid not in STARTERS:
@@ -1999,6 +2083,7 @@ def on_create_exam(data):
         tpath = core.template_path(f"{gid}/{tid}")
         with tarfile.open(tpath + ".tgz") as tarf:
             if not core.tar_extract_options_siblings(tarf, rep):
+                core.dialog_msg(warn="This template can't be used: it holds no AMC project.")
                 return
         title = next((t.get("title") for t in core.templates if t["gid"] == gid and t["id"] == tid), tid)
     core.create_project_dirs(rep)
@@ -2007,6 +2092,8 @@ def on_create_exam(data):
     core.remove_uuid(name)
     if copies:
         core.change_option("nombre_copies", copies)
+    if gid == STARTER_GROUP and not tid.endswith("-txt") and gallery.needs_unicode_engine(branding().get("name", "")):
+        core.change_option("moteur_latex_b", "xelatex")  # the starter's preamble follows the engine
     meta = {k: str(data.get(k) or "").strip()[:120] for k in META_FIELDS}
     _update_record(rep, lambda rec: rec.__setitem__("meta", meta))
     add_activity(rep, f"Exam created from the template \"{title}\"")
@@ -2068,7 +2155,9 @@ def exam_progress(pdir, name):
                         if (p.get("sensitivity") or 0) >= SENSITIVITY_TO_CHECK
                         and not (p.get("timestamp_manual") or 0) > 0)
     marked = _query(db.n_graded_students, 0) if has("scoring") else 0
-    unmatched = sum(1 for s in _query(lambda: sheet_rows(pdir), []) if s["state"] == "unmatched") if marked else 0
+    has_list = bool(core.get_option("listeetudiants", p=name))
+    unmatched = (sum(1 for s in _query(lambda: sheet_rows(pdir), []) if s["state"] == "unmatched")
+                 if marked and has_list else 0)
     exports = _files(f"{pdir}/exports")
     annotated = _files(_annotated_dir(pdir))
     marks = rec.get("marks") or {}
@@ -2149,6 +2238,53 @@ def api_guide():
         m = re.match(r"#\s+(.+)", text)
         pages.append({"id": pid, "title": m.group(1).strip() if m else pid, "markdown": text})
     return jsonify(pages=pages)
+
+
+def record_cloned(dest, source_name):
+    """Called by upstream's project-clone: a copy starts with its own
+    record (not locked by hand, not archived, its layout to check again,
+    its own history). Scans in the copy still lock it, as in any exam."""
+    def change(rec):
+        for k in ("lock", "layout_ok", "archived", "activity"):
+            rec.pop(k, None)
+    _update_record(dest, change)
+    try:
+        os.unlink(os.path.join(dest, RECORD + ".lock"))
+    except OSError:
+        pass
+    add_activity(dest, f"Copied from \"{source_name}\"")
+
+
+# Events that name their exam in their data rather than working on the open one.
+NO_PROJECT_EVENTS = {"ui-create-exam", "ui-exam-meta", "ui-exam-archive"}
+
+
+def _socket_project():
+    """The exam a socket message is about (its "proj" field), if it exists."""
+    name = getattr(flask_g, "project_name", None)
+    try:
+        return name if name and core.project_exists(name) else None
+    except ValueError:
+        return None
+
+
+def _guarded(event, handler):
+    """Run a ui-* handler on an exam that exists. If it raises, the browser
+    gets its screen back and a message, instead of "Working…" for ever."""
+    @functools.wraps(handler)
+    def wrapper(*args):
+        if event not in NO_PROJECT_EVENTS and not _socket_project():
+            core.dialog_msg(warn="This exam doesn't exist any more.")
+            return None
+        try:
+            return handler(*args)
+        except Exception:
+            core.app.logger.exception(f"{event} failed")
+            core.emit_msg("end-command")
+            core.emit_msg("ui-scale", "done")
+            core.dialog_msg(err="Something went wrong on the server. The server log has the details.")
+            return None
+    return wrapper
 
 
 SOCKET_EVENTS = {

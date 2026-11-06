@@ -123,7 +123,7 @@ async function main() {
   b.check('...and builds', await b.waitFor(`!document.querySelector('#work') && S.status && S.status.layout_pages > 0`, 180000));
   if (await b.js(`!!document.querySelector('.server-dialog')`)) await b.js('warn_ok(); true');
   await b.shot('b2-exam');
-  await b.js(`socket_emit('project-delete', ${J(EXAM)}); true`);
+  b.check('The test exam is deleted', await b.deleteExam(EXAM));
   b.check('The test exam is deleted', await b.waitFor(`fetch('/ui/api/projects', {cache: 'no-store'}).then(r => r.json()).then(r => !r.projects.some(p => p.name === ${J(EXAM)}))`, 20000));
 
   // ---- The sign-in page (shared-machine mode)

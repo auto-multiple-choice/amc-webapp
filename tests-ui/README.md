@@ -41,7 +41,7 @@ docker run --rm -v "$PWD/server:/s:ro" -v "$PWD/tests-ui/test_ui_logic.py:/t.py:
 
 It needs Node 22 or later and Google Chrome (set `CHROME=/path/to/chrome` if it isn't in the usual place).
 
-**Use a test copy of the app with an empty data folder, never your real exams.** The test creates and deletes exams.
+**Use a test copy of the app with an empty data folder, never your real exams.** The tests create and delete exams, and the branding test resets the appearance. Each test first checks that nothing of yours is in the way (an exam with a test name, real branding, or any exam at all for the dashboard test) and refuses to run otherwise; `AMC_E2E_FORCE=1` overrides that. An exam a test made is deleted even when the test fails midway.
 
 ### Single computer
 
@@ -110,6 +110,6 @@ With `AMC_E2E_KEEP=1`, the test exam is kept afterwards, to look at it.
 
 ### Notes for all
 
-The scans and results tests run `make_scans.py` in the app's container with `docker exec`. Set `AMC_E2E_CONTAINER` if the container isn't `amc-uitest`; `AMC_E2E_USER`/`AMC_E2E_PASS` sign in first, as above.
+The scans and results tests run `make_scans.py` in the app's container with `docker exec`. They find the container from the address they test (the compose project publishing that port; in shared-machine mode that is caddy's, and they take its `amc-web` service); `AMC_E2E_CONTAINER` names it directly. `AMC_E2E_USER`/`AMC_E2E_PASS` sign in first, as above.
 
 `make_scans.py` takes options as JSON (faint marks, blank page, missing page, student codes, double ticks); see the top of the file. `fixtures.mjs` has the shared setup (a printed exam, test scans) and `cdp.mjs` the small Chrome driver.

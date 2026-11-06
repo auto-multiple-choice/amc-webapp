@@ -19,11 +19,11 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startBrowser, sleep } from './cdp.mjs';
-import { makeScans, printedExam } from './fixtures.mjs';
+import { appContainer, makeScans, printedExam } from './fixtures.mjs';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8095';
 const USER = process.env.AMC_E2E_USER || '';
-const CONTAINER = process.env.AMC_E2E_CONTAINER || 'amc-uitest';
+const CONTAINER = appContainer(BASE);
 const EXAM = 'Results test exam';
 const COPIES = 4;
 const b = await startBrowser({ base: BASE, user: USER, pass: process.env.AMC_E2E_PASS || '', shots: process.argv[3] || null });
@@ -45,6 +45,7 @@ async function main() {
   await b.signIn();
   await b.goto('/');
   b.check('The app opens', await b.waitFor('S.online === true'));
+  await b.preflight({ exams: [EXAM] });
 
   // A printed exam with code boxes, and its scans
   await printedExam(b, { name: EXAM, copies: COPIES, codeGrid: true });
@@ -203,10 +204,8 @@ async function main() {
   const activity = (await b.js('S.status.activity.map(a => a.what)')).join(' | ');
   b.check('The history records each step', ['Marks computed', 'Class list loaded', 'Automatic matching', 'Marks exported (CSV)', 'Annotated sheets made'].every((w) => activity.includes(w)), activity);
 
-  if (!process.env.AMC_E2E_KEEP) {
-    await b.js(`socket_emit('project-delete', ${J(EXAM)}); true`);
-    await sleep(500);
-  }
+  if (process.env.AMC_E2E_KEEP) b.created.delete(EXAM);
+  else b.check('The test exam is deleted', await b.deleteExam(EXAM));
 }
 
 main().then(() => b.finish(), (e) => b.finish(e));

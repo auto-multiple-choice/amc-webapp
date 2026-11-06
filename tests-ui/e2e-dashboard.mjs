@@ -43,15 +43,14 @@ async function wizard({ name, klass, subject, date, group, template, style, code
   await b.click('[data-act="wiz-create"]');
   return b.waitFor(`S.project === ${J(name)} && S.route.step === 'questions' && !!S.status`, 30000);
 }
-async function deleteExam(name) {
-  await b.js(`socket_emit('project-delete', ${J(name)}); true`);
-  return b.waitFor(`fetch('/ui/api/projects', {cache: 'no-store'}).then(r => r.json()).then(r => !r.projects.some(p => p.name === ${J(name)}))`, 20000);
-}
+const deleteExam = (name) => b.deleteExam(name);
 
 async function main() {
   await b.signIn();
   await b.goto('/');
   b.check('The app opens', await b.waitFor('S.online === true && S.projects !== null'));
+  await b.preflight({ exams: [A, B], emptyOnly: true });
+  b.created.add(A); b.created.add(B);
   b.check('An empty dashboard offers a new exam', await b.waitFor(`document.querySelector('#main').textContent.includes('No exams yet') && !!document.querySelector('#main a[href="/new"]')`));
 
   // ---- The wizard, step by step

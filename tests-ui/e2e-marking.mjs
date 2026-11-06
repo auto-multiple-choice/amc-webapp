@@ -26,11 +26,9 @@ async function chooseRule(title, choice, custom = '') {
   await b.js(`(() => { document.querySelector('#dlg-form [name="choice"][value=${J(choice)}]').checked = true; document.querySelector('#dlg-form [name="custom"]').value = ${J(custom)}; return true; })()`);
   await b.click('#dlg-form button[type="submit"]');
 }
-async function deleteExam(name) {
-  await b.js(`socket_emit('project-delete', ${J(name)}); true`);
-  return b.waitFor(`fetch('/ui/api/projects', {cache: 'no-store'}).then(r => r.json()).then(r => !r.projects.some(p => p.name === ${J(name)}))`, 20000);
-}
+const deleteExam = (name) => b.deleteExam(name);
 async function createEmpty(name, kind) {
+  b.created.add(name);
   await b.js(`S.creating = ${J(name)}; socket_emit('create-project-empty', [${J(name)}, ${J(kind)}]); true`);
   return b.waitFor(`S.project === ${J(name)} && !!S.status`, 30000);
 }
@@ -41,7 +39,8 @@ async function main() {
   b.check('The app opens', await b.waitFor('S.online === true'));
 
   // ---- A LaTeX exam from AMC's simple template
-  await b.js(`S.creating = ${J(EXAM)}; socket_emit('create-project-template', [${J(EXAM)}, 'en/simple']); true`);
+  await b.preflight({ exams: [EXAM, TXT_EXAM] });
+  await b.createFromTemplate(EXAM);
   b.check('The exam is created', await b.waitFor(`S.project === ${J(EXAM)} && !!S.status`, 30000));
   await b.click('.step[href$="/marking-scheme"]');
   b.check('The panel reads the questions with AMC', await b.waitFor(settled(`S.questions.questions.length === 2`), 90000), J(await b.js('S.questions')));

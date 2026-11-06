@@ -69,6 +69,7 @@ const STATE_CHIPS = {
   scanned: ['chip-warning', 'upload', 'Scans uploaded'],
   marked: ['chip-success', 'clipboard-check', 'Marked'],
   exported: ['chip-success', 'check-circle', 'Exported'],
+  archived: ['', 'archive', 'Archived'],
 };
 
 /* ---------- State ---------- */
@@ -83,7 +84,7 @@ const S = {
   templates: null,
   files: null,
   config: null,
-  source: { name: null, mode: null, url: null, dirty: false, loaded: false },
+  source: { name: null, mode: null, url: null, dirty: false, loaded: false, failed: false },
   theme: store.get('theme', 'auto'),
   previewOpen: store.get('previewOpen', window.innerWidth >= 1280),
   previewMax: false,
@@ -189,12 +190,18 @@ function upload(url, files, fields = {}, onProgress = null) {
 socket.on('connect', () => {
   S.online = true;
   socket_emit('is-online', VERSION);
+  // A job's "end" went to the old connection: don't stay behind "Working…".
+  if (S.work) { S.work = null; S.workText = ''; renderWork(); }
   renderTop();
   if (S.route.kind === 'exam' && S.project) openProject(S.project);
 });
 socket.on('disconnect', () => { S.online = false; renderTop(); });
 socket.on('reload', () => location.reload());
-socket.on('begin-command', () => { S.work = { text: S.workText || 'Working…', p: null }; renderWork(); });
+socket.on('begin-command', () => {
+  S.work = { text: S.workText || 'Working…', p: null, since: Date.now() };
+  renderWork();
+  setTimeout(() => { if (S.work && Date.now() - S.work.since >= WORK_HIDE_AFTER) renderWork(); }, WORK_HIDE_AFTER + 50);
+});
 socket.on('t', (text) => { S.workText = text; if (S.work) { S.work.text = text; renderWork(); } });
 socket.on('p', (p) => { if (S.work) { S.work.p = p; renderWork(); } });
 socket.on('end-command', () => {
@@ -213,15 +220,16 @@ socket.on('end-command', () => {
 });
 socket.on('dialog', (html) => {
   if (/msg-err/.test(html)) S.buildError = true;
+  S.creating = null; // a message while an exam is being created means it was refused
   showServerDialog(html);
   if (S.route.step === 'marking-scheme') loadQuestions(); // a refused change: show what is really saved
 });
-socket.on('dialog-disconnect', (html) => { showServerDialog(html); socket.disconnect(); });
+socket.on('dialog-disconnect', (html) => { showServerDialog(html, { sticky: true }); socket.disconnect(); });
 socket.on('u-projects-list', () => { if (S.route.kind === 'exams') loadProjects(); });
 socket.on('menu', () => refreshStatus());
 socket.on('project-open', (data) => onProjectOpen(data[0]));
 socket.on('source-name', (data) => onSourceName(...data));
-socket.on('source-saved', () => { S.source.dirty = false; renderEditorBar(); });
+socket.on('source-saved', () => { if (!editor || editor.getValue() === S.source.text) S.source.dirty = false; renderEditorBar(); });
 socket.on('project-files-list', () => loadFiles());
 socket.on('ui-changed', (what) => {
   if (what === 'unlock') { toast('Exam unlocked. Rebuild the papers, then check the layout again.', 'lock-slash'); S.previewMode = null; }
@@ -308,13 +316,16 @@ function parsePath(path) {
 }
 const examPath = (name, step) => `/exam/${enc(name)}/${step}`;
 
+/* Whether a route leaves the open exam's editor (unsaved changes would be lost). */
+const leavesEditor = (r) => S.source.dirty && !(r.kind === 'exam' && r.name === S.project && r.step === 'questions');
+
 async function navigate(path, { replace = false } = {}) {
-  if (S.source.dirty && !(await confirmLeave())) return;
+  if (leavesEditor(parsePath(path)) && !(await confirmLeave())) return;
   history[replace ? 'replaceState' : 'pushState']({}, '', path);
   onRoute();
 }
 window.addEventListener('popstate', async () => {
-  const leavingEditor = S.source.dirty && parsePath(location.pathname).step !== 'questions';
+  const leavingEditor = leavesEditor(parsePath(location.pathname));
   if (leavingEditor) {
     const target = location.pathname;
     history.pushState({}, '', examPath(S.project, 'questions'));
@@ -420,20 +431,25 @@ function enterStep() {
 
 /* ---------- Data ---------- */
 
+/* Calls within 120 ms share one request; every caller's promise resolves. */
 let statusTimer = null;
+let statusWaiters = [];
 function refreshStatus() {
   if (!S.project) return Promise.resolve();
   clearTimeout(statusTimer);
   return new Promise((resolve) => {
+    statusWaiters.push(resolve);
     statusTimer = setTimeout(async () => {
-      if (!S.project) { resolve(); return; } // left the exam meanwhile
-      try {
-        const st = await getJSON('/ui/api/status');
-        if (st.project === S.project) S.status = st;
-      } catch (e) { console.error(e); }
-      renderTop(); renderSide(); renderPreview();
-      if (S.route.step && S.route.step !== 'questions') renderMain(true);
-      resolve();
+      const waiters = statusWaiters; statusWaiters = [];
+      if (S.project) { // not left meanwhile
+        try {
+          const st = await getJSON('/ui/api/status');
+          if (st.project === S.project) S.status = st;
+        } catch (e) { console.error(e); }
+        renderTop(); renderSide(); renderPreview();
+        if (S.route.step && S.route.step !== 'questions') renderMain(true);
+      }
+      waiters.forEach((r) => r());
     }, 120);
   });
 }
@@ -621,22 +637,35 @@ function renderMain(keepScroll = false) {
   // text typed but not saved yet in other fields (a background refresh
   // mustn't undo it), when the page itself stays the same.
   const active = document.activeElement;
-  const typing = active && active.id && main.contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName)
-    ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
+  const typing = active && main.contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName) && fieldKey(active)
+    ? { key: fieldKey(active), value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
   const routeKey = `${r.kind}/${r.name || ''}/${r.step || ''}`;
   const edited = main.dataset.route === routeKey
-    ? [...main.querySelectorAll('input[id], textarea[id]')].filter((el) => !/^(checkbox|radio|file)$/.test(el.type) && el.value !== el.defaultValue).map((el) => [el.id, el.value])
+    ? [...main.querySelectorAll('input, textarea')].filter((el) => fieldKey(el) && !/^(checkbox|radio|file)$/.test(el.type) && el.value !== el.defaultValue).map((el) => [fieldKey(el), el.value])
     : [];
   main.innerHTML = html;
   main.dataset.route = routeKey;
-  edited.forEach(([id, value]) => { const el = document.getElementById(id); if (el && el.value === el.defaultValue) el.value = value; });
+  edited.forEach(([key, value]) => { const el = fieldByKey(main, key); if (el && el.value === el.defaultValue) el.value = value; });
   if (typing) {
-    const el = document.getElementById(typing.id);
+    const el = fieldByKey(main, typing.key);
     if (el) { el.value = typing.value; el.focus(); try { el.setSelectionRange(typing.start, typing.end); } catch { /* not a text field */ } }
   }
   if (keepScroll) main.scrollTop = top;
   if (r.step === 'questions' && S.project) mountEditor();
   if (r.step === 'match-students' && S.matchFocus) { S.matchFocus = false; const f = $('#match-search'); if (f) f.focus(); }
+}
+
+/* A field's identity across redraws: its id, or the setting or wizard answer it edits. */
+function fieldKey(el) {
+  if (el.id) return `#${el.id}`;
+  if (el.dataset.option) return `opt:${el.dataset.option}`;
+  if (el.dataset.wiz) return `wiz:${el.dataset.wiz}`;
+  return null;
+}
+function fieldByKey(root, key) {
+  if (key[0] === '#') return document.getElementById(key.slice(1));
+  const attr = key.startsWith('opt:') ? 'data-option' : 'data-wiz';
+  return root.querySelector(`[${attr}="${CSS.escape(key.slice(4))}"]`);
 }
 
 /* ---------- Rendering: preview panel ---------- */
@@ -654,7 +683,7 @@ function renderPreview() {
   APP.classList.toggle('preview-max', open && S.previewMax);
   APP.style.setProperty('--preview-w', S.previewW + 'px');
   const p = $('#preview');
-  if (!open) { p.innerHTML = ''; return; }
+  if (!open) { p.innerHTML = ''; previewHtml = ''; return; }
   const docs = previewDocs();
   let title; let body; let bodyClass = 'preview-body'; let url = null; let tabs = '';
   if (S.previewMode === 'guide') {
@@ -697,7 +726,7 @@ function renderPreview() {
     title = 'Preview';
     body = `<div class="preview-empty"><div class="empty-icon" style="margin:0 auto 12px">${ic('page')}</div><p><b>Nothing to show yet.</b></p><p class="subtle">Build the preview in Questions to see the question paper here.</p></div>`;
   }
-  p.innerHTML = `<div class="preview-resizer" role="separator" aria-orientation="vertical" aria-label="Resize the preview panel"></div>
+  const html = `<div class="preview-resizer" role="separator" aria-orientation="vertical" aria-label="Resize the preview panel"></div>
     <div class="preview-header"><span class="preview-title" title="${esc(title)}">${esc(title)}</span>
       ${S.previewFile ? `<button class="btn btn-ghost btn-sm" data-act="preview-docs">${ic('nav-arrow-left')} Documents</button>` : ''}
       ${url ? `<a class="btn btn-ghost btn-icon btn-sm" href="${url}" target="_blank" rel="noopener" title="Open in a new tab" aria-label="Open in a new tab">${ic('open-new-window')}</a>
@@ -705,9 +734,14 @@ function renderPreview() {
       <button class="btn btn-ghost btn-icon btn-sm" data-act="preview-max" title="${S.previewMax ? 'Restore' : 'Maximise'}" aria-label="${S.previewMax ? 'Restore' : 'Maximise'}">${ic(S.previewMax ? 'collapse' : 'expand')}</button>
       <button class="btn btn-ghost btn-icon btn-sm" data-act="toggle-preview" title="Close" aria-label="Close the preview">${ic('xmark')}</button></div>
     ${tabs}<div class="${bodyClass}" id="preview-body">${body}</div>`;
-  if (S.previewFile && /\.(csv|txt|tex|log|yml|yaml)$/i.test(S.previewFile.name)) fillTextPreview(S.previewFile.name, url);
+  if (html !== previewHtml) { // same content: keep the panel (a redraw reloads the PDF and loses the scroll)
+    previewHtml = html;
+    p.innerHTML = html;
+    if (S.previewFile && /\.(csv|txt|tex|log|yml|yaml)$/i.test(S.previewFile.name)) fillTextPreview(S.previewFile.name, url);
+  }
   if (S.previewMode === 'page' && S.review && S.review.svg) paintPageBoxes();
 }
+let previewHtml = '';
 
 function fileBody(name, url) {
   if (/\.pdf$/i.test(name)) return { body: `<iframe class="pdf-frame" src="${url}#view=FitH" title="${esc(name)}"></iframe>`, bodyClass: 'preview-body frame' };
@@ -777,7 +811,7 @@ const fmtDate = (t) => (t ? new Date(t * 1000).toLocaleDateString(undefined, { d
 
 /* ---------- View: exams ---------- */
 
-const DASH_STATES = [['draft', 'Draft'], ['tocheck', 'Layout to check'], ['ready', 'Ready to print'], ['printed', 'Printed'], ['checking', 'Checking scans'], ['scanned', 'Scans uploaded'], ['marked', 'Marked'], ['exported', 'Exported']];
+const DASH_STATES = [['draft', 'Draft'], ['tocheck', 'Layout to check'], ['ready', 'Ready to print'], ['printed', 'Printed'], ['checking', 'Checking scans'], ['scanned', 'Scans uploaded'], ['marked', 'Marked'], ['exported', 'Exported'], ['archived', 'Archived']];
 const STEP_COUNT = 10;
 
 function examChip(p) {
@@ -963,7 +997,7 @@ function wizardOptions() {
         <span class="field-hint">Print a few spares beyond the class size. You can change it until the papers are printed.</span></label>
       <dl class="summary"><dt>Name</dt><dd>${esc(w.name)}</dd>${w.class ? `<dt>Class</dt><dd>${esc(w.class)}</dd>` : ''}${w.subject ? `<dt>Subject</dt><dd>${esc(w.subject)}</dd>` : ''}<dt>Date</dt><dd>${esc(fmtIsoDate(w.date))}</dd><dt>Template</dt><dd>${esc(t.title || t.id)}</dd></dl>
     </div>
-    <div class="card-foot"><button class="btn" data-act="wiz-go" data-step="2">${ic('arrow-left')} Back</button><button class="btn btn-primary" data-act="wiz-create">${ic('plus')} Create exam</button></div></section>
+    <div class="card-foot"><button class="btn" data-act="wiz-go" data-step="2">${ic('arrow-left')} Back</button><button class="btn btn-primary" data-act="wiz-create" ${S.creating ? 'disabled' : ''}>${ic('plus')} ${S.creating ? 'Creating…' : 'Create exam'}</button></div></section>
   </div>`;
 }
 
@@ -1028,7 +1062,7 @@ function mountEditor() {
 }
 function dropEditor() {
   if (editor) { editor.destroy(); editor = null; }
-  S.source = { name: null, mode: null, url: null, dirty: false, loaded: false };
+  S.source = { name: null, mode: null, url: null, dirty: false, loaded: false, failed: false };
 }
 function setEditorText(text) {
   if (!editor) return;
@@ -1043,27 +1077,39 @@ function setEditorText(text) {
 
 function loadSource(filename) { socket_emit('source-code', filename); }
 async function onSourceName(name, mode, url) {
+  const project = S.project;
   S.source.name = name; S.source.mode = mode; S.source.url = url;
+  S.source.loaded = false; S.source.failed = false;
+  let text = null;
   try {
-    const r = await fetch(url, { headers: headers(), cache: 'no-store' });
+    // Our own address for the file: the server's has the exam name as is,
+    // and a "#" or "?" in it would cut the address short.
+    const r = await fetch(fsUrl(name), { headers: headers(), cache: 'no-store' });
     if (!r.ok) throw new Error(r.status);
-    S.source.text = await r.text();
-  } catch { S.source.text = ''; toast(`Couldn't open ${name}.`, 'warning-triangle'); }
+    if (/^application\/json/.test(r.headers.get('content-type') || '')) throw new Error((await r.json()).error || 'not a file');
+    text = await r.text();
+  } catch (e) { console.error(e); }
+  if (S.project !== project || S.source.name !== name) return; // another exam or file was chosen meanwhile
+  if (text === null) { S.source.failed = true; toast(`Couldn't open ${name}. Reload the page to try again.`, 'warning-triangle'); }
+  S.source.text = text === null ? '' : text;
   S.source.loaded = true;
   if (S.route.step === 'questions') {
     if (!editor) renderMain();
     setEditorText(S.source.text);
-    const b = $('[data-act="build"]'); if (b) b.disabled = false;
+    if (editor) editor.setReadOnly(locked() || S.source.failed);
+    const b = $('[data-act="build"]'); if (b) b.disabled = S.source.failed;
   }
 }
 
 async function saveSource() {
-  if (!editor || !S.source.name) return false;
+  if (!editor || !S.source.name || !S.source.loaded) return false;
+  if (S.source.failed) { toast(`${S.source.name} couldn't be opened, so it isn't saved over. Reload the page.`, 'warning-triangle'); return false; }
   if (locked()) { toast('The exam is printed: correct the answer key in Marking scheme.', 'lock'); return false; }
+  const text = editor.getValue();
   try {
-    await upload('/upload/source', [[new Blob([editor.getValue()], { type: 'text/plain' }), S.source.name]]);
-    S.source.text = editor.getValue();
-    S.source.dirty = false;
+    await upload('/upload/source', [[new Blob([text], { type: 'text/plain' }), S.source.name]]);
+    S.source.text = text;
+    if (editor && editor.getValue() === text) S.source.dirty = false; // typed meanwhile: still unsaved
     renderEditorBar();
     toast(`${S.source.name} saved.`);
     return true;
@@ -1150,6 +1196,7 @@ async function unlockExam() {
   if (st.scans) lost.push(`<li><b>${st.scans} scanned pages</b> and any corrections to them</li>`);
   if (st.matched) lost.push(`<li><b>${st.matched} matches</b> between sheets and students</li>`);
   if (st.marked) lost.push(`<li><b>Marks</b> for ${st.marked} copies</li>`);
+  if ((st.exports || []).length || st.annotated || st.annotated_single) lost.push('<li>The <b>exported marks</b> and <b>annotated sheets</b> made from them</li>');
   lost.push('<li>The <b>layout</b>: you rebuild the papers and check the layout again</li>');
   const data = await formDialog({
     title: 'Unlock to edit questions?', ok: 'Unlock and remove', icon: 'lock-slash',
@@ -1645,11 +1692,7 @@ async function openReview(key) {
     const res = await fetch('/scans_page_select.html', { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' }, body: JSON.stringify({ student, page, copy }) });
     const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
     const svg = doc.querySelector('svg');
-    if (svg) {
-      // Clicks are handled here; drop the old page's inline handlers and any script.
-      svg.querySelectorAll('script').forEach((el) => el.remove());
-      [svg, ...svg.querySelectorAll('*')].forEach((el) => [...el.attributes].forEach((a) => { if (/^on/i.test(a.name)) el.removeAttribute(a.name); }));
-    }
+    if (svg) sanitizeNode(svg); // clicks are handled here; drop the old page's inline handlers and any script
     if (S.review && S.review.key === key) { S.review.svg = svg ? svg.outerHTML : ''; renderPreview(); }
   } catch (e) { console.error(e); if (S.review) { S.review.loading = false; renderMain(true); } }
 }
@@ -2333,10 +2376,11 @@ const guidePage = (id) => (S.guidePages || []).find((p) => p.id === id);
 
 /* Inline Markdown: `code`, **bold**, *italic*, [text](link). Input is escaped first. */
 function mdInline(text) {
-  let t = esc(text);
-  t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+  const code = [];
+  let t = esc(text).replace(/`([^`]+)`/g, (m, c) => { code.push(c); return `\u0000${code.length - 1}\u0000`; });
   t = t.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   t = t.replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>');
+  t = t.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${code[+i]}</code>`);
   t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, href) => {
     const g = /^guide:([a-z-]+)$/.exec(href);
     if (g) return `<a href="#" data-act="guide-open" data-page="${g[1]}">${label}</a>`;
@@ -2462,18 +2506,38 @@ window.addEventListener('resize', () => { if (tour) renderTour(); });
 /* ---------- Dialogs, toasts, progress ---------- */
 
 let dialogResolve = null;
-function openDialog(html, { server = false } = {}) {
+function openDialog(html, { server = false, sticky = false } = {}) {
   $('#layer').innerHTML = `<div class="backdrop" data-act="dialog-backdrop">
-    <div class="dialog ${server ? 'server-dialog' : ''}" role="dialog" aria-modal="true" aria-labelledby="dlg-title">${html}</div></div>`;
-  const first = $('#layer').querySelector('input, select, .dialog-foot .btn-primary, .dialog-foot .btn-danger, .btn');
+    <div class="dialog ${server ? 'server-dialog' : ''} ${sticky ? 'sticky' : ''}" role="dialog" aria-modal="true" aria-labelledby="dlg-title">${html}</div></div>`;
+  const first = $('#layer').querySelector('input, select, .dialog-foot .btn-primary, .dialog-foot .btn-danger, .btn, [role="button"]');
   if (first) first.focus();
 }
 function closeDialog(result = false) {
   $('#layer').innerHTML = '';
   if (dialogResolve) { const r = dialogResolve; dialogResolve = null; r(result); }
 }
-function showServerDialog(html) {
-  openDialog(`<h2 id="dlg-title" class="sr-only">Message</h2><div class="dialog-body">${html}</div>`, { server: true });
+/* AMC's messages echo the LaTeX source, so they can't go into the page as they are. */
+function sanitizeNode(root) {
+  root.querySelectorAll('script, style, iframe, object, embed, link, meta, base, foreignObject, use').forEach((el) => el.remove());
+  [root, ...root.querySelectorAll('*')].forEach((el) => [...el.attributes].forEach((a) => {
+    const n = a.name.toLowerCase();
+    const v = a.value.trim().toLowerCase().replace(/[\s\0]/g, '');
+    if (/^on/.test(n) || n === 'srcdoc' || (['href', 'src', 'xlink:href', 'action', 'formaction', 'data'].includes(n) && /^(javascript|data|vbscript):/.test(v))) el.removeAttribute(a.name);
+  }));
+}
+function sanitizeHtml(html) {
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  sanitizeNode(doc.body);
+  return doc.body.innerHTML;
+}
+function showServerDialog(html, { sticky = false } = {}) {
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  sanitizeNode(doc.body);
+  // Upstream's buttons ran inline code; wire them to our dialog instead.
+  const ok = doc.getElementById('warn-dialog-ok'); const cancel = doc.getElementById('warn-dialog-cancel');
+  if (ok) { ok.setAttribute('data-act', sticky ? 'reload' : 'dialog-ok'); ok.setAttribute('tabindex', '0'); ok.setAttribute('role', 'button'); }
+  if (cancel) { cancel.setAttribute('data-act', 'dialog-cancel'); cancel.setAttribute('tabindex', '0'); cancel.setAttribute('role', 'button'); }
+  openDialog(`<h2 id="dlg-title" class="sr-only">Message</h2><div class="dialog-body">${doc.body.innerHTML}</div>`, { server: true, sticky });
 }
 function confirmDialog({ title, body, ok = 'OK', cancel = 'Cancel', danger = false, icon = 'info-circle' }) {
   return new Promise((resolve) => {
@@ -2513,16 +2577,21 @@ function renderWork() {
   if (!S.work) { if (w) w.remove(); return; }
   if (!w) { w = document.createElement('div'); w.id = 'work'; w.className = 'work'; w.setAttribute('role', 'alertdialog'); w.setAttribute('aria-live', 'polite'); document.body.appendChild(w); }
   const p = S.work.p;
+  const long = S.work.since && Date.now() - S.work.since >= WORK_HIDE_AFTER;
   w.innerHTML = `<div class="work-card"><div class="work-title"><span class="spinner"></span>${esc(S.work.text)}</div>
-    <div class="progress ${p === null || p === undefined ? 'indeterminate' : ''}"><span style="width:${Math.round((p || 0) * 100)}%"></span></div></div>`;
+    <div class="progress ${p === null || p === undefined ? 'indeterminate' : ''}"><span style="width:${Math.round((p || 0) * 100)}%"></span></div>
+    ${long ? `<p class="subtle" style="margin:12px 0 0">Taking long? The server may have lost this job.</p><button class="btn btn-sm" data-act="work-hide" style="margin-top:8px">Hide this and check</button>` : ''}</div>`;
 }
+const WORK_HIDE_AFTER = 60 * 1000;
 
 /* ---------- Exam actions ---------- */
 
 const validName = (names, current = null) => (d) => {
   const n = (d.name || '').trim();
   if (!n) return 'Give the exam a name.';
-  if (/[\\/]/.test(n) || n === '.' || n === '..') return 'A name can\'t contain / or \\.';
+  if (/[\\/:*?"<>|\x00-\x1f\x7f]/.test(n)) return 'A name can\'t contain / \\ : * ? " < > |.';
+  if (/^[_.\-]/.test(n)) return 'A name can\'t start with _ . or -';
+  if (new TextEncoder().encode(n).length > 120) return 'This name is too long.';
   if (n !== current && names.includes(n)) return 'An exam with this name already exists.';
   return '';
 };
@@ -2539,14 +2608,24 @@ async function renameExam(old) {
 }
 
 async function deleteExam(name) {
-  const ok = await confirmDialog({
-    danger: true, icon: 'trash', title: `Delete "${esc(name)}"?`,
-    body: '<p>The exam is removed with its questions, scans, marks and exported files. This can\'t be undone.</p><p class="subtle">Download it first if you might need it again.</p>',
-    ok: 'Delete exam',
-  });
+  // An exam that was printed, scanned or marked is deleted only after its name is typed.
+  const p = (S.projects || []).find((x) => x.name === name);
+  const st = S.project === name ? S.status : null;
+  const risky = st ? !!(st.lock || st.scans || st.marked) : !!(p && ['printed', 'scanned', 'marked', 'exported'].includes(p.state));
+  const body = '<p>The exam is removed with its questions, scans, marks and exported files. This can\'t be undone.</p><p class="subtle">Download it first if you might need it again.</p>';
+  let ok;
+  if (risky) {
+    ok = await formDialog({
+      title: `Delete "${esc(name)}"?`, ok: 'Delete exam', icon: 'trash',
+      body: `${body}<label class="field"><span class="field-label">This exam has been printed, scanned or marked. Type its name to confirm: <b>${esc(name)}</b></span><input class="input" name="name" autocomplete="off"></label>`,
+      validate: (d) => ((d.name || '').trim() === name ? '' : 'The name doesn\'t match.'),
+    });
+  } else {
+    ok = await confirmDialog({ danger: true, icon: 'trash', title: `Delete "${esc(name)}"?`, body, ok: 'Delete exam' });
+  }
   if (!ok) return;
   socket_emit('project-delete', name);
-  if (S.route.kind === 'exam' && S.route.name === name) navigate('/exams');
+  if (S.route.kind === 'exam' && S.route.name === name) { S.source.dirty = false; navigate('/exams'); }
   else setTimeout(loadProjects, 300);
 }
 
@@ -2605,7 +2684,11 @@ const ACTIONS = {
   'review-revert': async () => {
     const rv = S.review;
     const ok = await confirmDialog({ title: 'Go back to what was detected?', body: '<p>Your decisions on this page are removed, and the page goes back to the list of pages to check if it has uncertain boxes.</p>', ok: 'Back to detected', icon: 'undo' });
-    if (ok) { socket_emit('revert-manual', [rv.student, rv.page, rv.copy]); setTimeout(() => loadScans().then(() => openReview(rv.key)), 400); }
+    if (ok) {
+      const project = S.project;
+      socket_emit('revert-manual', [rv.student, rv.page, rv.copy]);
+      setTimeout(() => { if (S.project === project && S.route.step === 'check-scans') loadScans().then(() => { if (S.route.step === 'check-scans') openReview(rv.key); }); }, 400);
+    }
   },
   'accept-rest': async () => {
     const n = S.scans.pages.filter((p) => p.to_check).length;
@@ -2705,7 +2788,9 @@ const ACTIONS = {
     const w = S.wizard;
     const err = wizardNameError();
     if (err) { w.step = 1; renderMain(); toast(err, 'warning-triangle'); return; }
+    if (S.creating) return;
     S.creating = w.name.trim();
+    renderMain(true);
     socket_emit('ui-create-exam', { name: w.name.trim(), class: w.class, subject: w.subject, date: w.date, gid: w.gid, id: w.id, style: w.style, code: w.code ? w.digits : 0, copies: w.copies });
   },
   'rename-exam': (el) => { S.menu = null; renameExam(el.dataset.name); },
@@ -2723,6 +2808,8 @@ const ACTIONS = {
   },
   build: () => buildPreview(),
   'dialog-ok': () => closeDialog(true),
+  reload: () => location.reload(),
+  'work-hide': () => { S.work = null; renderWork(); refreshStatus(); },
   'dialog-cancel': () => closeDialog(false),
 };
 
@@ -2746,7 +2833,7 @@ document.addEventListener('click', (e) => {
   }
   if (!el) return;
   const act = el.dataset.act;
-  if (act === 'dialog-backdrop') { if (e.target === el && !el.querySelector('.server-dialog')) closeDialog(false); return; }
+  if (act === 'dialog-backdrop') { if (e.target === el && !el.querySelector('.sticky')) closeDialog(false); return; }
   if (ACTIONS[act]) { e.preventDefault(); ACTIONS[act](el); }
 });
 
@@ -2849,8 +2936,12 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape' && tour) { endTour(); return; }
   if (e.key === 'Escape') {
-    if ($('#layer').innerHTML && !$('#layer .server-dialog')) closeDialog(false);
+    if ($('#layer').innerHTML && !$('#layer .sticky')) closeDialog(false);
     else if (S.menu) { S.menu = null; renderTop(); if (S.route.kind === 'exams') renderMain(true); }
+  }
+  // A message from AMC closes with Enter or Space too (its button isn't a real <button>).
+  if ((e.key === 'Enter' || e.key === ' ') && $('#layer .server-dialog:not(.sticky)') && !(e.target instanceof Element && e.target.closest('input, textarea, select, a, button'))) {
+    e.preventDefault(); closeDialog(false); return;
   }
   const typingNow = e.target instanceof Element && e.target.closest('input, textarea, select, .ace_editor');
   if (S.route.step === 'check-scans' && S.review && !S.review.loading && !typingNow && !$('#layer').innerHTML && !e.metaKey && !e.ctrlKey && !e.altKey) {

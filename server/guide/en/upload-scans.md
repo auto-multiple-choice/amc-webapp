@@ -22,6 +22,6 @@ If one printed paper was photocopied for the whole class, tick **Students wrote 
 
 **Many pages are unreadable.** Check the scan resolution (300 dpi), that pages are straight, and that the papers were printed at 100%.
 
-**Photocopied sheets.** Without the photocopy option, copies of the same paper can't be told apart. Delete the scans and upload them again with the option ticked.
+**Photocopied sheets.** Without the photocopy option, copies of the same paper can't be told apart. The option can't change while scans exist: in Check scans, remove every uploaded page, then tick the option here and upload the scans again.
 
 **Blank pages from a duplex scanner.** They show as unreadable. Remove them in Check scans.

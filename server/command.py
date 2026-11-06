@@ -86,7 +86,7 @@ def amc_command(*args,
                 isolate += [ '--env', 'CUPS_SERVER', '--connect-tcp', '631' ]
                 # A local print system's socket (./amc printer on, Linux)
                 cups = os.environ.get('CUPS_SERVER', '')
-                if cups.startswith('/'):
+                if cups.startswith('/') and os.path.exists(cups):
                     isolate += [ '--rw', cups ]
             if not os.environ.get("AMC_USERHEADER"):
                 isolate += [ '--ro', user_confdir() ]

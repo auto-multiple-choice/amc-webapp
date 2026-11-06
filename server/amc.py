@@ -418,6 +418,8 @@ def fs_file(path):
             return { "error": "No file part" }
         f = request.files['file']
         if f:
+            if refusal := ui.write_refusal(path, f):
+                return { "error": refusal }  # printed exam (ui.py)
             f.save(path)
             return { "ok": True }
     else:
@@ -538,6 +540,7 @@ def io_project_clone(name):
     emit_msg("begin-command")
     n, ntotal = copy_files_progress(source, dest)
     remove_uuid(clone_name)
+    ui.record_cloned(dest, name)  # its own lock, archive and history (ui.py)
     emit_msg("end-command")
     emit_msg("u-projects-list")
     if n==ntotal:
