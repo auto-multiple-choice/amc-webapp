@@ -25,3 +25,6 @@ server/static/icons.css
 
 # Per-machine settings for the launcher (template: .env.example)
 .env
+
+# macOS metadata files on exFAT/FAT drives
+._*

@@ -24,11 +24,29 @@ def smooth_int(s):
 def get_locale():
     return request.accept_languages.best_match(['fr', 'en'])
 
+SESSION_RE = re.compile(
+    r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
+
+def valid_session(session):
+    # The session id names the user's temp directory, so only accept the
+    # uuid4 form the server issues: a crafted cookie such as "../../x"
+    # would otherwise point it at any directory, other users' included.
+    return isinstance(session, str) and bool(SESSION_RE.fullmatch(session))
+
 def get_session():
     session = request.cookies.get('amcsession')
-    if not session:
+    if not valid_session(session):
         raise RuntimeError("No session")
     return session
+
+def check_dir_name(name, what):
+    # User and project names come from the browser and are used as a single
+    # directory name under the projects directory. Refuse anything that
+    # could point elsewhere, such as ".." or "../other-user/project".
+    if (not isinstance(name, str) or name in ('', '.', '..')
+            or '/' in name or '\\' in name or '\0' in name):
+        raise ValueError(f"Invalid {what} name: {name!r}")
+    return name
 
 def emit_msg(*data):
     if getattr(request, 'sid', None):
@@ -81,7 +99,7 @@ def projects_dir(root=False, user=None):
         if user is None or not flask_g._is_admin:
             user = flask_g._user
         if user:
-            pdir += ("/" + user)
+            pdir += ("/" + check_dir_name(user, "user"))
         else:
             pdir += "/_all"
     Path(pdir).mkdir(parents=True, exist_ok=True)
@@ -99,7 +117,7 @@ def project_dir(p=None):
     if not p:
         p = flask_g.project_name
     if p:
-        return projects_dir() + "/" + p
+        return projects_dir() + "/" + check_dir_name(p, "project")
     else:
         return None
 
@@ -235,9 +253,14 @@ def ncopies():
     return get_option("nombre_copies")
     
 def amc_user_tmp(part=None, is_file=False):
-    tmp = f"{current_app.temp_dir}/{get_session()}"
+    base = f"{current_app.temp_dir}/{get_session()}"
+    tmp = base
     if part:
-        tmp += f"/{part}"
+        # Parts can carry URL segments such as "..": stay in this session's
+        # own temp directory.
+        tmp = os.path.normpath(f"{base}/{part}")
+        if tmp != base and not tmp.startswith(base + "/"):
+            raise ValueError(f"Invalid temporary path: {part!r}")
     if is_file:
         tmpdir = Path(tmp).parent
     else:

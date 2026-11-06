@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Account{% endblock %}
+{% block content %}
+<section class="card">
+  {% if user.must_change %}
+    <h1>Choose your password</h1>
+    <p class="muted">You signed in with a starting password. Choose your own to continue.</p>
+  {% else %}
+    <h1>Change password</h1>
+  {% endif %}
+  {% if error %}<p class="notice error">{{ error }}</p>{% endif %}
+  <form method="post" action="{{ url_for('account') }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <input type="hidden" name="action" value="password">
+    <input type="text" name="username" value="{{ user.username }}" autocomplete="username" hidden>
+    <label>Current password
+      <input name="current" type="password" autocomplete="current-password" required>
+    </label>
+    <label>New password <span class="muted">(at least 8 characters)</span>
+      <input name="new" type="password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <label>New password again
+      <input name="confirm" type="password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <button type="submit" class="primary">{{ 'Save and continue' if user.must_change else 'Change password' }}</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Signed in as {{ user.username }}</h2>
+  <div class="row">
+    <form method="post" action="{{ url_for('logout') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button type="submit">Sign out</button>
+    </form>
+    <form method="post" action="{{ url_for('account') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="logout-everywhere">
+      <button type="submit">Sign out on all devices</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

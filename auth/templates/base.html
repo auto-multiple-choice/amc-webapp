@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AMC{% endblock %} · AMC</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">AMC</a>
+    {% if user %}
+      <nav>
+        <a href="/">Exams</a>
+        <a href="{{ url_for('account') }}">Account</a>
+        {% if user.is_admin %}<a href="{{ url_for('admin') }}">Admin</a>{% endif %}
+        <span class="who">{{ user.username }}</span>
+      </nav>
+    {% endif %}
+  </header>
+  <main class="{% block width %}narrow{% endblock %}">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <p class="notice {{ 'error' if category == 'error' else 'ok' }}">{{ message }}</p>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
