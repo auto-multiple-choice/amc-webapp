@@ -284,7 +284,7 @@ def index():
         username=username(ifnone=""),
         app_version=AMCWEB_VERSION,
     ))
-    if not request.cookies.get('amcsession'):
+    if not valid_session(request.cookies.get('amcsession')):
         session = str(uuid.uuid4())
         app.logger.info(f"New session: {session}")
         resp.set_cookie('amcsession', session)
@@ -826,13 +826,23 @@ def project_install_from_dir(source_dir, dest):
         app.logger.error(f"Can't find options.xml in directory {source_dir}")
         return False
     
+def template_path(template):
+    # The template id ("group/name") comes from the browser: keep it inside
+    # TEMPLATES_DIR, or it could name any directory the server can read,
+    # such as another user's project, and copy it into the new project.
+    base = os.path.normpath(os.path.abspath(TEMPLATES_DIR))
+    tpath = os.path.normpath(os.path.join(base, str(template)))
+    if not tpath.startswith(base + os.sep):
+        raise ValueError(f"Invalid template: {template!r}")
+    return tpath
+
 @socketio_name('create-project-template')
 def io_create_project_template(data):
     name, template = data
     rep = check_unused_name(name)
     if rep:
         app.logger.info(f"Create project \"{name}\" from template {template}")
-        tpath = f"{TEMPLATES_DIR}/{template}"
+        tpath = template_path(template)
         if os.path.isfile(tpath + ".tgz"):
             tarf = tarfile.open(tpath + ".tgz")
             if not tar_extract_options_siblings(tarf, rep):

@@ -1,0 +1,58 @@
+# Entry point of the AMC web app in shared-machine mode (compose.login.yml).
+# Caddy is the only container with a published port: it serves HTTPS with
+# its own certificate authority and asks amc-auth who is signed in before
+# passing a request to AMC.
+#
+# AMC_SITES:       https://<name>:<port> addresses to serve, comma separated
+#                  (the launcher lists localhost, the LAN address and host name)
+# AMC_DEFAULT_SNI: certificate name for browsers that connect by IP address
+#                  and so don't send a server name
+
+{
+	admin off
+	skip_install_trust
+	auto_https disable_redirects
+	default_sni {$AMC_DEFAULT_SNI:localhost}
+}
+
+{$AMC_SITES:https://localhost:8090} {
+	tls internal
+
+	# AMC trusts this header as the signed-in user, so it must only ever
+	# come from amc-auth, never from a browser.
+	request_header -X-AMC-User
+
+	# Colleagues download the certificate authority here, to make their
+	# browsers trust this server's certificate.
+	handle /amc-ca.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=amc-ca.crt"
+		file_server
+	}
+
+	handle /auth/* {
+		reverse_proxy amc-auth:8000
+	}
+
+	# Shareable marks links. AMC serves these only for projects whose owner
+	# turned them on, and they work without signing in, as upstream intends.
+	handle /public/* {
+		reverse_proxy amc-web:8080
+	}
+
+	handle {
+		forward_auth amc-auth:8000 {
+			uri /auth/verify
+			copy_headers X-AMC-User
+			# The sign-in check is a plain request even when the browser
+			# opens a websocket; the auth service rejects upgrade requests.
+			header_up -Connection
+			header_up -Upgrade
+		}
+		reverse_proxy amc-web:8080
+	}
+
+	header -Server
+}

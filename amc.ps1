@@ -2,9 +2,13 @@
 # Run it through amc.cmd:  amc help
 #
 # Keep this file working with Windows PowerShell 5.1 (built into Windows)
-# as well as PowerShell 7. Native commands are checked through
-# $LASTEXITCODE: with $ErrorActionPreference = 'Stop', Windows PowerShell 5.1
-# turns any stderr output from docker or git into a fatal error.
+# as well as PowerShell 7:
+# - Native commands are checked through $LASTEXITCODE: with
+#   $ErrorActionPreference = 'Stop', Windows PowerShell 5.1 turns any stderr
+#   output from docker or git into a fatal error.
+# - Shell snippets passed to `docker ... sh -c` contain no quote characters:
+#   Windows PowerShell 5.1 mangles quotes in native command arguments. They
+#   start with `set -f; IFS=` so values with spaces stay whole without quotes.
 
 $ErrorActionPreference = 'Continue'
 Set-Location -LiteralPath $PSScriptRoot
@@ -12,6 +16,7 @@ Set-Location -LiteralPath $PSScriptRoot
 $Service    = 'amc-web'           # service name in docker-compose.yml
 $Image      = 'amc-web'           # image name in docker-compose.yml
 $MinCompose = [version]'2.24.4'   # first version supporting `!override`
+$LoginFiles = 'docker-compose.yml,docker-compose.override.yml,compose.login.yml'
 $EnvFile    = Join-Path $PSScriptRoot '.env'
 $Utf8NoBom  = New-Object System.Text.UTF8Encoding $false
 
@@ -34,7 +39,22 @@ Commands:
   logs                 Follow the server log (Ctrl+C to quit)
   open                 Open the app in the browser
   update [--no-open]   Pull the latest version of this repository, then restart
-  import <folder>...   Copy existing AMC project folders into the app
+  import [--user NAME] <folder>...
+                       Copy existing AMC project folders into the app
+
+Shared machine (sign-in, HTTPS, one projects folder per teacher):
+  login on [--local]   Turn it on; --local keeps it reachable from this computer only
+  login off            Back to this computer only, without sign-in
+  user add NAME [--admin] [--temporary]
+                       Create an account (--admin: can manage accounts;
+                       --temporary: print a starting password to change at sign-in)
+  user passwd NAME     Set an account's password
+  user list            List accounts
+  user enable NAME     Re-enable a disabled account
+  cert                 Show how browsers can trust the app's HTTPS certificate
+
+  backup               Save all projects (and, on a shared machine, accounts and
+                       the certificate authority) to AMC_DATA_DIR/backups
   help                 Show this help
 
 Settings are in .env, created on first start (see .env.example).
@@ -51,6 +71,31 @@ function Get-EnvValue([string]$Key, [string]$Default) {
   return ($line -split '=', 2)[1].Trim().Trim('"').Trim("'")
 }
 
+function Write-EnvLines([object[]]$Lines) {
+  [System.IO.File]::WriteAllText($EnvFile, ((@($Lines) -join "`n") + "`n"), $Utf8NoBom)
+}
+
+# Set KEY in .env, keeping every other line.
+function Set-EnvValue([string]$Key, [string]$Value) {
+  $pattern = '^\s*' + [regex]::Escape($Key) + '='
+  $done = $false
+  $out = New-Object System.Collections.ArrayList
+  foreach ($l in @(Get-Content -LiteralPath $EnvFile)) {
+    if ($l -match $pattern) {
+      if (-not $done) { [void]$out.Add("$Key=$Value"); $done = $true }
+    } else {
+      [void]$out.Add($l)
+    }
+  }
+  if (-not $done) { [void]$out.Add("$Key=$Value") }
+  Write-EnvLines $out
+}
+
+function Remove-EnvValue([string]$Key) {
+  $pattern = '^\s*' + [regex]::Escape($Key) + '='
+  Write-EnvLines @(Get-Content -LiteralPath $EnvFile | Where-Object { $_ -notmatch $pattern })
+}
+
 function Get-IanaTimeZone {
   $id = [System.TimeZoneInfo]::Local.Id
   if ($id -match '/') { return $id }   # already an IANA name (PowerShell 7 off Windows)
@@ -59,14 +104,14 @@ function Get-IanaTimeZone {
   $method = [System.TimeZoneInfo].GetMethod('TryConvertWindowsIdToIanaId', [type[]]@([string], [string].MakeByRefType()))
   if ($method -and [System.TimeZoneInfo]::TryConvertWindowsIdToIanaId($id, [ref]$iana)) { return $iana }
   $known = @{
-    'India Standard Time'   = 'Asia/Kolkata'
-    'UTC'                   = 'UTC'
-    'GMT Standard Time'     = 'Europe/London'
+    'India Standard Time'     = 'Asia/Kolkata'
+    'UTC'                     = 'UTC'
+    'GMT Standard Time'       = 'Europe/London'
     'W. Europe Standard Time' = 'Europe/Berlin'
-    'Romance Standard Time' = 'Europe/Paris'
-    'Eastern Standard Time' = 'America/New_York'
-    'Central Standard Time' = 'America/Chicago'
-    'Pacific Standard Time' = 'America/Los_Angeles'
+    'Romance Standard Time'   = 'Europe/Paris'
+    'Eastern Standard Time'   = 'America/New_York'
+    'Central Standard Time'   = 'America/Chicago'
+    'Pacific Standard Time'   = 'America/Los_Angeles'
   }
   if ($known.ContainsKey($id)) { return $known[$id] }
   return 'UTC'
@@ -76,7 +121,7 @@ function Initialize-EnvFile {
   if (Test-Path -LiteralPath $EnvFile) { return }
   Say 'First run: writing settings to .env'
   $data = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'AMC-Web') -replace '\\', '/'
-  $lines = @(
+  Write-EnvLines @(
     '# AMC web app settings (see .env.example). Run "amc restart" after editing.'
     'AMC_PORT=8090'
     'AMC_BIND=127.0.0.1'
@@ -84,8 +129,9 @@ function Initialize-EnvFile {
     "TZ=$(Get-IanaTimeZone)"
     'AMC_SERVER_LOGGING=INFO'
   )
-  [System.IO.File]::WriteAllText($EnvFile, (($lines -join "`n") + "`n"), $Utf8NoBom)
 }
+
+function Test-LoginMode { return ((Get-EnvValue 'AMC_LOGIN' '0') -eq '1') }
 
 function Read-Settings {
   $script:Port    = Get-EnvValue 'AMC_PORT' '8090'
@@ -96,7 +142,8 @@ function Read-Settings {
   if (-not [System.IO.Path]::IsPathRooted($script:DataDir)) {
     Die "AMC_DATA_DIR in .env must be an absolute path (got '$($script:DataDir)')."
   }
-  $script:Url = "http://localhost:$($script:Port)"
+  if (Test-LoginMode) { $script:Url = "https://localhost:$($script:Port)" }
+  else { $script:Url = "http://localhost:$($script:Port)" }
 }
 
 # --- docker -----------------------------------------------------------------
@@ -132,13 +179,14 @@ function Assert-Docker {
   }
 }
 
-function Test-Running {
-  $id = ((& docker compose ps --status running -q $Service 2>$null) | Out-String).Trim()
+function Test-Running([string]$Name) {
+  $id = ((& docker compose ps --status running -q $Name 2>$null) | Out-String).Trim()
   return [bool]$id
 }
 
 function Get-PublishedPort {
-  $p = ((& docker compose port $Service 8080 2>$null) | Out-String).Trim()
+  if (Test-LoginMode) { $p = ((& docker compose port caddy $script:Port 2>$null) | Out-String).Trim() }
+  else { $p = ((& docker compose port $Service 8080 2>$null) | Out-String).Trim() }
   if ($p -match ':(\d+)$') { return $Matches[1] }
   return ''
 }
@@ -175,6 +223,13 @@ function Get-PortUser([int]$PortNumber) {
   return ''
 }
 
+# Runs a quote-free shell snippet in a one-off container of the volume-owner
+# service, with extra `docker run` options (mounts, environment).
+function Invoke-VolumeShell([string[]]$Options, [string]$Script) {
+  & docker compose run --rm --no-deps -T @Options --entrypoint sh amc-home-init -c "set -f; IFS=; $Script"
+  return ($LASTEXITCODE -eq 0)
+}
+
 # --- helpers ----------------------------------------------------------------
 
 function Write-AppVersion {
@@ -187,21 +242,6 @@ function Write-AppVersion {
   [System.IO.File]::WriteAllText($file, "$line`n", $Utf8NoBom)
 }
 
-function Wait-Ready {
-  $deadline = (Get-Date).AddMinutes(2)
-  while ($true) {
-    try {
-      $r = Invoke-WebRequest -Uri "http://127.0.0.1:$($script:Port)/" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
-      if ($r.Content -match '<title>AMC') { return }
-    } catch { }
-    if ((Get-Date) -gt $deadline) {
-      & docker compose logs --tail 30 $Service
-      Die "The app did not answer at $($script:Url) within 2 minutes (server log above)."
-    }
-    Start-Sleep -Seconds 2
-  }
-}
-
 function Get-LanAddress {
   if (-not (Get-Command Get-NetIPAddress -ErrorAction SilentlyContinue)) { return '' }
   $a = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
@@ -209,6 +249,96 @@ function Get-LanAddress {
     Select-Object -First 1
   if ($a) { return $a.IPAddress }
   return ''
+}
+
+# Names and addresses the HTTPS certificate must cover: browsers only accept
+# the certificate for the exact name or address they connect to. Sets the
+# variables compose.login.yml and the Caddyfile read.
+function Set-SiteVariables {
+  $script:LanIp = Get-LanAddress
+  $hosts = New-Object System.Collections.ArrayList
+  foreach ($h in @('localhost', $script:LanIp, [System.Net.Dns]::GetHostName()) +
+                 ((Get-EnvValue 'AMC_HOSTNAMES' '') -split '[, ]+')) {
+    if (-not $h) { continue }
+    $h = $h.ToLowerInvariant()
+    if ($h -match '^[a-z0-9][a-z0-9.-]*$' -and -not $hosts.Contains($h)) { [void]$hosts.Add($h) }
+  }
+  $sites = @($hosts | ForEach-Object { "https://${_}:$($script:Port)" })
+  $env:AMC_SITES = $sites -join ', '
+  $env:AMC_ORIGINS = $sites -join ','
+  if ($script:LanIp) { $env:AMC_DEFAULT_SNI = $script:LanIp } else { $env:AMC_DEFAULT_SNI = 'localhost' }
+}
+
+function Test-PageContains([string]$Uri, [string]$Text) {
+  try {
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+      $r = Invoke-WebRequest -Uri $Uri -UseBasicParsing -TimeoutSec 3 -SkipCertificateCheck -ErrorAction Stop
+    } else {
+      # Windows PowerShell 5.1: no -SkipCertificateCheck. The certificate comes
+      # from the app's own authority, which this computer may not trust yet.
+      [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+      [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+      $r = Invoke-WebRequest -Uri $Uri -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+    }
+    return ($r.Content -match [regex]::Escape($Text))
+  } catch {
+    return $false
+  }
+}
+
+function Wait-Ready {
+  $deadline = (Get-Date).AddMinutes(2)
+  while ($true) {
+    if (Test-LoginMode) {
+      # The sign-in page through caddy (which only answers for the names it
+      # holds certificates for), and AMC itself behind it.
+      if ((Test-PageContains "https://localhost:$($script:Port)/auth/login" 'Sign in') -and
+          (Test-Native { docker compose exec -T $Service curl -fs -m 3 http://127.0.0.1:8080/public/status.json })) { return }
+    } else {
+      if (Test-PageContains "http://127.0.0.1:$($script:Port)/" '<title>AMC') { return }
+    }
+    if ((Get-Date) -gt $deadline) {
+      & docker compose logs --tail 30
+      Die "The app did not answer at $($script:Url) within 2 minutes (server log above)."
+    }
+    Start-Sleep -Seconds 2
+  }
+}
+
+# AMC runs each teacher's LaTeX and scoring commands in a sandbox limited to
+# their own projects (Landlock). It silently does nothing on a kernel without
+# Landlock, and it can't follow files on some shared folders, so check on the
+# real projects storage that it lets the allowed folder through and blocks
+# the rest.
+function Assert-Sandbox {
+  if ((Get-EnvValue 'AMC_ALLOW_UNISOLATED' '0') -eq '1') {
+    Warn "The sandbox between teachers is off (AMC_ALLOW_UNISOLATED=1): a teacher's LaTeX can read other teachers' projects."
+    return
+  }
+  $probe = 'd=/amc-web/files/MC-Projects/.amc-sandbox-check; mkdir -p $d/ok; echo fine > $d/ok/f; echo secret > $d/secret; ' +
+           'run() { landrun --best-effort --log-level error --rox $AMC_ISOLATE_ROX --ro /etc --rw $d/ok -- $@; }; ' +
+           'if ! run cat $d/ok/f >/dev/null 2>&1; then echo broken; elif run cat $d/secret >/dev/null 2>&1; then echo open; else echo isolated; fi; rm -rf $d'
+  $result = ((& docker compose exec -T $Service sh -c $probe 2>$null) | Out-String).Trim()
+  if ($result -eq 'isolated') { return }
+  if ($result -eq 'open') {
+    $problem = "The sandbox doesn't isolate anything here: this Linux kernel lacks Landlock. A teacher's LaTeX could read other teachers' projects."
+  } else {
+    $problem = "The sandbox would stop AMC from reading its own projects here (result: '$result')."
+  }
+  & docker compose down *> $null
+  Die "$problem The app was stopped. If you trust every teacher, set AMC_ALLOW_UNISOLATED=1 in .env (this turns the sandbox off) and start again."
+}
+
+function Test-Interactive { return (-not [Console]::IsInputRedirected) }
+
+function Invoke-Auth([string[]]$Arguments) {
+  if (Test-Interactive) { & docker compose exec amc-auth flask user @Arguments }
+  else { & docker compose exec -T amc-auth flask user @Arguments }
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Get-AccountCount {
+  return (((& docker compose exec -T amc-auth flask user count 2>$null) | Out-String) -replace '[^0-9]', '')
 }
 
 function Open-Url([string]$Target) {
@@ -223,6 +353,28 @@ function Get-OpenFlag([string[]]$Options) {
   return $open
 }
 
+function Show-Where {
+  if (Test-LoginMode) {
+    Write-Host "    On this computer:  $($script:Url)"
+    if ($script:Bind -ne '127.0.0.1' -and $script:LanIp) {
+      Write-Host "    Colleagues:        https://$($script:LanIp):$($script:Port)"
+    } elseif ($script:Bind -eq '127.0.0.1') {
+      Write-Host '    Reachable from this computer only (login on --local).'
+    }
+    Write-Host '    Projects:          in a Docker volume, one folder per teacher (amc backup exports them)'
+    Write-Host '    Browsers warn about the certificate until they trust it: amc cert'
+  } else {
+    Write-Host "    Projects folder: $(Join-Path $script:DataDir 'MC-Projects')"
+    if ($script:Bind -eq '127.0.0.1') {
+      Write-Host '    Reachable from this computer only.'
+    } else {
+      $ip = Get-LanAddress
+      if ($ip) { Write-Host "    Others on your network: http://${ip}:$($script:Port)" }
+      Warn 'The app is reachable from the network without sign-in. Use "amc login on" for a shared machine.'
+    }
+  }
+}
+
 # --- commands ---------------------------------------------------------------
 
 function Invoke-Start([string[]]$Options) {
@@ -230,32 +382,35 @@ function Invoke-Start([string[]]$Options) {
   Assert-Docker
   Initialize-EnvFile
   Read-Settings
+  if (Test-LoginMode) {
+    Set-SiteVariables
+    if ((Get-EnvValue 'AMC_ALLOW_UNISOLATED' '0') -eq '1') { $env:AMC_ISOLATE = '0' }
+  }
 
   if ((Get-PublishedPort) -ne $script:Port) {
     $who = Get-PortUser ([int]$script:Port)
     if ($who) { Die "Port $($script:Port) is already used by $who. Set another AMC_PORT in .env, then run amc start again." }
   }
 
-  $projects = Join-Path $script:DataDir 'MC-Projects'
-  New-Item -ItemType Directory -Force -Path $projects -ErrorAction Stop | Out-Null
+  New-Item -ItemType Directory -Force -Path (Join-Path $script:DataDir 'MC-Projects') -ErrorAction Stop | Out-Null
   Write-AppVersion
 
   if (-not (Test-Native { docker image inspect $Image })) {
     Say 'First start: building the app. This downloads AMC and LaTeX (a few GB) and takes 10-30 minutes; later starts take seconds.'
   }
   Say 'Starting the AMC web app...'
-  & docker compose up -d --build
+  & docker compose up -d --build --remove-orphans
   if ($LASTEXITCODE -ne 0) { Die 'docker compose up failed (see the messages above).' }
   Wait-Ready
-
-  Ok "AMC is running at $($script:Url)"
-  Write-Host "    Projects folder: $projects"
-  if ($script:Bind -eq '127.0.0.1') {
-    Write-Host '    Reachable from this computer only.'
+  if (Test-LoginMode) {
+    Assert-Sandbox
+    Ok 'AMC is running in shared-machine mode (sign-in required)'
   } else {
-    $ip = Get-LanAddress
-    if ($ip) { Write-Host "    Others on your network: http://${ip}:$($script:Port)" }
-    Warn 'The app is reachable from the network and has no login yet.'
+    Ok "AMC is running at $($script:Url)"
+  }
+  Show-Where
+  if ((Test-LoginMode) -and (Get-AccountCount) -eq '0') {
+    Warn 'There are no accounts yet. Create the first admin with: amc user add <name> --admin'
   }
   if ($openBrowser) { Open-Url $script:Url }
 }
@@ -271,13 +426,13 @@ function Invoke-Status {
   Assert-Docker
   if (-not (Test-Path -LiteralPath $EnvFile)) { Write-Host 'Not set up yet. Run: amc start'; return }
   Read-Settings
-  if (Test-Running) { Ok "Running at $($script:Url)" } else { Write-Host 'Stopped. Start it with: amc start' }
-  Write-Host "    Projects folder: $(Join-Path $script:DataDir 'MC-Projects')"
-  if ($script:Bind -eq '127.0.0.1') {
-    Write-Host '    Reachable from this computer only.'
+  if (Test-LoginMode) { Set-SiteVariables }
+  if (Test-Running $Service) {
+    if (Test-LoginMode) { Ok 'Running in shared-machine mode (sign-in required)' } else { Ok "Running at $($script:Url)" }
   } else {
-    Write-Host "    Reachable from the network (AMC_BIND=$($script:Bind))."
+    Write-Host 'Stopped. Start it with: amc start'
   }
+  Show-Where
 }
 
 function Invoke-Update([string[]]$Options) {
@@ -292,24 +447,189 @@ function Invoke-Update([string[]]$Options) {
   Invoke-Start $Options
 }
 
-function Invoke-Import([string[]]$Folders) {
-  if ($Folders.Count -eq 0) { Die 'Usage: amc import <project folder>...' }
+function Invoke-Import([string[]]$Arguments) {
+  $user = ''
+  $folders = @($Arguments)
+  if ($folders.Count -ge 1 -and $folders[0] -eq '--user') {
+    if ($folders.Count -lt 2) { Die 'Usage: amc import --user NAME <project folder>...' }
+    $user = $folders[1]
+    $folders = @($folders | Select-Object -Skip 2)
+  }
+  if ($folders.Count -eq 0) { Die 'Usage: amc import [--user NAME] <project folder>...' }
   Initialize-EnvFile
   Read-Settings
-  $projects = Join-Path $script:DataDir 'MC-Projects'
-  New-Item -ItemType Directory -Force -Path $projects -ErrorAction Stop | Out-Null
-  foreach ($src in $Folders) {
+  foreach ($src in $folders) {
     $src = $src.TrimEnd('\', '/')
     if (-not (Test-Path -LiteralPath $src -PathType Container)) { Die "Not a folder: $src" }
     if (-not (Test-Path -LiteralPath (Join-Path $src 'options.xml'))) { Die "$src doesn't look like an AMC project (no options.xml inside)." }
-    $name = Split-Path -Leaf $src
-    $dest = Join-Path $projects $name
-    if (Test-Path -LiteralPath $dest) { Die "A project named '$name' already exists in $projects" }
-    Copy-Item -LiteralPath $src -Destination $dest -Recurse -ErrorAction Stop
-    Ok "Imported $name"
+  }
+  if (Test-LoginMode) {
+    if (-not $user) { Die 'In shared-machine mode, say whose projects these are: amc import --user NAME <folder>...' }
+    if ($user -notmatch '^[a-z0-9][a-z0-9._-]{1,31}$') { Die "Invalid username: $user" }
+    Assert-Docker
+    $owner = "$(Get-EnvValue 'AMC_UID' '1000'):$(Get-EnvValue 'AMC_GID' '0')"
+    foreach ($src in $folders) {
+      $abs = (Resolve-Path -LiteralPath $src).Path -replace '\\', '/'
+      $name = Split-Path -Leaf $abs
+      $script = 'dest=/amc-web/files/MC-Projects/$U/$N; if [ -e $dest ]; then exit 3; fi; ' +
+                'mkdir -p /amc-web/files/MC-Projects/$U && cp -a /from $dest && chown -R $OWNER /amc-web/files/MC-Projects/$U'
+      if (-not (Invoke-VolumeShell @('-v', "${abs}:/from:ro", '-e', "U=$user", '-e', "N=$name", '-e', "OWNER=$owner") $script)) {
+        Die "Could not import $name (a project with that name may already exist for $user)."
+      }
+      Ok "Imported $name for $user"
+    }
+  } else {
+    if ($user) { Die '--user only applies in shared-machine mode (amc login on).' }
+    $projects = Join-Path $script:DataDir 'MC-Projects'
+    New-Item -ItemType Directory -Force -Path $projects -ErrorAction Stop | Out-Null
+    foreach ($src in $folders) {
+      $name = Split-Path -Leaf (Resolve-Path -LiteralPath $src).Path
+      $dest = Join-Path $projects $name
+      if (Test-Path -LiteralPath $dest) { Die "A project named '$name' already exists in $projects" }
+      Copy-Item -LiteralPath $src -Destination $dest -Recurse -ErrorAction Stop
+      Ok "Imported $name"
+    }
   }
   Write-Host '    The original folders are unchanged. Work on the copies in the web app:'
   Write-Host '    its AMC is newer than desktop AMC 1.7.0.'
+}
+
+# Projects from this-computer-only mode are in the host folder; shared-machine
+# mode keeps one folder per teacher in a Docker volume. Copy them over (the
+# originals stay where they are).
+function Copy-SingleUserProjects([string]$User) {
+  $root = Join-Path $script:DataDir 'MC-Projects'
+  $found = @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'options.xml') })
+  if ($found.Count -eq 0) { return }
+  Write-Host "    Projects from this-computer-only mode: $(($found | ForEach-Object Name) -join ', ')"
+  $reply = ''
+  if (Test-Interactive) { $reply = Read-Host "    Copy them into $User's projects? [y/N]" }
+  if ($reply -notmatch '^(y|yes)$') {
+    Write-Host "    Not copied. Later: amc import --user $User <folder>"
+    return
+  }
+  Invoke-Import (@('--user', $User) + @($found | ForEach-Object FullName))
+}
+
+function New-FirstAdmin {
+  if (-not (Test-Interactive)) {
+    Warn 'There are no accounts yet. Create the first admin with: amc user add <name> --admin'
+    return
+  }
+  Say 'Create the first admin account. It can add the other teachers on the Admin page.'
+  $name = ''
+  while (-not $name) { $name = (Read-Host 'Admin username').Trim() }
+  if (-not (Invoke-Auth @('add', $name, '--admin'))) { return }
+  Copy-SingleUserProjects $name.ToLowerInvariant()
+}
+
+function Invoke-Login([string[]]$Arguments) {
+  $sub = ''
+  if ($Arguments.Count -gt 0) { $sub = $Arguments[0] }
+  $rest = @($Arguments | Select-Object -Skip 1)
+  switch ($sub) {
+    'on' {
+      $bind = '0.0.0.0'
+      foreach ($a in $rest) { if ($a -eq '--local') { $bind = '127.0.0.1' } else { Die "Unknown option: $a" } }
+      Assert-Docker
+      Initialize-EnvFile
+      if (Test-LoginMode) {
+        Say 'Shared-machine mode is already on.'
+      } else {
+        Say 'Turning on shared-machine mode: sign-in, HTTPS, one projects folder per teacher.'
+        & docker compose down *> $null
+        Set-EnvValue 'AMC_LOGIN' '1'
+        Set-EnvValue 'COMPOSE_PATH_SEPARATOR' ','
+        Set-EnvValue 'COMPOSE_FILE' $LoginFiles
+      }
+      Set-EnvValue 'AMC_BIND' $bind
+      Invoke-Start @('--no-open')
+      if ((Get-AccountCount) -eq '0') { New-FirstAdmin }
+    }
+    'off' {
+      if ($rest.Count -gt 0) { Die "Unknown option: $($rest[0])" }
+      Assert-Docker
+      Initialize-EnvFile
+      if (Test-LoginMode) {
+        Say 'Turning off shared-machine mode: this computer only, no sign-in.'
+        & docker compose down *> $null
+      } else {
+        Say 'Shared-machine mode is already off.'
+      }
+      Set-EnvValue 'AMC_LOGIN' '0'
+      Remove-EnvValue 'COMPOSE_FILE'
+      Remove-EnvValue 'COMPOSE_PATH_SEPARATOR'
+      Set-EnvValue 'AMC_BIND' '127.0.0.1'
+      Invoke-Start @('--no-open')
+      Warn "Teachers' projects stay in the Docker volume and come back with: amc login on"
+    }
+    default { Die 'Usage: amc login on [--local] | amc login off' }
+  }
+}
+
+function Invoke-User([string[]]$Arguments) {
+  Assert-Docker
+  if (-not (Test-Path -LiteralPath $EnvFile)) { Die 'Not set up yet. Run: amc login on' }
+  if (-not (Test-LoginMode)) { Die 'Accounts only exist in shared-machine mode. Turn it on with: amc login on' }
+  if (-not (Test-Running 'amc-auth')) { Die "The app isn't running. Start it with: amc start" }
+  if ($Arguments.Count -eq 0) { Die 'Usage: amc user add NAME [--admin] [--temporary] | passwd NAME | list | enable NAME' }
+  if (-not (Invoke-Auth $Arguments)) { exit 1 }
+}
+
+function Invoke-Backup {
+  Assert-Docker
+  Initialize-EnvFile
+  Read-Settings
+  $dir = Join-Path $script:DataDir 'backups'
+  New-Item -ItemType Directory -Force -Path $dir -ErrorAction Stop | Out-Null
+  $name = "amc-backup-$(Get-Date -Format 'yyyyMMdd-HHmmss').tar.gz"
+  $data = $script:DataDir -replace '\\', '/'
+  if (Test-LoginMode) {
+    # Projects from the volume, plus accounts and the certificate authority.
+    # busybox tar honours only one -C, so gather the folders with symlinks.
+    foreach ($d in 'auth', 'caddy') { New-Item -ItemType Directory -Force -Path (Join-Path $script:DataDir $d) | Out-Null }
+    $script = "mkdir /stage && ln -s /amc-web/files/MC-Projects /stage/MC-Projects && ln -s /auth /stage/auth && " +
+              "ln -s /caddy /stage/caddy && tar czhf /backup/$name -C /stage MC-Projects auth caddy"
+    $ok = Invoke-VolumeShell @('-v', "${data}/backups:/backup", '-v', "${data}/auth:/auth:ro", '-v', "${data}/caddy:/caddy:ro") $script
+  } else {
+    $script = "cd /data && tar czf /backup/$name MC-Projects `$(ls -d .AMC.d 2>/dev/null)"
+    & docker run --rm -v "${data}:/data:ro" -v "${data}/backups:/backup" alpine:3 sh -c $script
+    $ok = ($LASTEXITCODE -eq 0)
+  }
+  if (-not $ok) {
+    Remove-Item -LiteralPath (Join-Path $dir $name) -ErrorAction SilentlyContinue
+    Die 'The backup failed (messages above).'
+  }
+  Ok "Backup written to $(Join-Path $dir $name)"
+}
+
+function Invoke-Cert {
+  Initialize-EnvFile
+  Read-Settings
+  if (-not (Test-LoginMode)) { Die 'HTTPS is only used in shared-machine mode (amc login on).' }
+  $ca = Join-Path $script:DataDir 'caddy/caddy/pki/authorities/local/root.crt'
+  if (-not (Test-Path -LiteralPath $ca)) { Die 'There is no certificate yet. Start the app once with: amc start' }
+  $copy = Join-Path $script:DataDir 'amc-ca.crt'
+  Copy-Item -LiteralPath $ca -Destination $copy -Force
+  $ip = Get-LanAddress
+  if (-not $ip) { $ip = 'localhost' }
+  Write-Host @"
+The app's HTTPS certificate comes from its own certificate authority:
+    $copy
+Colleagues can also download it from https://${ip}:$($script:Port)/amc-ca.crt
+(the browser warns once before the download).
+
+Install it once on each computer so browsers trust the app:
+  Windows:  double-click it > Install Certificate > Current User >
+            Place in "Trusted Root Certification Authorities".
+  macOS:    double-click it to add it to the login keychain, open it in
+            Keychain Access and set "When using this certificate" to "Always Trust".
+  Linux:    sudo cp amc-ca.crt /usr/local/share/ca-certificates/amc-ca.crt
+            sudo update-ca-certificates
+  Firefox may keep its own list: Settings > Privacy & Security > Certificates >
+            View Certificates > Authorities > Import.
+"@
 }
 
 # No param() block on purpose: options such as --no-open must arrive as plain
@@ -324,13 +644,17 @@ switch ($command) {
   'stop'    { Invoke-Stop }
   'restart' { Invoke-Stop; Invoke-Start $rest }
   'status'  { Invoke-Status }
-  'logs'    { Assert-Docker; & docker compose logs -f --tail 100 $Service }
+  'logs'    { Assert-Docker; & docker compose logs -f --tail 100 }
   'open'    {
     if (-not (Test-Path -LiteralPath $EnvFile)) { Die 'Not set up yet. Run: amc start' }
     Read-Settings; Open-Url $script:Url
   }
   'update'  { Invoke-Update $rest }
   'import'  { Invoke-Import $rest }
+  'login'   { Invoke-Login $rest }
+  'user'    { Invoke-User $rest }
+  'cert'    { Invoke-Cert }
+  'backup'  { Invoke-Backup }
   { $_ -in 'help', '-h', '--help', '/?' } { Show-Usage }
   default   { Show-Usage; exit 1 }
 }
