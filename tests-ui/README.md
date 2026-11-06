@@ -112,7 +112,7 @@ node tests-ui/e2e-editor.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 
 ### Paper design
 
-`e2e-design.mjs` tests Questions › Paper design: an exam from the Olympiad paper starter through the wizard (its settings, a part left out, versions); sections (heading, questions per copy, columns, shuffle, a pool too small, add, add a question to a section, move, rename, remove and give back); parts of the paper (off and on, move, settings, a value out of range, the instructions summary); versions; the build; History; read-only after printing. Then an exam from AMC's "simple" template, whose questions are written in the paper, organised into a section. The logic checks in `test_ui_logic.py` cover `ui_structure.py` on the blank and Olympiad starters.
+`e2e-design.mjs` tests Questions › Paper design: an exam from the blank starter through the wizard; sections (heading, questions per copy, columns, shuffle, a pool too small, add, add a question to a section, move, rename, remove and give back); versions, a value out of range; the build; History; read-only after printing. Then an exam from AMC's "simple" template, whose questions are written in the paper, organised into a section. The logic checks in `test_ui_logic.py` cover `ui_structure.py` on the blank starter.
 
 ```
 node tests-ui/e2e-design.mjs http://127.0.0.1:8095 /tmp/amc-test-shots

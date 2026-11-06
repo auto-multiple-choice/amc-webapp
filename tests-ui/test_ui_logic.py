@@ -502,14 +502,13 @@ except qe.EditError:
     check("editor: unbalanced braces are refused", True)
 check("editor: the lock still allows answer key edits but not text", same(rj, qe.apply(rj, [{"op": "answer_correct", "id": "q01", "i": 0, "correct": True}])[0]) and not same(rj, qe.apply(rj, [{"op": "text", "id": "q01", "latex": "Other"}])[0]))
 
-# ---- paper design: sections and blocks (ui_structure.py)
-import json
+# ---- paper design: sections (ui_structure.py)
 import ui_structure as st
 blank_src = open(os.path.join(SERVER, "school_templates/blank/exam.tex")).read()
 secs = st.read_sections(blank_src)
 check("structure: a plain \\insertgroup is a section without markers", [(x["name"], x["count"], x["shuffle"], x["markers"]) for x in secs] == [("general", None, True, False)])
 r = st.read(blank_src, "exam.tex", sc.read_latex(blank_src, "exam.tex"))
-check("structure: pool, marks from AMC's defaults, no inline questions", r["sections"][0]["pool"] == 2 and r["sections"][0]["marks"]["right"] == "1" and r["inline"] == 0 and r["copies"] == 10 and r["blocks"] == [])
+check("structure: pool, marks from AMC's defaults, no inline questions", r["sections"][0]["pool"] == 2 and r["sections"][0]["marks"]["right"] == "1" and r["inline"] == 0 and r["copies"] == 10 and not r["summary"])
 t1, what, ren = st.apply(blank_src, [{"op": "section_set", "name": "general", "heading": "Part A", "count": 1, "columns": 2, "shuffle": False}])
 s1 = st.read_sections(t1)[0]
 check("structure: editing adds the markers, the macros and multicol", s1["markers"] and s1["heading"] == "Part A" and s1["count"] == 1 and s1["columns"] == 2 and "%%AMCUI:MACROS%%" in t1 and "\\usepackage{multicol}" in t1 and what.startswith("Paper design: section general changed"))
@@ -536,34 +535,6 @@ check("structure: the moved questions still read the same", [(q["id"], q["text_l
 fr_src = inline_src.replace("\\onecopy{10}{", "\\exemplaire{10}{")
 t4b, _, _ = st.apply(fr_src, [{"op": "convert"}, {"op": "copies", "n": 3}])
 check("structure: AMC's French \\exemplaire works like \\onecopy", st.read(fr_src, "exam.tex", sc.read_latex(fr_src, "exam.tex"))["inline"] == 2 and "\\exemplaire{3}{" in t4b and t4b.index("\\element{main}{") < t4b.index("\\exemplaire"))
-oly = os.path.join(SERVER, "school_templates/olympiad")
-omain = open(os.path.join(oly, "exam.tex")).read(); oq = open(os.path.join(oly, "questions.tex")).read()
-ometa = json.load(open(os.path.join(oly, "blocks.json")))
-oqs = sc.read_latex(omain, "exam.tex") + sc.read_latex(oq, "questions.tex")
-r = st.read(omain, "exam.tex", oqs, ometa)
-check("olympiad: three sections with their pools and marks", [(x["name"], x["count"], x["pool"], x["marks"]["right"], x["marks"]["wrong"]) for x in r["sections"]] == [("sectionI", 3, 4, "3", "-0.75"), ("sectionII", None, 2, "5", "-1.25"), ("numerical", None, 2, "5", "0")])
-check("olympiad: blocks in order, the fixed ones marked, the footer in the preamble", [b["id"] for b in r["blocks"]] == ["footer", "title", "header-boxes", "instructions", "notation", "values", "sections", "rough", "fill", "omr"] and [b["id"] for b in r["blocks"] if b["fixed"]] == ["sections", "omr"] and [b["id"] for b in r["blocks"] if b["required"]] == ["sections", "omr"] and not r["blocks"][0]["in_body"] and r["copies"] == 4 and r["summary"])
-check("olympiad: parameters with their labels and values", {p["id"]: p["value"] for p in r["params"]}["RegDigits"] == 3 and next(p["label"] for p in r["params"] if p["id"] == "ExamName") == "Exam name")
-t5, what, _ = st.apply(omain, [{"op": "block_set", "id": "notation", "on": False}, {"op": "block_set", "id": "values", "on": False}], ometa)
-check("olympiad: a block off keeps its lines commented and is read as off", "%%AMCUI:BLOCK notation off%%\n%|\\clearpage\n" in t5 and [b["id"] for b in st.read_blocks(t5) if not b["on"]] == ["notation", "values"])
-check("olympiad: on again gives back the same file", st.apply(t5, [{"op": "block_set", "id": "notation", "on": True}, {"op": "block_set", "id": "values", "on": True}], ometa)[0] == omain)
-check("olympiad: a block off isn't the same layout (refused once printed)", not same(omain, t5))
-t6, _, _ = st.apply(omain, [{"op": "block_move", "id": "values", "before": "notation"}, {"op": "block_move", "id": "rough"}], ometa)
-check("olympiad: moving blocks, the OMR sheet stays last", [b["id"] for b in st.read_blocks(t6) if b["in_body"]] == ["title", "header-boxes", "instructions", "values", "notation", "sections", "fill", "rough", "omr"] and "\n\n\n" not in t6)
-for bad in ({"op": "block_set", "id": "omr", "on": False}, {"op": "block_move", "id": "omr", "before": "title"}, {"op": "block_move", "id": "footer"}, {"op": "param_set", "id": "RegDigits", "value": "12"}, {"op": "param_set", "id": "LogoRight", "value": "../x.png"}, {"op": "copies", "n": 30}, {"op": "param_set", "id": "Nope", "value": "x"}):
-    try:
-        st.apply(omain, [bad], ometa); check(f"olympiad: refused {bad['op']} {bad['id'] if 'id' in bad else bad.get('n')}", False)
-    except st.EditError:
-        check(f"olympiad: refused {bad['op']} {bad['id'] if 'id' in bad else bad.get('n')}", True)
-t7, what, _ = st.apply(omain, [{"op": "param_set", "id": "ExamName", "value": "Maths & Physics 100%"}, {"op": "param_set", "id": "RegDigits", "value": "5"}, {"op": "copies", "n": 2}], ometa)
-r7 = st.read(t7, "exam.tex", oqs, ometa)
-check("olympiad: text parameters are escaped for LaTeX and shown plain", "\\def\\amcuiExamName{Maths \\& Physics 100\\%}" in t7 and {p["id"]: p["value"] for p in r7["params"]}["ExamName"] == "Maths & Physics 100%" and {p["id"]: p["value"] for p in r7["params"]}["RegDigits"] == 5 and r7["copies"] == 2 and "\\onecopy{2}{" in t7)
-t8, what, _ = st.apply(omain, [{"op": "section_set", "name": "sectionI", "count": 2}, {"op": "summary"}], ometa, others=sc.read_latex(oq, "questions.tex"))
-i, j = t8.index("%%AMCUI:SUMMARY%%"), t8.index("%%AMCUI:END SUMMARY%%")
-check("olympiad: the instructions summary follows the sections", "\\amcuiPoint{\\textbf{Section 1 (Objective Questions):} 2 questions, each with exactly one correct answer. A correct answer scores \\(\\mathbf{+3}\\) and a wrong one \\(\\mathbf{-0.75}\\); an unanswered question scores 0.}" in t8[i:j] and "Section 3 (Numerical Answer Type Questions):} 2 questions, each answered with a whole number of 3 digits, between 000 and 999. A correct answer scores \\(\\mathbf{+5}\\); there is no negative marking." in t8[i:j] and "updated" in what)
-t9, _, _ = st.apply(omain, [{"op": "section_add", "name": "sectionIII", "heading": "Section 4: Extra", "count": 2}], ometa)
-check("olympiad: a new section goes at the end of the sections block", t9.index("%%AMCUI:SECTION sectionIII%%") < t9.index("%%AMCUI:END BLOCK%%\n\n%%AMCUI:BLOCK rough%%") and [x["name"] for x in st.read_sections(t9)][-1] == "sectionIII")
-check("olympiad: a renamed section renames the elements of the questions file", st.rename_elements(oq, "sectionI", "objective").count("\\element{objective}{") == 4 and "\\element{sectionII}{" in st.rename_elements(oq, "sectionI", "objective"))
 
 
 print(f"\n{ok} passed, {fail} failed")

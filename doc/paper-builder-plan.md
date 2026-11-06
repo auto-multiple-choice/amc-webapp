@@ -4,7 +4,9 @@ Proposal, November 2026, after the review of MR !12 (phase 8). Replaces the
 "Olympiad paper" starter of `questions-banks-templates-plan.md` (section 8)
 with a builder in which teachers compose the question paper and the OMR
 sheet from blocks laid out in rows and columns, the way Bootstrap lays out
-a web page. Nothing here is built yet.
+a web page. Status (7 November 2026): step B0 is done on the !12 branch
+(the starter is gone, the sections stay); the builder (B1 to B4) is being
+built on `feature/paper-builder`. The decisions of section 14 are taken.
 
 ## 1. Summary
 
@@ -205,8 +207,9 @@ The box size and spacing come from the RJ settings
 - **Same number of pages in every copy** (`\AMCaddpagesto{n}`), so the
   answer sheet is always the last sheet.
 - Box style and spacing on the answer sheet (section 6).
-- Icons: FontAwesome when the image has it, Zapf Dingbats otherwise (the
-  `texmf-dist-fontsextra` question stays open).
+- No icons anywhere (decided 7 Nov): exam information prints plain lines
+  ("Date: 9 February 2026"), the instructions use LaTeX's own bullets.
+  Nothing is added to the image for the look of the paper.
 
 ## 9. Where the design is kept
 
@@ -325,7 +328,8 @@ line each, no build step, every write through the history and the lock.
   inputs and the sections) and the presets (`rj-olympiad.json`,
   `simple.json`, `blank.json`); the RJ preset's sample questions from !12.
 - The LaTeX of the Olympiad starter's `paper-design.tex` (header boxes,
-  OMR grids, answer areas) becomes the generator's block templates.
+  OMR grids, answer areas; in the history of the !12 branch, commit
+  1f3a53c) becomes the generator's block templates.
 - Routes: `/ui/api/builder` (GET the design, POST changes with the digest
   they were made from), "Preview the first page" as a one-copy build. The
   sections keep `/ui/api/structure`.
@@ -346,15 +350,15 @@ line each, no build step, every write through the history and the lock.
 | Versions as `\onecopy{n}`, the app's copies following | The "parts of the paper" column of Paper design |
 | History, lock and conflict check for the paper | |
 
-Recommended: remove the starter from !12 before it is merged, so `main`
-never offers it, and keep the rest. The builder then comes as its own
-merge request.
+Done (B0, 7 Nov): the starter and its parts were removed from !12, so
+`main` never offers it; the rest stays. The builder comes as its own
+merge request on top of !12.
 
 ## 13. Steps
 
 | Step | Delivers | Size |
 |---|---|---|
-| **B0** | !12 without the Olympiad starter and its parts (section 12) | S |
+| **B0** ✓ | !12 without the Olympiad starter and its parts (section 12) | S |
 | **B1** | Layout engine (rows, columns, widths, borders, alignment, same height), question paper blocks, `paper.json` and the generated layout file, the canvas with drag and drop, first-page preview | L |
 | **B2** | Kind of paper, the answer sheet designer and its checks | L |
 | **B3** | Instructions panel, versions and codes, page and footer | M |
@@ -362,18 +366,18 @@ merge request.
 
 Question banks (phase 9) come after B4, or before B1 (section 14, point 3).
 
-## 14. To decide
+## 14. Decided (7 November 2026)
 
-1. Where the design is kept: `paper.json` and a generated layout file
-   (recommended), or markers in the LaTeX?
-2. MR !12: remove the Olympiad starter before merging (recommended), or
-   merge it and remove it in B0?
-3. The builder before question banks (phase 9), or banks first?
-4. Codes after Z: spreadsheet style, 27 = AA (recommended), with "same
-   length for every version" as an option?
-5. Drag and drop on the canvas, with buttons as well (recommended)?
-6. FontAwesome icons: build the image with `texmf-dist-fontsextra`, or keep
-   the Zapf Dingbats look? (I think latex has fontawesome5 style file, can we not use that?)
+1. The design is kept in `paper.json` with a generated layout file
+   (section 9), not as markers in the LaTeX.
+2. The Olympiad starter was removed from !12 before merging (B0).
+3. The builder comes before question banks (phase 9).
+4. Codes after Z: spreadsheet style, 27 = AA, with "same length for every
+   version" as an option.
+5. Drag and drop on the canvas, with buttons as well.
+6. No icons: `fontawesome5` exists on CTAN but Alpine only ships it inside
+   `texmf-dist-fontsextra` (1.9 GB), and a few icons aren't worth that or
+   a custom install. Plain text instead.
 7. Later: saving a row or a whole layout to reuse in other exams, and
    sharing layouts across the school.
 

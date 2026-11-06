@@ -1,6 +1,6 @@
 """
-The paper's structure: sections and design blocks of a LaTeX exam
-(doc/questions-banks-templates-plan.md, sections 6 and 8).
+The paper's structure: the sections of a LaTeX exam
+(doc/questions-banks-templates-plan.md, section 6).
 
 A *section* is an AMC group: questions wrapped in \\element{name}{...}
 and printed by \\insertgroup[n]{name} in the \\onecopy body. The panel
@@ -23,13 +23,10 @@ markers), and an exam whose questions sit inside \\onecopy can be
 organised: each question moves into an \\element and one section takes
 their place.
 
-A *block* is an optional part of a starter's paper, between
-%%AMCUI:BLOCK id%% and %%AMCUI:END BLOCK%%. Switching a block off keeps
-its lines, commented with "%|", and marks the opening line "off", so a
-teacher's edits inside survive. Parameters are LaTeX macros in the
-%%AMCUI:PARAMS%% region (\\def\\amcuiExamName{...}); blocks.json next to
-the source (copied from the starter) describes blocks and parameters.
-Everything else in the file is left as written. Standard library only.
+An instructions summary, one line per section made from the sections'
+counts and marks, is kept up to date between %%AMCUI:SUMMARY%% markers
+when the paper has them. Everything else in the file is left as written.
+Standard library only.
 """
 import re
 
@@ -37,16 +34,10 @@ import ui_scale as scale
 from ui_questions import EditError
 
 NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9-]{0,39}$")
-BLOCK_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
-PARAM_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,39}$")
 MAX_TEXT = 5000
 
 _SECTION_BEGIN = re.compile(r"^([ \t]*)%%AMCUI:SECTION[ \t]+([A-Za-z0-9-]+)[ \t]*%%[ \t]*$", re.M)
 _SECTION_END = re.compile(r"^[ \t]*%%AMCUI:END SECTION%%[ \t]*$", re.M)
-_BLOCK_BEGIN = re.compile(r"^([ \t]*)%%AMCUI:BLOCK[ \t]+([a-z0-9-]+)((?:[ \t]+off)?)[ \t]*%%[ \t]*$", re.M)
-_BLOCK_END = re.compile(r"^[ \t]*%%AMCUI:END BLOCK%%[ \t]*$", re.M)
-_PARAMS_BEGIN = re.compile(r"^([ \t]*)%%AMCUI:PARAMS%%[ \t]*$", re.M)
-_PARAMS_END = re.compile(r"^[ \t]*%%AMCUI:END PARAMS%%[ \t]*$", re.M)
 _SUMMARY_BEGIN = re.compile(r"^([ \t]*)%%AMCUI:SUMMARY%%[ \t]*$", re.M)
 _SUMMARY_END = re.compile(r"^[ \t]*%%AMCUI:END SUMMARY%%[ \t]*$", re.M)
 
@@ -57,8 +48,7 @@ _MULTICOLS = re.compile(r"\\begin\s*\{multicols\*?\}\s*\{\s*(\d+)\s*\}")
 _HEADING = re.compile(r"\\amcuiSectionHeading(?![A-Za-z])")
 _TEXT = re.compile(r"\\amcuiSectionText(?![A-Za-z])")
 _NEWPAGE = re.compile(r"\\(?:clearpage|newpage|pagebreak)(?![A-Za-z])")
-_PARAM = re.compile(r"^[ \t]*\\def\\amcui([A-Za-z0-9]+)(?=\{)", re.M)
-_SHEET_START = re.compile(r"\\(?:AMCcleardoublepage|AMCaddpagesto|AMCformBegin|AMCform)(?![A-Za-z])")
+_SHEET_START = re.compile(r"\\(?:AMCcleardoublepage|AMCaddpagesto|AMCformBegin|AMCform|amcuiPaperBack)(?![A-Za-z])")
 
 MACROS = ("%%AMCUI:MACROS%%\n"
           "% Section headings written by the Paper design panel.\n"
@@ -338,11 +328,8 @@ def _check_name(name, text, others=()):
 
 
 def _insert_point(text):
-    """Where a first section goes: at the end of the starter's sections
-    block, else before the answer sheet or the end of the \\onecopy body."""
-    for b in read_blocks(text):
-        if b["id"] == "sections":
-            return b["inner"][1], b["indent"]
+    """Where a first section goes: before the answer sheet (or the paper
+    builder's closing part), else at the end of the \\onecopy body."""
     oc = onecopy(text)
     if oc:
         a, e = oc[1]
@@ -454,159 +441,7 @@ def convert_inline(text, name="main"):
     return out[:oc_line] + head + "\n\n".join(elements) + "\n\n" + out[oc_line:], name
 
 
-# ---------------------------------------------------------------- blocks and parameters
-
-def read_blocks(text):
-    body = _body(text)
-    out = []
-    for r in _regions(text, _BLOCK_BEGIN, _BLOCK_END):
-        out.append({"id": r["m"].group(2), "on": not r["m"].group(3).strip(), "span": (r["start"], r["end"]),
-                    "inner": r["inner"], "indent": r["indent"], "line": r["line"],
-                    "in_body": body[0] <= r["start"] < body[1]})
-    return out
-
-
-def _block(text, bid):
-    for b in read_blocks(text):
-        if b["id"] == bid:
-            return b
-    raise EditError(f"The paper has no block \"{bid}\".")
-
-
-def set_block(text, bid, on, meta=None):
-    """Switch a block on or off: its lines are kept, commented with "%|"
-    while it is off."""
-    b = _block(text, bid)
-    on = bool(on)
-    if not on and any(x.get("id") == bid and x.get("required") for x in (meta or {}).get("blocks", [])):
-        raise EditError("The paper needs this part.")
-    if on == b["on"]:
-        return text
-    a, e = b["inner"]
-    lines = text[a:e].split("\n")
-    if on:
-        lines = [re.sub(r"^([ \t]*)%\|", r"\1", l) for l in lines]
-    else:
-        lines = [re.sub(r"^([ \t]*)", r"\1%|", l, count=1) if l.strip() else l for l in lines]
-    marker = f"{b['indent']}%%AMCUI:BLOCK {bid}" + ("" if on else " off") + "%%\n"
-    return text[:b["span"][0]] + marker + "\n".join(lines) + text[e:]
-
-
-def move_block(text, bid, before=None, meta=None):
-    """Move a block of the paper before another one, or to the end (but
-    never after a block the starter keeps last)."""
-    fixed = {b["id"] for b in (meta or {}).get("blocks", []) if b.get("fixed")}
-    if bid in fixed:
-        raise EditError("This part of the paper stays where it is.")
-    b = _block(text, bid)
-    if not b["in_body"]:
-        raise EditError("This part isn't in the paper's body, so it can't be moved.")
-    cut = text[b["span"][0]:b["span"][1]].rstrip("\n") + "\n"
-    out = _tidy_blank(text[:b["span"][0]] + text[b["span"][1]:], b["span"][0])
-    blocks = [x for x in read_blocks(out) if x["in_body"]]
-    if before:
-        t = next((x for x in blocks if x["id"] == before), None)
-        if not t:
-            raise EditError(f"The paper has no block \"{before}\".")
-        at = t["span"][0]
-    else:
-        last = blocks[-1] if blocks else None
-        if not last:
-            return text
-        at = last["span"][0] if last["id"] in fixed else last["span"][1]
-    pre = "" if at == 0 or out[max(0, at - 2):at] == "\n\n" else "\n"
-    post = "" if out[at:at + 1] == "\n" else "\n"
-    return out[:at] + pre + cut + post + out[at:]
-
-
-def read_params(text):
-    """The parameters as written: {id: LaTeX value}, and the region."""
-    regions = _regions(text, _PARAMS_BEGIN, _PARAMS_END)
-    if not regions:
-        return {}, None
-    r = regions[0]
-    a, e = r["inner"]
-    out = {}
-    for m in _PARAM.finditer(text, a, e):
-        g = scale._braced(text, m.end())
-        if g:
-            out[m.group(1)] = g[0]
-    return out, r
-
-
-def _param_spec(meta, pid):
-    for p in (meta or {}).get("params", []):
-        if p.get("id") == pid:
-            return p
-    return None
-
-
-def param_value(spec, value):
-    """VALUE as it goes into \\def\\amcuiX{...}, checked against the
-    parameter's type."""
-    kind = (spec or {}).get("type", "text")
-    if kind == "number":
-        try:
-            n = int(str(value).strip())
-        except (TypeError, ValueError):
-            raise EditError(f"{(spec or {}).get('label', 'This value')} is a whole number.") from None
-        lo, hi = spec.get("min", 0), spec.get("max", 9999)
-        if not lo <= n <= hi:
-            raise EditError(f"{spec.get('label', 'This value')}: between {lo} and {hi}.")
-        return str(n)
-    if kind == "bool":
-        return "1" if value in (True, 1, "1", "true", "on", "yes") else "0"
-    if kind == "choice":
-        v = str(value if value is not None else "")
-        if v not in [str(c) for c in spec.get("choices", [])]:
-            raise EditError(f"{spec.get('label', 'This value')}: not one of the choices.")
-        return v
-    if kind == "file":
-        v = str(value or "").strip()
-        if v and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", v):
-            raise EditError("A file name uses letters, digits, . _ and - only.")
-        return v
-    if kind == "latex":
-        return _latex(value, (spec or {}).get("label", "This value")).replace("\n", " ")
-    s = str(value if value is not None else "").replace("\r", "").replace("\n", " ").strip()
-    if len(s) > 500:
-        raise EditError("This value is too long.")
-    return latex_escape(s)
-
-
-def param_display(spec, value):
-    """The value as the form shows it."""
-    kind = (spec or {}).get("type", "text")
-    if kind == "bool":
-        return value.strip() == "1"
-    if kind == "number":
-        try:
-            return int(value.strip())
-        except ValueError:
-            return None
-    if kind in ("latex", "file", "choice"):
-        return value.strip()
-    return latex_unescape(value.strip())
-
-
-def set_param(text, pid, value, meta=None):
-    pid = str(pid or "").strip()
-    if not PARAM_ID_RE.match(pid):
-        raise EditError("Unknown parameter.")
-    spec = _param_spec(meta, pid)
-    if meta and not spec:
-        raise EditError("Unknown parameter.")
-    v = param_value(spec, value)
-    params, r = read_params(text)
-    if not r:
-        raise EditError("This paper has no parameters: it wasn't made from a starter with blocks.")
-    a, e = r["inner"]
-    for m in _PARAM.finditer(text, a, e):
-        if m.group(1) == pid:
-            g = scale._braced(text, m.end())
-            return text[:g[1]] + "{" + v + "}" + text[g[2]:]
-    return text[:e] + f"{r['indent']}\\def\\amcui{pid}{{{v}}}\n" + text[e:]
-
+# ---------------------------------------------------------------- versions
 
 def set_copies(text, n):
     """\\onecopy{N}: the number of versions of a paper whose copies are
@@ -774,7 +609,7 @@ def _with_pools(text, sections, by_group):
     return sections
 
 
-def read(text, main, questions, meta=None):
+def read(text, main, questions):
     """The paper's structure for the panel. QUESTIONS: every question of
     the exam (all source files, ui_scale.read_latex)."""
     by_group = pools(questions)
@@ -793,36 +628,17 @@ def read(text, main, questions, meta=None):
     inline = inline_questions(text, [q for q in questions if q.get("file") == main]) if oc else []
     used = {s["name"] for s in sections}
     unused = [{"name": g, "pool": p["n"]} for g, p in sorted(by_group.items()) if g not in used]
-    specs = {b["id"]: b for b in (meta or {}).get("blocks", [])}
-    blocks = []
-    for b in read_blocks(text):
-        spec = specs.get(b["id"], {})
-        blocks.append({"id": b["id"], "on": b["on"], "line": b["line"], "in_body": b["in_body"],
-                       "title": spec.get("title") or b["id"].replace("-", " ").capitalize(),
-                       "text": spec.get("text") or "", "params": spec.get("params") or [],
-                       "fixed": bool(spec.get("fixed")), "required": bool(spec.get("required")),
-                       "summary": bool(spec.get("summary"))})
-    raw, _ = read_params(text)
-    params = []
-    for spec in (meta or {}).get("params", []):
-        pid = spec.get("id")
-        if pid in raw:
-            params.append(dict(spec, value=param_display(spec, raw[pid])))
-    for pid, v in raw.items():
-        if not _param_spec(meta, pid):
-            params.append({"id": pid, "label": pid, "type": "latex", "value": v})
     return {"copies": oc[0] if oc else None, "onecopy": bool(oc),
             "sections": [{k: s[k] for k in ("name", "heading", "text", "count", "shuffle", "columns", "newpage",
                                              "markers", "line", "pool", "kinds", "rule", "marks", "problem", "file")}
                          for s in sections],
-            "inline": len(inline), "unused": unused, "blocks": blocks, "params": params,
-            "summary": bool(_regions(text, _SUMMARY_BEGIN, _SUMMARY_END)),
-            "title": (meta or {}).get("title")}
+            "inline": len(inline), "unused": unused,
+            "summary": bool(_regions(text, _SUMMARY_BEGIN, _SUMMARY_END))}
 
 
 # ---------------------------------------------------------------- applying edits
 
-def apply(text, ops, meta=None, others=()):
+def apply(text, ops, others=()):
     """Apply the panel's edits in order. Returns (text, what changed,
     renames) where renames = [(old, new)] to apply to the other source
     files' \\element wrappers. OTHERS: the other files' questions, for
@@ -854,18 +670,6 @@ def apply(text, ops, meta=None, others=()):
         elif kind == "convert":
             text, new = convert_inline(text, op.get("name") or "main")
             done.append(f"questions organised into section {new}")
-        elif kind == "block_set":
-            bid = str(op.get("id") or "")
-            text = set_block(text, bid, op.get("on"), meta)
-            done.append(f"{bid} {'on' if op.get('on') else 'off'}")
-        elif kind == "block_move":
-            bid = str(op.get("id") or "")
-            text = move_block(text, bid, op.get("before") or None, meta)
-            done.append(f"{bid} moved")
-        elif kind == "param_set":
-            pid = str(op.get("id") or "")
-            text = set_param(text, pid, op.get("value"), meta)
-            done.append(f"{pid} set")
         elif kind == "copies":
             text, n = set_copies(text, op.get("n"))
             done.append(f"{n} versions")
