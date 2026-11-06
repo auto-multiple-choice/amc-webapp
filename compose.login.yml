@@ -1,0 +1,77 @@
+# Shared-machine mode: sign-in, one projects folder per teacher, HTTPS.
+# The launcher adds this file (`./amc login on`) through COMPOSE_FILE in .env.
+#
+#   browser ──HTTPS──> caddy ──> amc-auth   (/auth/*: sign-in, account, admin)
+#                         └────> amc-web    (everything else, once amc-auth
+#                                            confirms who is signed in)
+services:
+  amc-web:
+    # Not reachable from outside: AMC trusts the X-AMC-User header, so
+    # requests must come through caddy, which sets it from amc-auth.
+    ports: !reset []
+    # Projects live in a Docker volume in this mode: the sandbox that keeps
+    # teachers apart (Landlock) can't follow files in a folder shared from a
+    # macOS or Windows host, but works on volumes everywhere.
+    # `./amc backup` exports them.
+    volumes: !override
+      - amc-home:/amc-web/files
+    depends_on:
+      amc-home-init:
+        condition: service_completed_successfully
+    environment:
+      AMC_USERHEADER: X-AMC-User
+      # Accounts that can open every teacher's projects (comma separated).
+      AMC_ADMINS: ${AMC_ADMINS:-}
+      # Run LaTeX and scoring commands in a sandbox limited to the
+      # teacher's own projects, and refuse custom LaTeX commands.
+      AMC_ISOLATE: ${AMC_ISOLATE:-1}
+      AMC_LATEX_ENGINES: pdflatex,xelatex,lualatex
+      # Trust caddy's X-Forwarded-* headers (one proxy in front).
+      AMC_SERVER_PROXYLEVEL: x_for=1,x_proto=1,x_host=1,x_port=1
+      ALLOWED_ORIGINS: ${AMC_ORIGINS:-https://localhost:8090}
+      PREFERRED_URL_SCHEME: https
+
+  # A new volume belongs to root: hand it to the user the app runs as.
+  amc-home-init:
+    image: alpine:3
+    user: "0"
+    volumes:
+      - amc-home:/amc-web/files
+    entrypoint:
+      - sh
+      - -c
+      - mkdir -p /amc-web/files/MC-Projects && chown ${AMC_UID:-1000}:${AMC_GID:-0} /amc-web/files /amc-web/files/MC-Projects
+    restart: "no"
+
+  amc-auth:
+    build: ./auth
+    image: amc-auth
+    user: "${AMC_UID:-1000}:${AMC_GID:-0}"
+    volumes:
+      - "${AMC_DATA_DIR:?AMC_DATA_DIR is not set}/auth:/data"
+    environment:
+      AMC_USERHEADER: X-AMC-User
+      TZ: ${TZ:-UTC}
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.10-alpine
+    ports:
+      - "${AMC_BIND:-0.0.0.0}:${AMC_PORT:-8090}:${AMC_PORT:-8090}"
+    volumes:
+      # The folder, not the file: a single-file mount keeps pointing at the
+      # old file once an editor replaces it.
+      - ./caddy:/etc/caddy:ro
+      # Keeps the certificate authority stable across restarts, so browsers
+      # that trust it keep trusting it.
+      - "${AMC_DATA_DIR}/caddy:/data"
+    environment:
+      AMC_SITES: ${AMC_SITES:-https://localhost:8090}
+      AMC_DEFAULT_SNI: ${AMC_DEFAULT_SNI:-localhost}
+    depends_on:
+      - amc-web
+      - amc-auth
+    restart: unless-stopped
+
+volumes:
+  amc-home: {}

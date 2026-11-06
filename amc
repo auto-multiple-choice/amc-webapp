@@ -11,6 +11,7 @@ cd "$ROOT"
 SERVICE=amc-web          # service name in docker-compose.yml
 IMAGE=amc-web            # image name in docker-compose.yml
 MIN_COMPOSE=2.24.4       # first version supporting `!override`
+LOGIN_FILES=docker-compose.yml,docker-compose.override.yml,compose.login.yml
 
 if [ -t 1 ]; then
   B=$'\033[1m'; RED=$'\033[31m'; YEL=$'\033[33m'; GRN=$'\033[32m'; N=$'\033[0m'
@@ -36,7 +37,23 @@ Commands:
   logs                 Follow the server log (Ctrl+C to quit)
   open                 Open the app in the browser
   update [--no-open]   Pull the latest version of this repository, then restart
-  import <folder>...   Copy existing AMC project folders into the app
+  import [--user NAME] <folder>...
+                       Copy existing AMC project folders into the app
+
+Shared machine (sign-in, HTTPS, one projects folder per teacher):
+  login on [--local]   Turn it on; --local keeps it reachable from this computer only
+  login off            Back to this computer only, without sign-in
+  user add NAME [--admin] [--temporary]
+                       Create an account (--admin: can manage accounts;
+                       --temporary: print a starting password to change at sign-in)
+  user passwd NAME     Set an account's password
+  user list            List accounts
+  user enable NAME     Re-enable a disabled account
+  cert                 Show how browsers can trust the app's HTTPS certificate
+
+  backup               Save all projects (and, on a shared machine, accounts and
+                       the certificate authority) to AMC_DATA_DIR/backups
+
   help                 Show this help
 
 Settings are in .env, created on first start (see .env.example).
@@ -55,6 +72,26 @@ env_get() {
   line=${line%\"}; line=${line#\"}
   line=${line%\'}; line=${line#\'}
   printf '%s' "$line"
+}
+
+# env_set KEY VALUE: set KEY in .env, keeping every other line.
+env_set() {
+  local tmp
+  tmp=$(mktemp "${TMPDIR:-/tmp}/amc-env.XXXXXX")
+  awk -v k="$1" -v v="$2" '
+    $0 ~ "^[[:space:]]*" k "=" { if (!done) print k "=" v; done = 1; next }
+    { print }
+    END { if (!done) print k "=" v }' .env > "$tmp"
+  cat "$tmp" > .env
+  rm -f "$tmp"
+}
+
+env_unset() {
+  local tmp
+  tmp=$(mktemp "${TMPDIR:-/tmp}/amc-env.XXXXXX")
+  awk -v k="$1" '$0 !~ "^[[:space:]]*" k "=" { print }' .env > "$tmp"
+  cat "$tmp" > .env
+  rm -f "$tmp"
 }
 
 detect_tz() {
@@ -103,8 +140,14 @@ load_settings() {
     '') die "AMC_DATA_DIR is not set in .env." ;;
     *)  die "AMC_DATA_DIR in .env must be an absolute path (got '$DATA_DIR')." ;;
   esac
-  URL="http://localhost:$PORT"
+  if login_mode; then
+    URL="https://localhost:$PORT"
+  else
+    URL="http://localhost:$PORT"
+  fi
 }
+
+login_mode() { [ "$(env_get AMC_LOGIN 0)" = 1 ]; }
 
 # --- docker -----------------------------------------------------------------
 
@@ -147,10 +190,16 @@ ensure_docker() {
     die "Docker Compose $v is too old; $MIN_COMPOSE or newer is needed. Please update Docker."
 }
 
-running() { [ -n "$(docker compose ps --status running -q "$SERVICE" 2>/dev/null)" ]; }
+is_running() { [ -n "$(docker compose ps --status running -q "$1" 2>/dev/null)" ]; }
 
-# Host port the running container publishes, or nothing.
-published_port() { docker compose port "$SERVICE" 8080 2>/dev/null | sed 's/.*://' || true; }
+# Host port the app is published on right now, or nothing.
+published_port() {
+  if login_mode; then
+    docker compose port caddy "$PORT" 2>/dev/null | sed 's/.*://' || true
+  else
+    docker compose port "$SERVICE" 8080 2>/dev/null | sed 's/.*://' || true
+  fi
+}
 
 # port_in_use PORT: true (and prints who, if known) when something answers on it.
 port_in_use() {
@@ -203,21 +252,6 @@ remove_appledouble() {
   find "$ROOT" -path "$ROOT/.git" -prune -o -name '._*' -type f -exec rm -f {} + 2>/dev/null || true
 }
 
-wait_ready() {
-  local i=0 body
-  command -v curl >/dev/null 2>&1 || { sleep 5; return 0; }
-  while :; do
-    body=$(curl -fs -m 3 "http://127.0.0.1:$PORT/" 2>/dev/null || true)
-    case $body in *'<title>AMC'*) return 0 ;; esac
-    i=$((i + 1))
-    if [ "$i" -gt 60 ]; then
-      docker compose logs --tail 30 "$SERVICE" >&2 || true
-      die "The app did not answer at $URL within 2 minutes (server log above)."
-    fi
-    sleep 2
-  done
-}
-
 lan_address() {
   case "$(uname -s)" in
     Darwin)
@@ -227,6 +261,96 @@ lan_address() {
       ;;
     *) hostname -I 2>/dev/null | awk '{print $1}' || true ;;
   esac
+}
+
+# Names and addresses the HTTPS certificate must cover: browsers only accept
+# the certificate for the exact name or address they connect to.
+site_hosts() {
+  local h
+  echo localhost
+  lan_address
+  case "$(uname -s)" in
+    Darwin) h=$(scutil --get LocalHostName 2>/dev/null || true); [ -z "$h" ] || echo "$h.local" ;;
+    *)      hostname 2>/dev/null || true ;;
+  esac
+  env_get AMC_HOSTNAMES "" | tr ',' ' ' | tr ' ' '\n'
+}
+
+# Exports the variables compose.login.yml and the Caddyfile read.
+export_sites() {
+  local h sites="" origins=""
+  for h in $(site_hosts | tr '[:upper:]' '[:lower:]' | grep -E '^[a-z0-9][a-z0-9.-]*$' | awk '!seen[$0]++'); do
+    sites="${sites:+$sites, }https://$h:$PORT"
+    origins="${origins:+$origins,}https://$h:$PORT"
+  done
+  LAN_IP=$(lan_address)
+  export AMC_SITES="$sites" AMC_ORIGINS="$origins" AMC_DEFAULT_SNI="${LAN_IP:-localhost}"
+}
+
+wait_ready() {
+  local i=0 body
+  command -v curl >/dev/null 2>&1 || { sleep 5; return 0; }
+  while :; do
+    if login_mode; then
+      # The sign-in page through caddy, and AMC itself behind it.
+      # Caddy only answers for the names it holds certificates for.
+      body=$(curl -fsk -m 3 --resolve "localhost:$PORT:127.0.0.1" "https://localhost:$PORT/auth/login" 2>/dev/null || true)
+      case $body in
+        *'Sign in'*)
+          docker compose exec -T "$SERVICE" curl -fs -m 3 http://127.0.0.1:8080/public/status.json >/dev/null 2>&1 && return 0 ;;
+      esac
+    else
+      body=$(curl -fs -m 3 "http://127.0.0.1:$PORT/" 2>/dev/null || true)
+      case $body in *'<title>AMC'*) return 0 ;; esac
+    fi
+    i=$((i + 1))
+    if [ "$i" -gt 60 ]; then
+      docker compose logs --tail 30 >&2 || true
+      die "The app did not answer at $URL within 2 minutes (server log above)."
+    fi
+    sleep 2
+  done
+}
+
+# AMC runs each teacher's LaTeX and scoring commands in a sandbox limited to
+# their own projects (Landlock). It silently does nothing on a kernel without
+# Landlock, and it can't follow files on some shared folders, so check on the
+# real projects storage that it lets the allowed folder through and blocks
+# the rest.
+check_sandbox() {
+  local result problem
+  if [ "$(env_get AMC_ALLOW_UNISOLATED 0)" = 1 ]; then
+    warn "The sandbox between teachers is off (AMC_ALLOW_UNISOLATED=1): a teacher's LaTeX can read other teachers' projects."
+    return 0
+  fi
+  # shellcheck disable=SC2016  # expanded inside the container
+  result=$(docker compose exec -T "$SERVICE" sh -c '
+    d=/amc-web/files/MC-Projects/.amc-sandbox-check
+    mkdir -p $d/ok && echo fine > $d/ok/f && echo secret > $d/secret
+    run() { landrun --best-effort --log-level error --rox "$AMC_ISOLATE_ROX" --ro /etc --rw $d/ok -- "$@"; }
+    if ! run cat $d/ok/f >/dev/null 2>&1; then echo broken
+    elif run cat $d/secret >/dev/null 2>&1; then echo open
+    else echo isolated; fi
+    rm -rf $d' 2>/dev/null || true)
+  case $result in
+    isolated) return 0 ;;
+    open) problem="The sandbox doesn't isolate anything here: this Linux kernel lacks Landlock (Linux 5.13 or newer, with Landlock enabled). A teacher's LaTeX could read other teachers' projects." ;;
+    *)    problem="The sandbox would stop AMC from reading its own projects here (result: '${result:-no answer}')." ;;
+  esac
+  docker compose down >/dev/null 2>&1 || true
+  die "$problem The app was stopped. If you trust every teacher, set AMC_ALLOW_UNISOLATED=1 in .env (this turns the sandbox off) and start again."
+}
+
+auth_exec() {
+  if [ -t 0 ]; then
+    docker compose exec amc-auth flask user "$@"
+  else
+    docker compose exec -T amc-auth flask user "$@"
+  fi
+}
+
+account_count() {
+  docker compose exec -T amc-auth flask user count 2>/dev/null | tr -cd '0-9' || true
 }
 
 open_url() {
@@ -253,6 +377,35 @@ parse_open_flag() {
   done
 }
 
+confirm() {
+  local reply
+  printf '%s [y/N] ' "$1"
+  read -r reply || reply=""
+  case $reply in y|Y|yes|Yes) return 0 ;; *) return 1 ;; esac
+}
+
+print_where() {
+  if login_mode; then
+    echo "    On this computer:  $URL"
+    if [ "$BIND" != 127.0.0.1 ] && [ -n "${LAN_IP:-}" ]; then
+      echo "    Colleagues:        https://$LAN_IP:$PORT"
+    elif [ "$BIND" = 127.0.0.1 ]; then
+      echo "    Reachable from this computer only (login on --local)."
+    fi
+    echo "    Projects:          in a Docker volume, one folder per teacher (./amc backup exports them)"
+    echo "    Browsers warn about the certificate until they trust it: ./amc cert"
+  else
+    echo "    Projects folder: $DATA_DIR/MC-Projects"
+    if [ "$BIND" = 127.0.0.1 ]; then
+      echo "    Reachable from this computer only."
+    else
+      local ip; ip=$(lan_address)
+      [ -n "$ip" ] && echo "    Others on your network: http://$ip:$PORT"
+      warn "The app is reachable from the network without sign-in. Use ./amc login on for a shared machine."
+    fi
+  fi
+}
+
 # --- commands ---------------------------------------------------------------
 
 cmd_start() {
@@ -260,6 +413,10 @@ cmd_start() {
   ensure_docker
   ensure_env
   load_settings
+  if login_mode; then
+    export_sites
+    if [ "$(env_get AMC_ALLOW_UNISOLATED 0)" = 1 ]; then export AMC_ISOLATE=0; fi
+  fi
 
   if [ "$(published_port)" != "$PORT" ]; then
     local who
@@ -277,17 +434,18 @@ cmd_start() {
     say "First start: building the app. This downloads AMC and LaTeX (a few GB) and takes 10-30 minutes; later starts take seconds."
   fi
   say "Starting the AMC web app..."
-  docker compose up -d --build
+  docker compose up -d --build --remove-orphans
   wait_ready
+  if login_mode; then check_sandbox; fi
 
-  ok "AMC is running at $URL"
-  echo "    Projects folder: $DATA_DIR/MC-Projects"
-  if [ "$BIND" = 127.0.0.1 ]; then
-    echo "    Reachable from this computer only."
+  if login_mode; then
+    ok "AMC is running in shared-machine mode (sign-in required)"
   else
-    local ip; ip=$(lan_address)
-    [ -n "$ip" ] && echo "    Others on your network: http://$ip:$PORT"
-    warn "The app is reachable from the network and has no login yet."
+    ok "AMC is running at $URL"
+  fi
+  print_where
+  if login_mode && [ "$(account_count)" = 0 ]; then
+    warn "There are no accounts yet. Create the first admin with: ./amc user add <name> --admin"
   fi
 
   if [ "$OPEN_BROWSER" = 1 ]; then
@@ -305,18 +463,18 @@ cmd_status() {
   ensure_docker
   if [ ! -f .env ]; then echo "Not set up yet. Run ./amc start"; return 0; fi
   load_settings
-  if running; then ok "Running at $URL"; else echo "Stopped. Start it with ./amc start"; fi
-  echo "    Projects folder: $DATA_DIR/MC-Projects"
-  if [ "$BIND" = 127.0.0.1 ]; then
-    echo "    Reachable from this computer only."
+  if login_mode; then export_sites; fi
+  if is_running "$SERVICE"; then
+    if login_mode; then ok "Running in shared-machine mode (sign-in required)"; else ok "Running at $URL"; fi
   else
-    echo "    Reachable from the network (AMC_BIND=$BIND)."
+    echo "Stopped. Start it with ./amc start"
   fi
+  print_where
 }
 
 cmd_logs() {
   ensure_docker
-  docker compose logs -f --tail 100 "$SERVICE"
+  docker compose logs -f --tail 100
 }
 
 cmd_open() {
@@ -337,23 +495,206 @@ cmd_update() {
 }
 
 cmd_import() {
-  [ $# -gt 0 ] || die "Usage: ./amc import <project folder>..."
+  local user=""
+  if [ "${1:-}" = --user ]; then
+    [ $# -ge 2 ] || die "Usage: ./amc import --user NAME <project folder>..."
+    user=$2; shift 2
+  fi
+  [ $# -gt 0 ] || die "Usage: ./amc import [--user NAME] <project folder>..."
   ensure_env
   load_settings
-  mkdir -p "$DATA_DIR/MC-Projects"
-  local src name dest
-  for src in "$@"; do
-    src=${src%/}
-    [ -d "$src" ] || die "Not a folder: $src"
-    [ -f "$src/options.xml" ] || die "$src doesn't look like an AMC project (no options.xml inside)."
-    name=$(basename "$src")
-    dest="$DATA_DIR/MC-Projects/$name"
-    [ ! -e "$dest" ] || die "A project named '$name' already exists in $DATA_DIR/MC-Projects"
-    cp -R "$src" "$dest"
-    ok "Imported $name"
-  done
+  local base="$DATA_DIR/MC-Projects" src name dest
+  if login_mode; then
+    [ -n "$user" ] || die "In shared-machine mode, say whose projects these are: ./amc import --user NAME <folder>..."
+    case $user in ''|_*|.*|*/*) die "Invalid username: $user" ;; esac
+    ensure_docker
+    local uid gid abs
+    uid=$(env_get AMC_UID 1000); gid=$(env_get AMC_GID 0)
+    for src in "$@"; do
+      src=${src%/}
+      [ -d "$src" ] || die "Not a folder: $src"
+      [ -f "$src/options.xml" ] || die "$src doesn't look like an AMC project (no options.xml inside)."
+      abs=$(cd "$src" && pwd)
+      name=${abs##*/}
+      # shellcheck disable=SC2016  # expanded inside the container
+      docker compose run --rm --no-deps -T -v "$abs:/from:ro" -e U="$user" -e N="$name" -e OWNER="$uid:$gid" \
+        --entrypoint sh amc-home-init -c '
+          dest=/amc-web/files/MC-Projects/$U/$N
+          if [ -e "$dest" ]; then echo "exists"; exit 3; fi
+          mkdir -p "${dest%/*}" && cp -a /from "$dest" && chown -R "$OWNER" "${dest%/*}"' ||
+        die "Could not import $name (a project with that name may already exist for $user)."
+      ok "Imported $name for $user"
+    done
+  else
+    [ -z "$user" ] || die "--user only applies in shared-machine mode (./amc login on)."
+    mkdir -p "$base"
+    for src in "$@"; do
+      src=${src%/}
+      [ -d "$src" ] || die "Not a folder: $src"
+      [ -f "$src/options.xml" ] || die "$src doesn't look like an AMC project (no options.xml inside)."
+      name=$(basename "$src")
+      dest="$base/$name"
+      [ ! -e "$dest" ] || die "A project named '$name' already exists in $base"
+      cp -R "$src" "$dest"
+      ok "Imported $name"
+    done
+  fi
   echo "    The original folders are unchanged. Work on the copies in the web app:"
   echo "    its AMC is newer than desktop AMC 1.7.0."
+}
+
+# Projects from this-computer-only mode are in the host folder; shared-machine
+# mode keeps one folder per teacher in a Docker volume. Copy them over (the
+# originals stay where they are).
+copy_single_user_projects() {
+  local user=$1 root="$DATA_DIR/MC-Projects" d found=""
+  for d in "$root"/*; do
+    if [ -f "$d/options.xml" ]; then
+      found="$found
+      ${d##*/}"
+    fi
+  done
+  [ -n "$found" ] || return 0
+  echo "    Projects from this-computer-only mode:$found"
+  if ! { [ -t 0 ] && confirm "    Copy them into $user's projects?"; }; then
+    echo "    Not copied. Later: ./amc import --user $user <folder>"
+    return 0
+  fi
+  local uid gid
+  uid=$(env_get AMC_UID 1000); gid=$(env_get AMC_GID 0)
+  # shellcheck disable=SC2016  # expanded inside the container
+  docker compose run --rm --no-deps -T -v "$root:/from:ro" -e U="$user" -e OWNER="$uid:$gid" \
+    --entrypoint sh amc-home-init -c '
+      dest=/amc-web/files/MC-Projects/$U; mkdir -p "$dest"
+      for d in /from/*; do
+        [ -f "$d/options.xml" ] || continue
+        n=${d##*/}
+        if [ -e "$dest/$n" ]; then echo "    Skipped $n: already there."; else cp -a "$d" "$dest/$n"; fi
+      done
+      chown -R "$OWNER" "$dest"'
+  ok "Copied into $user's projects. The originals are still in $root"
+}
+
+create_first_admin() {
+  if [ ! -t 0 ]; then
+    warn "There are no accounts yet. Create the first admin with: ./amc user add <name> --admin"
+    return 0
+  fi
+  say "Create the first admin account. It can add the other teachers on the Admin page."
+  local name=""
+  while [ -z "$name" ]; do
+    printf 'Admin username: '
+    read -r name || return 1
+  done
+  auth_exec add "$name" --admin || return 1
+  copy_single_user_projects "$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+}
+
+cmd_login() {
+  local sub=${1:-} bind=0.0.0.0 a
+  [ $# -gt 0 ] && shift
+  case $sub in
+    on)
+      for a in "$@"; do
+        case $a in --local) bind=127.0.0.1 ;; *) die "Unknown option: $a" ;; esac
+      done
+      ensure_docker
+      ensure_env
+      if login_mode; then
+        say "Shared-machine mode is already on."
+      else
+        say "Turning on shared-machine mode: sign-in, HTTPS, one projects folder per teacher."
+        docker compose down >/dev/null 2>&1 || true
+        env_set AMC_LOGIN 1
+        env_set COMPOSE_PATH_SEPARATOR ,
+        env_set COMPOSE_FILE "$LOGIN_FILES"
+      fi
+      env_set AMC_BIND "$bind"
+      cmd_start --no-open
+      if [ "$(account_count)" = 0 ]; then create_first_admin; fi
+      ;;
+    off)
+      [ $# -eq 0 ] || die "Unknown option: $1"
+      ensure_docker
+      ensure_env
+      if login_mode; then
+        say "Turning off shared-machine mode: this computer only, no sign-in."
+        docker compose down >/dev/null 2>&1 || true
+      else
+        say "Shared-machine mode is already off."
+      fi
+      env_set AMC_LOGIN 0
+      env_unset COMPOSE_FILE
+      env_unset COMPOSE_PATH_SEPARATOR
+      env_set AMC_BIND 127.0.0.1
+      cmd_start --no-open
+      warn "Teachers' projects stay in the Docker volume and come back with ./amc login on."
+      ;;
+    *) die "Usage: ./amc login on [--local] | ./amc login off" ;;
+  esac
+}
+
+cmd_user() {
+  ensure_docker
+  [ -f .env ] || die "Not set up yet. Run ./amc login on"
+  login_mode || die "Accounts only exist in shared-machine mode. Turn it on with: ./amc login on"
+  is_running amc-auth || die "The app isn't running. Start it with: ./amc start"
+  [ $# -gt 0 ] || die "Usage: ./amc user add NAME [--admin] [--temporary] | passwd NAME | list | enable NAME"
+  auth_exec "$@"
+}
+
+cmd_backup() {
+  ensure_docker
+  ensure_env
+  load_settings
+  local dir="$DATA_DIR/backups" name
+  name="amc-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+  mkdir -p "$dir"
+  if login_mode; then
+    # Projects from the volume, plus accounts and the certificate authority.
+    mkdir -p "$DATA_DIR/auth" "$DATA_DIR/caddy"
+    # busybox tar honours only one -C, so gather the three folders under
+    # /stage with symlinks and follow them (-h).
+    docker compose run --rm --no-deps -T -v "$dir:/backup" -v "$DATA_DIR/auth:/auth:ro" \
+      -v "$DATA_DIR/caddy:/caddy:ro" --entrypoint sh amc-home-init -c "
+        mkdir /stage && ln -s /amc-web/files/MC-Projects /stage/MC-Projects &&
+        ln -s /auth /stage/auth && ln -s /caddy /stage/caddy &&
+        tar czhf /backup/$name -C /stage MC-Projects auth caddy" ||
+      { rm -f "$dir/$name"; die "The backup failed (messages above)."; }
+  else
+    if [ -d "$DATA_DIR/.AMC.d" ]; then
+      tar czf "$dir/$name" -C "$DATA_DIR" MC-Projects .AMC.d
+    else
+      tar czf "$dir/$name" -C "$DATA_DIR" MC-Projects
+    fi || { rm -f "$dir/$name"; die "The backup failed (messages above)."; }
+  fi
+  ok "Backup written to $dir/$name"
+}
+
+cmd_cert() {
+  ensure_env
+  load_settings
+  login_mode || die "HTTPS is only used in shared-machine mode (./amc login on)."
+  local ca="$DATA_DIR/caddy/caddy/pki/authorities/local/root.crt"
+  [ -f "$ca" ] || die "There is no certificate yet. Start the app once with ./amc start"
+  cp "$ca" "$DATA_DIR/amc-ca.crt"
+  LAN_IP=$(lan_address)
+  cat <<EOF
+The app's HTTPS certificate comes from its own certificate authority:
+    $DATA_DIR/amc-ca.crt
+Colleagues can also download it from https://${LAN_IP:-localhost}:$PORT/amc-ca.crt
+(the browser warns once before the download).
+
+Install it once on each computer so browsers trust the app:
+  macOS:    double-click it to add it to the login keychain, open it in
+            Keychain Access and set "When using this certificate" to "Always Trust".
+  Windows:  double-click it > Install Certificate > Current User >
+            Place in "Trusted Root Certification Authorities".
+  Linux:    sudo cp amc-ca.crt /usr/local/share/ca-certificates/amc-ca.crt
+            sudo update-ca-certificates
+  Firefox may keep its own list: Settings > Privacy & Security > Certificates >
+            View Certificates > Authorities > Import.
+EOF
 }
 
 cmd=${1:-help}
@@ -367,6 +708,10 @@ case $cmd in
   open)           cmd_open ;;
   update)         cmd_update "$@" ;;
   import)         cmd_import "$@" ;;
+  login)          cmd_login "$@" ;;
+  user)           cmd_user "$@" ;;
+  cert)           cmd_cert ;;
+  backup)         cmd_backup ;;
   help|-h|--help) usage ;;
   *)              usage >&2; exit 1 ;;
 esac
