@@ -31,10 +31,10 @@ const VERSION = APP.dataset.version || '';
 /* ---------- Steps ---------- */
 
 const STEPS = [
-  { id: 'questions', n: 1, label: 'Questions', group: 'before', phase: 1 },
-  { id: 'marking-scheme', n: 2, label: 'Marking scheme', group: 'before', phase: 2 },
-  { id: 'papers', n: 3, label: 'Papers', group: 'before', phase: 2 },
-  { id: 'print', n: 4, label: 'Print', group: 'before', phase: 2 },
+  { id: 'questions', n: 1, label: 'Questions', group: 'before', phase: 1, built: true },
+  { id: 'marking-scheme', n: 2, label: 'Marking scheme', group: 'before', phase: 2, built: true },
+  { id: 'papers', n: 3, label: 'Papers', group: 'before', phase: 2, built: true },
+  { id: 'print', n: 4, label: 'Print', group: 'before', phase: 2, built: true },
   { id: 'upload-scans', n: 5, label: 'Upload scans', group: 'after', phase: 3 },
   { id: 'check-scans', n: 6, label: 'Check scans', group: 'after', phase: 3 },
   { id: 'mark', n: 7, label: 'Mark', group: 'after', phase: 4 },
@@ -42,12 +42,12 @@ const STEPS = [
   { id: 'export-marks', n: 9, label: 'Export marks', group: 'after', phase: 4 },
   { id: 'annotate', n: 10, label: 'Annotate', group: 'after', phase: 4 },
 ];
-const PHASE_NAMES = { 2: 'Before the exam', 3: 'Scans', 4: 'Results' };
+const PHASE_NAMES = { 3: 'Scans', 4: 'Results' };
 const GUIDES = {
   questions: ['Write each question with its answers, and mark which answers are correct.', 'Save, then build the preview to see the question paper on the right.', 'If the build fails, the message explains why and links to the LaTeX log.'],
-  'marking-scheme': ['Choose how single- and multiple-answer questions are scored.', 'Set what the final mark is out of, and how it is rounded.', 'This stays possible after printing.'],
-  papers: ['Choose how many copies to print. Add a few spares.', 'Build the papers. The layout is detected automatically.', 'Check the layout, then confirm it looks correct.'],
-  print: ['Save the PDFs and print them anywhere, or print on the shared machine (Linux).', 'Print on A4 at 100% (actual size), never "fit to page".', 'The exam locks after printing.'],
+  'marking-scheme': ['Choose how single- and multiple-answer questions are scored by default.', 'Set what the final mark is out of, and how it is rounded.', 'All of this can still change after printing.'],
+  papers: ['Choose how many copies to print. Add a few spares.', 'Build the papers. The layout is detected automatically.', 'Check the layout in the preview, then confirm it looks correct. Printing opens after that.'],
+  print: ['Save the PDFs and print them anywhere, or print directly when the shared machine runs Linux.', 'Print on A4 at 100% (actual size), never "fit to page".', 'The exam locks after printing: questions and layout can no longer change.'],
   'upload-scans': ['Scan the answer sheets at 300 dpi.', 'Upload the files. Each page is detected automatically.', 'Problems appear in the next step, Check scans.'],
   'check-scans': ['Fix pages the app couldn\'t read.', 'Look at each box it wasn\'t sure about.', 'Marks come next, once everything is clear.'],
   mark: ['Compute the marks once Check scans is clear.', 'Marking always uses the latest marking scheme and answer key.'],
@@ -58,6 +58,9 @@ const GUIDES = {
 const DOC_LABELS = { sujet: 'Question paper', corrige: 'Answer key', catalog: 'Catalogue', 'indiv-solution': 'Corrected copies' };
 const STATE_CHIPS = {
   draft: ['', 'edit-pencil', 'Draft'],
+  tocheck: ['chip-warning', 'page-search', 'Layout to check'],
+  ready: ['chip-brand', 'printer', 'Ready to print'],
+  locked: ['chip-warning', 'lock', 'Printed · locked'],
   built: ['chip-brand', 'multiple-pages', 'Papers built'],
   printed: ['chip-warning', 'printer', 'Printed'],
   scanned: ['chip-warning', 'upload', 'Scans uploaded'],
@@ -90,6 +93,14 @@ const S = {
   online: false,
   work: null,             // {text, p} while the server runs a command
   workText: '',
+  scoring: null,          // default scoring read from the source
+  printers: null,
+  printRoute: 'files',
+  previewMode: null,      // 'layout' shows the layout check
+  layoutPage: null,       // {page: 'copy/page', url}
+  buildQueue: [],         // documents still to build after the current one
+  buildError: false,
+  printing: null,         // {how, copies} while a print job runs
 };
 let editor = null;
 
@@ -99,10 +110,12 @@ const projectState = () => {
   if (st.exports.length) return 'exported';
   if (st.marked) return 'marked';
   if (st.scans) return 'scanned';
-  if (st.printed) return 'printed';
-  if (st.layout_pages) return 'built';
+  if (st.lock) return 'locked';
+  if (st.layout_ok) return 'ready';
+  if (st.layout_pages) return 'tocheck';
   return 'draft';
 };
+const locked = () => !!(S.status && S.status.lock);
 
 /* ---------- Server connection ---------- */
 
@@ -160,9 +173,18 @@ socket.on('p', (p) => { if (S.work) { S.work.p = p; renderWork(); } });
 socket.on('end-command', () => {
   S.work = null; S.workText = ''; renderWork();
   S.previewStamp = Date.now();
-  refreshStatus();
+  refreshStatus().then(() => {
+    if (S.previewMode === 'layout' && !S.buildQueue.length && S.status && S.status.layout_pages) socket_emit('layout-init');
+  });
+  if (S.buildQueue.length) {
+    // The server sends error messages just after "end-command".
+    setTimeout(() => {
+      if (S.buildError) { S.buildQueue = []; return; }
+      socket_emit('doc-update', S.buildQueue.shift());
+    }, 500);
+  }
 });
-socket.on('dialog', (html) => showServerDialog(html));
+socket.on('dialog', (html) => { if (/msg-err/.test(html)) S.buildError = true; showServerDialog(html); });
 socket.on('dialog-disconnect', (html) => { showServerDialog(html); socket.disconnect(); });
 socket.on('u-projects-list', () => { if (S.route.kind === 'exams') loadProjects(); });
 socket.on('menu', () => refreshStatus());
@@ -170,6 +192,33 @@ socket.on('project-open', (data) => onProjectOpen(data[0]));
 socket.on('source-name', (data) => onSourceName(...data));
 socket.on('source-saved', () => { S.source.dirty = false; renderEditorBar(); });
 socket.on('project-files-list', () => loadFiles());
+socket.on('ui-changed', (what) => {
+  if (what === 'unlock') { toast('Exam unlocked. Rebuild the papers, then check the layout again.', 'lock-slash'); S.previewMode = null; }
+  if (what === 'layout_ok') toast('Layout confirmed. You can print now.');
+  if (what === 'lock') S.printing = null;
+  refreshStatus().then(() => { if (S.route.step === 'questions') renderMain(); });
+});
+socket.on('ui-scoring-saved', (v) => {
+  if (S.scoring) { S.scoring.S = v.S || null; S.scoring.M = v.M || null; }
+  toast('Default scoring saved in the source.');
+  if (S.route.step === 'marking-scheme') renderMain(true);
+});
+socket.on('layout-set-page', (data) => {
+  S.layoutPage = { page: data[0], url: `${data[1]}?v=${Date.now()}` };
+  if (S.previewMode === 'layout') renderPreview();
+});
+socket.on('print-to-files', (url) => {
+  const copies = S.printing ? S.printing.copies : '';
+  S.printing = null;
+  socket_emit('ui-printed', { how: 'files', copies });
+  window.location.href = url;
+});
+socket.on('print-done', () => {
+  if (S.printing && S.printing.how === 'printer') {
+    socket_emit('ui-printed', { how: 'printer', copies: S.printing.copies });
+    S.printing = null;
+  }
+});
 
 /* Disconnect after 30 minutes without activity, like upstream. */
 let idleTimer = null;
@@ -213,7 +262,7 @@ window.addEventListener('beforeunload', (e) => { if (S.source.dirty) { e.prevent
 function onRoute() {
   const r = parsePath(location.pathname);
   const leavingQuestions = S.route.step === 'questions' && r.step !== 'questions';
-  S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false;
+  S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false; S.previewMode = null;
   if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) dropEditor();
   if (r.kind === 'exams') {
     S.project = null; S.status = null; S.files = null;
@@ -279,7 +328,10 @@ function suggestStep() {
 
 function enterStep() {
   if (S.route.step === 'questions') { loadFiles(); if (!S.source.loaded) loadSource(''); }
-  if (S.route.step === 'settings') loadConfig();
+  if (S.route.step === 'settings' || S.route.step === 'marking-scheme') loadConfig();
+  if (S.route.step === 'marking-scheme') loadScoring();
+  if (S.route.step === 'print') loadPrinters();
+  if (S.route.step === 'papers' && S.status && S.status.layout_pages && !S.status.layout_ok && !locked()) showLayout();
 }
 
 /* ---------- Data ---------- */
@@ -326,6 +378,17 @@ async function loadConfig() {
   if (S.route.step === 'settings' && S.project === p) renderMain(true);
 }
 
+async function loadScoring() {
+  const p = S.project;
+  try { const r = await getJSON('/ui/api/scoring'); if (S.project === p && r.project === p) S.scoring = r; } catch (e) { if (S.project === p) console.error(e); }
+  if (S.route.step === 'marking-scheme' && S.project === p) renderMain(true);
+}
+async function loadPrinters() {
+  try { S.printers = await getJSON('/ui/api/printers'); } catch { S.printers = { available: false, printers: [] }; }
+  if (!S.printers.available) S.printRoute = 'files';
+  if (S.route.step === 'print') renderMain(true);
+}
+
 /* ---------- Step status from the real exam ---------- */
 
 function stepStatus(id) {
@@ -334,9 +397,9 @@ function stepStatus(id) {
   if (!st || !st.project) return r('');
   const problems = (st.failed || 0) + (st.incomplete || 0) + (st.to_check || 0);
   switch (id) {
-    case 'questions': return st.docs.sujet ? r('is-done') : r('');
-    case 'papers': return st.layout_pages ? r('is-done') : r('');
-    case 'print': return st.printed ? r('is-done') : r('');
+    case 'questions': return st.lock ? r('is-locked') : st.docs.sujet ? r('is-done') : r('');
+    case 'papers': return st.lock ? r('is-locked') : st.layout_ok ? r('is-done') : st.layout_pages ? r('is-attention') : r('');
+    case 'print': return st.lock ? r('is-done') : st.layout_ok ? r('is-attention') : r('is-blocked');
     case 'upload-scans': return st.scans ? r('is-done') : r('');
     case 'check-scans': return !st.scans ? r('') : problems ? r('is-attention', problems) : r('is-done');
     case 'mark': return st.marked ? r('is-done') : r('');
@@ -357,6 +420,9 @@ function render() {
 }
 
 function stateChip(state) {
+  if (state === 'locked' && S.status && S.status.lock && S.status.lock.since) {
+    return `<span class="chip chip-warning" title="Questions and layout are locked">${ic('lock')} Printed ${fmtDate(S.status.lock.since)} · locked</span>`;
+  }
   const c = STATE_CHIPS[state];
   return c ? `<span class="chip ${c[0]}">${ic(c[1])} ${c[2]}</span>` : '';
 }
@@ -394,7 +460,7 @@ function renderSide() {
   const group = (g, title) => `<div class="steps-group"><div class="steps-title">${title}</div>
     ${STEPS.filter((s) => s.group === g).map((s) => {
     const st = stepStatus(s.id);
-    const dot = st.cls === 'is-done' ? ic('check') : s.n;
+    const dot = st.cls === 'is-done' ? ic('check') : st.cls === 'is-locked' ? ic('lock') : s.n;
     const cur = S.route.step === s.id;
     return `<a class="step ${st.cls}" href="${examPath(name, s.id)}" data-nav ${cur ? 'aria-current="page"' : ''}>
       <span class="step-dot">${dot}</span><span class="step-label">${s.label}</span>${st.count !== null ? `<span class="step-count">${st.count}</span>` : ''}</a>`;
@@ -411,11 +477,27 @@ function renderMain(keepScroll = false) {
   if (r.kind === 'exams') html = viewExams();
   else if (!S.project || !r.step) html = `<div class="page"><div class="skeleton" style="height:40px;width:40%;margin-bottom:16px"></div><div class="skeleton"></div></div>`;
   else if (r.step === 'questions') html = viewQuestions();
+  else if (r.step === 'marking-scheme') html = viewMarking();
+  else if (r.step === 'papers') html = viewPapers();
+  else if (r.step === 'print') html = viewPrint();
   else if (r.step === 'settings') html = viewSettings();
   else html = viewSoon(r.step);
   main.classList.toggle('fill', r.kind === 'exam' && r.step === 'questions');
-  if (r.step === 'questions' && editor && $('#ace-host')) return; // keep the live editor
+  if (r.step === 'questions' && editor && $('#ace-host')) { // keep the live editor
+    $('#q-head').innerHTML = questionsHead();
+    renderEditorBar();
+    resizeEditor();
+    return;
+  }
+  // Keep what's being typed in the focused field across the redraw.
+  const active = document.activeElement;
+  const typing = active && active.id && main.contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName)
+    ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
   main.innerHTML = html;
+  if (typing) {
+    const el = document.getElementById(typing.id);
+    if (el) { el.value = typing.value; el.focus(); try { el.setSelectionRange(typing.start, typing.end); } catch { /* not a text field */ } }
+  }
   if (keepScroll) main.scrollTop = top;
   if (r.step === 'questions' && S.project) mountEditor();
 }
@@ -438,7 +520,15 @@ function renderPreview() {
   if (!open) { p.innerHTML = ''; return; }
   const docs = previewDocs();
   let title; let body; let bodyClass = 'preview-body'; let url = null; let tabs = '';
-  if (S.previewFile) {
+  if (S.previewMode === 'layout' && S.status && S.status.layout_pages) {
+    const lp = S.layoutPage;
+    const [copy, page] = lp ? lp.page.split('/') : ['', ''];
+    title = lp ? `Layout · copy ${copy}, page ${page}` : 'Layout';
+    body = lp ? `<div class="layout-legend"><span><i class="sw" style="border-color:#21fff2"></i>Corner marks</span><span><i class="sw" style="border-color:#00e462"></i>Answer boxes</span><span><i class="sw" style="border-color:#ff7c00"></i>Other boxes</span><span><i class="sw" style="border-color:#eb0cf9"></i>Name field</span></div>
+      <object class="layout-svg" type="image/svg+xml" data="${lp.url}" aria-label="${esc(title)}"></object>` : '<div class="preview-empty">Loading the layout…</div>';
+    bodyClass = 'preview-body';
+    tabs = `<div class="preview-tabs"><button data-act="layout-step" data-delta="-1">${ic('nav-arrow-left')} Previous page</button><button data-act="layout-step" data-delta="1">Next page ${ic('nav-arrow-right')}</button><span class="spacer"></span><button data-act="preview-docs">Documents</button></div>`;
+  } else if (S.previewFile) {
     title = S.previewFile.name;
     url = fsUrl(S.previewFile.name);
     ({ body, bodyClass } = fileBody(S.previewFile.name, url));
@@ -561,18 +651,22 @@ function viewExams() {
 /* ---------- View: questions ---------- */
 
 function viewQuestions() {
-  const st = S.status || {};
-  const risky = st.printed || st.scans;
   return `<div class="page wide">
-    ${header('questions', 'Questions', 'Write the questions and answers. Save, then build the preview to see the question paper.',
-    `<button class="btn" data-act="build" ${S.source.loaded ? '' : 'disabled'}>${ic('refresh')} Build preview</button>
-     <button class="btn btn-primary" data-act="save" id="save-btn" disabled>${ic('floppy-disk')} Save</button>`)}
-    ${guideBox('questions')}
-    ${risky ? banner('lock', 'warning-triangle', st.scans ? 'Scans have been uploaded for this exam.' : 'This exam has been printed.',
-    'Rebuilding the question paper now removes the layout data, and with it the scans and marks. Locking printed exams comes in phase 2.') : ''}
+    <div id="q-head">${questionsHead()}</div>
     <div class="editor-bar" id="editor-bar"></div>
     <div class="editor-frame grow" id="editor-frame"><div id="ace-host"></div></div>
   </div>`;
+}
+
+/* The header part of Questions, redrawn on its own so the editor stays. */
+function questionsHead() {
+  const L = locked();
+  return `
+    ${header('questions', 'Questions', L ? 'The exam is printed: only answer key and scoring changes can be saved.' : 'Write the questions and answers. Save, then build the preview to see the question paper.',
+    `${L ? '' : `<button class="btn" data-act="build" ${S.source.loaded ? '' : 'disabled'}>${ic('refresh')} Build preview</button>`}
+     <button class="btn btn-primary" data-act="save" id="save-btn" disabled>${ic('floppy-disk')} Save</button>`)}
+    ${guideBox('questions')}
+    ${L ? lockBanner('You can still correct the answer key (switch <code>\\correctchoice</code> and <code>\\wrongchoice</code>) and change scoring (<code>\\scoring{…}</code>). The server refuses any other change, because it would move things on the printed papers.') : ''}`;
 }
 
 function renderEditorBar() {
@@ -651,7 +745,11 @@ async function saveSource() {
     renderEditorBar();
     toast(`${S.source.name} saved.`);
     return true;
-  } catch (e) { toast(e.message, 'warning-triangle'); return false; }
+  } catch (e) {
+    openDialog(`<div class="dialog-head"><span class="dialog-icon danger">${ic('warning-triangle')}</span><div><h2 id="dlg-title">Not saved</h2></div></div>
+      <div class="dialog-body"><p>${esc(e.message)}</p></div><div class="dialog-foot"><button class="btn btn-primary" data-act="dialog-ok">OK</button></div>`);
+    return false;
+  }
 }
 
 async function buildPreview() {
@@ -677,8 +775,8 @@ function viewSettings() {
   const o = c ? c.options : {};
   const engine = o.moteur_latex_b || '';
   const engineField = c && c.engines
-    ? `<select class="select" id="cfg-engine">${(c.engines.includes(engine) || !engine ? c.engines : [engine, ...c.engines]).map((e) => `<option ${e === engine ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select>`
-    : `<input class="input" id="cfg-engine" value="${esc(engine)}" placeholder="pdflatex">`;
+    ? `<select class="select" id="cfg-engine" ${locked() ? 'disabled' : ''}>${(c.engines.includes(engine) || !engine ? c.engines : [engine, ...c.engines]).map((e) => `<option ${e === engine ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select>`
+    : `<input class="input" id="cfg-engine" value="${esc(engine)}" placeholder="pdflatex" ${locked() ? 'disabled' : ''}>`;
   return `<div class="page">
     ${header('', 'Exam settings', 'Settings that belong to this exam.')}
     <section class="card"><div class="card-header"><h2>Exam</h2></div><div class="card-body">
@@ -688,10 +786,11 @@ function viewSettings() {
           <span class="field-hint">Used to build the papers. pdflatex suits most exams.</span></label>
       </div></div></section>
     <section class="card"><div class="card-header"><h2>Copy or remove</h2></div><div class="list">
-      <div class="list-row"><span class="list-icon">${ic('copy')}</span><div class="list-row-main"><div class="list-row-title">Duplicate</div><div class="subtle">A copy of the questions and settings, without scans or marks.</div></div><button class="btn btn-sm" data-act="clone-exam" data-name="${esc(S.project)}">Duplicate</button></div>
+      <div class="list-row"><span class="list-icon">${ic('copy')}</span><div class="list-row-main"><div class="list-row-title">Duplicate</div><div class="subtle">A full copy of this exam, including any scans and marks.</div></div><button class="btn btn-sm" data-act="clone-exam" data-name="${esc(S.project)}">Duplicate</button></div>
       <div class="list-row"><span class="list-icon">${ic('download')}</span><div class="list-row-main"><div class="list-row-title">Download</div><div class="subtle">Everything in this exam as a zip file.</div></div><a class="btn btn-sm" href="/fs/${enc(S.project)}">Download</a></div>
       <div class="list-row"><span class="list-icon bad">${ic('trash')}</span><div class="list-row-main"><div class="list-row-title">Delete</div><div class="subtle">Removes the exam with its scans and marks. This can't be undone.</div></div><button class="btn btn-sm btn-danger" data-act="delete-exam" data-name="${esc(S.project)}">Delete</button></div>
     </div></section>
+    ${activityCard()}
   </div>`;
 }
 
@@ -720,6 +819,239 @@ function viewSoon(stepId) {
       ${facts.length ? `<div class="stats" style="max-width:560px;margin:8px auto 0">${facts.join('')}</div><p class="subtle">From this exam's data.</p>` : ''}
     </div></section>
   </div>`;
+}
+
+/* ---------- Lock pieces (shared by the "before the exam" steps) ---------- */
+
+function lockBanner(text) {
+  const l = (S.status && S.status.lock) || {};
+  const when = l.since ? ` on ${fmtDate(l.since)}` : '';
+  const who = l.by ? ` by ${esc(l.by)}` : '';
+  const how = { manual: 'Marked as printed', scanned: 'Scans were uploaded', printer: 'Printed', files: 'Saved for printing' }[l.how] || 'Printed';
+  return banner('lock', 'lock', `${how}${when}${who}. Questions and layout are locked.`, text,
+    `<button class="btn btn-sm" data-act="unlock">${ic('lock-slash')} Unlock…</button>`);
+}
+
+function activityCard() {
+  const items = (S.status && S.status.activity) || [];
+  if (!items.length) return '';
+  return `<section class="card"><div class="card-header"><h2>History</h2></div><div class="list">
+    ${items.slice(0, 12).map((a) => `<div class="list-row"><span class="list-icon">${ic('clock')}</span><div class="list-row-main"><div>${esc(a.what)}</div>
+      <div class="subtle">${new Date(a.at * 1000).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}${a.by ? ' · ' + esc(a.by) : ''}</div></div></div>`).join('')}
+  </div></section>`;
+}
+
+async function unlockExam() {
+  const st = S.status || {};
+  const lost = [];
+  if (st.scans) lost.push(`<li><b>${st.scans} scanned pages</b> and any corrections to them</li>`);
+  if (st.matched) lost.push(`<li><b>${st.matched} matches</b> between sheets and students</li>`);
+  if (st.marked) lost.push(`<li><b>Marks</b> for ${st.marked} copies</li>`);
+  lost.push('<li>The <b>layout</b>: you rebuild the papers and check the layout again</li>');
+  const data = await formDialog({
+    title: 'Unlock to edit questions?', ok: 'Unlock and remove', icon: 'lock-slash',
+    body: `<p>Papers already printed will no longer match the exam. Unlocking removes:</p><ul>${lost.join('')}</ul>
+      <label class="field"><span class="field-label">Type the exam's name to confirm: <b>${esc(S.project)}</b></span><input class="input" name="name" autocomplete="off"></label>`,
+    validate: (d) => ((d.name || '').trim() === S.project ? '' : 'The name doesn\'t match.'),
+  });
+  if (data) socket_emit('ui-unlock', { name: data.name.trim() });
+}
+
+/* ---------- View: marking scheme ---------- */
+
+const PRESETS_S = [['', 'AMC default: 1 point, nothing for a wrong answer'], ['b=1,m=-0.25', '1 point, −0.25 for a wrong answer'], ['b=1,m=-0.5', '1 point, −0.5 for a wrong answer'], ['b=1,m=-1', '1 point, −1 for a wrong answer']];
+const PRESETS_M = [['', 'AMC default: 1 point per box ticked or left correctly'], ['mz=1', 'All or nothing: 1 point'], ['haut=2', '2 points, −1 per mistake, never below 0'], ['haut=3', '3 points, −1 per mistake, never below 0']];
+
+function scoringField(kind, presets, label) {
+  const v = S.scoring ? (S.scoring[kind] || '') : '';
+  const known = presets.some(([x]) => x === v);
+  return `<label class="field"><span class="field-label">${label}</span>
+    <select class="select" id="score-${kind}-preset">${presets.map(([x, l]) => `<option value="${esc(x)}" ${x === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}
+      <option value="custom" ${known ? '' : 'selected'}>Custom AMC rule…</option></select></label>
+    <label class="field ${known ? 'hidden' : ''}" id="score-${kind}-custom-field"><span class="field-label">AMC scoring rule</span>
+      <input class="input mono" id="score-${kind}-custom" value="${esc(known ? '' : v)}" placeholder="b=1,m=-0.5">
+      <span class="field-hint">AMC's syntax, for example <code>b=2,m=-1</code> or <code>haut=4</code>.</span></label>`;
+}
+
+function viewMarking() {
+  const c = S.config;
+  const o = c ? c.options : {};
+  const sc = S.scoring;
+  const where = sc && sc.file ? `Saved in <code>${esc(sc.file)}</code> as <code>${sc.format === 'plain' ? 'DefaultScoringS/M' : '\\scoringDefaultS/M'}</code>.` : '';
+  return `<div class="page">
+    ${header('marking-scheme', 'Marking scheme', 'How questions are scored by default, and how points become the final mark.')}
+    ${guideBox('marking-scheme')}
+    ${locked() ? banner('info', 'info-circle', 'You can still change everything on this page after printing.', 'None of it moves anything on the printed papers. If marks were already computed, compute them again to apply the change.') : ''}
+    <div class="grid grid-2">
+      <section class="card"><div class="card-header"><h2>Default scoring</h2></div>
+        <div class="card-body">
+          ${!sc ? '<p class="subtle">Loading…</p>' : sc.error ? `<p class="muted">${esc(sc.error)}</p>` : `
+          ${scoringField('S', PRESETS_S, 'Single-answer questions')}
+          ${scoringField('M', PRESETS_M, 'Multiple-answer questions')}
+          <p class="field-hint" style="margin-top:12px">${where} Rules written on individual questions (<code>\\scoring{…}</code>) still win.</p>`}
+        </div>
+        ${sc && !sc.error ? `<div class="card-foot"><button class="btn btn-primary" data-act="save-scoring">${ic('floppy-disk')} Save default scoring</button></div>` : ''}
+      </section>
+      <section class="card"><div class="card-header"><h2>Final mark</h2></div>
+        <div class="card-body">${!c ? '<p class="subtle">Loading…</p>' : `<div class="form-grid">
+          <label class="field"><span class="field-label">Out of</span><input class="input" type="number" min="0" step="any" data-option="note_max" value="${esc(o.note_max)}" placeholder="20">
+            <span class="field-hint">Empty: the raw points.</span></label>
+          <label class="field"><span class="field-label">Rounding</span><select class="select" data-option="note_arrondi">
+            ${[['normal', 'To the nearest'], ['inf', 'Down'], ['sup', 'Up']].map(([x, l]) => `<option value="${x}" ${o.note_arrondi === x ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label class="field"><span class="field-label">In steps of</span><input class="input" type="number" min="0" step="any" data-option="note_grain" value="${esc(o.note_grain)}" placeholder="0.5"></label>
+          <label class="field"><span class="field-label">Mark for a blank sheet</span><input class="input" type="number" step="any" data-option="note_null" value="${esc(o.note_null)}" placeholder="0"></label>
+        </div><p class="field-hint" style="margin-top:12px">Each change is saved as you make it.</p>`}</div>
+      </section>
+    </div>
+    <p class="subtle" style="margin-top:14px">${ic('info-circle')} Scoring and correct answers for individual questions can be changed in the source (Questions) for now; a per-question panel comes in phase 5.</p>
+  </div>`;
+}
+
+/* ---------- View: papers ---------- */
+
+const DEFECTS = {
+  NO_NAME: 'The paper has no name field (<code>\\namefield</code>). Papers without one are hard to match to students.',
+  SEVERAL_NAMES: 'The name field (<code>\\namefield</code>) appears more than once on the same paper.',
+  NO_BOX: 'There are no boxes to tick.',
+  DIFFERENT_POSITIONS: 'The corner marks or page codes are not in the same place on every page.',
+  OUT_OF_PAGE: 'Something is placed outside the page, often a question group starting too close to the bottom.',
+  INCOMPLETE_MULTI: 'The multi-page code is missing on some pages.',
+};
+
+function viewPapers() {
+  const st = S.status || {};
+  const L = locked();
+  const built = !!st.layout_pages;
+  const defects = st.defects || [];
+  const docs = [['sujet', 'Question paper', 'Built with the layout'], ['corrige', 'Answer key', 'The paper with correct answers ticked'], ['catalog', 'Catalogue', 'Every question once, for reference'], ['indiv-solution', 'Corrected copies', 'One corrected paper per copy']];
+  const range = st.copies_range ? `${st.copies_range[1] - st.copies_range[0] + 1} copies` : '';
+  return `<div class="page">
+    ${header('papers', 'Papers', 'Build the final papers, then check the layout before printing.',
+    L ? '' : `<button class="btn ${built ? '' : 'btn-primary'}" data-act="build-papers">${ic('refresh')} ${built ? 'Rebuild papers' : 'Build papers'}</button>`)}
+    ${guideBox('papers')}
+    ${L ? lockBanner('The papers can\'t be rebuilt now. You can still open and download them.') : ''}
+    ${!L && built && !st.layout_ok ? `<section class="card card-accent" style="margin-bottom:16px">
+      <div class="card-header">${ic('page-search')}<h2>Check the layout</h2><span class="chip chip-warning">Needs your check</span></div>
+      <div class="card-body"><p class="muted" style="margin-bottom:10px">Layout detection ran on ${st.layout_pages} pages. Go through a few pages in the preview: each item should be outlined in its colour.</p>
+        <div class="checklist">
+          <div class="checklist-item">${ic('frame-select')}<span>Corner marks outlined in <b style="color:#0aa8a0">cyan</b> on every page</span></div>
+          <div class="checklist-item">${ic('check-circle')}<span>Every answer box outlined in <b style="color:#14a44d">green</b></span></div>
+          <div class="checklist-item">${ic('user')}<span>The name field outlined in <b style="color:#c40fcf">pink</b></span></div>
+          <div class="checklist-item ${defects.length ? 'warn' : 'ok'}">${ic(defects.length ? 'warning-triangle' : 'check-circle')}<span>${defects.length ? `${defects.length} layout warning${defects.length > 1 ? 's' : ''} below` : 'No layout warnings'}</span></div>
+        </div></div>
+      <div class="card-foot"><button class="btn btn-ghost" data-act="show-layout">${ic('eye')} Show the layout</button><button class="btn btn-ghost" data-act="layout-help">Something looks wrong</button><button class="btn btn-primary" data-act="layout-ok">${ic('check')} Looks correct</button></div>
+    </section>` : ''}
+    ${!L && st.layout_ok ? banner('success', 'check-circle', `Layout confirmed${st.layout_ok.by ? ' by ' + esc(st.layout_ok.by) : ''} on ${fmtDate(st.layout_ok.at)}.`, 'Rebuilding the papers will ask for the check again.', `<a class="btn btn-primary btn-sm" href="${examPath(S.project, 'print')}" data-nav>${ic('printer')} Go to Print</a>`) : ''}
+    ${defects.length ? `<section class="card" style="margin-bottom:16px"><div class="card-header">${ic('warning-triangle')}<h2>Layout warnings</h2><span class="chip chip-warning">${defects.length}</span></div><div class="list">
+      ${defects.map((d) => `<div class="list-row"><span class="list-icon warn">${ic('warning-triangle')}</span><div class="list-row-main"><div>${DEFECTS[d.kind] || esc(d.kind)}</div>
+        <div class="subtle">${d.kind === 'DIFFERENT_POSITIONS' ? `For example pages ${esc(d.a)} and ${esc(d.b)}.` : ['OUT_OF_PAGE', 'INCOMPLETE_MULTI'].includes(d.kind) ? `${esc(d.a)} pages, for example page ${esc(d.b)}.` : `${esc(d.a)} copies, for example copy ${esc(d.b)}.`}</div></div></div>`).join('')}
+    </div></section>` : ''}
+    <div class="grid grid-2">
+      <section class="card"><div class="card-header"><h2>Number of copies</h2></div><div class="card-body">
+        <label class="field"><span class="field-label">Copies</span><span class="input-group">
+          <input class="input input-num" type="number" min="0" id="copies" value="${Number(st.copies) > 0 ? esc(st.copies) : ''}" placeholder="Source" ${L ? 'disabled' : ''}>
+          <span class="subtle">${L ? 'Locked after printing.' : 'Print a few spares beyond the class size.'}</span></span></label>
+        <p class="field-hint" style="margin-top:10px">${Number(st.copies) > 0 ? '' : 'Empty: the number written in the source (<code>\\onecopy{…}</code>). '}${range ? `Built: ${range}.` : ''}${!L && built ? ' Changing the number means building the papers again.' : ''}</p>
+      </div></section>
+      <section class="card"><div class="card-header"><h2>Documents</h2>${built ? `<button class="btn btn-ghost btn-sm" data-act="show-layout">${ic('frame-select')} Layout</button>` : ''}</div><div class="list">
+        ${docs.map(([d, t, sub]) => `<div class="list-row"><span class="list-icon ${st.docs && st.docs[d] ? 'brand' : ''}">${ic('page')}</span>
+          <div class="list-row-main"><div class="list-row-title">${t}</div><div class="subtle">${st.docs && st.docs[d] ? sub : 'Not built yet'}</div></div>
+          ${st.docs && st.docs[d] ? `<button class="btn btn-sm" data-act="show-doc" data-doc="${d}">Preview</button>` : ''}
+          ${d !== 'sujet' && built ? `<button class="btn btn-ghost btn-sm" data-act="build-doc" data-doc="${d}" title="Build ${t.toLowerCase()}">${ic('refresh')}</button>` : ''}</div>`).join('')}
+      </div></section>
+    </div>
+  </div>`;
+}
+
+function showLayout() {
+  S.previewMode = 'layout'; S.previewFile = null;
+  if (!S.previewOpen) { S.previewOpen = true; store.set('previewOpen', true); renderTop(); }
+  renderPreview();
+  socket_emit('layout-init');
+}
+
+async function buildPapers() {
+  const st = S.status || {};
+  if (st.layout_ok) {
+    const ok = await confirmDialog({ title: 'Build the papers again?', body: '<p>You confirmed the layout of the current papers. After rebuilding, check the layout again before printing.</p>', ok: 'Rebuild' });
+    if (!ok) return;
+  }
+  S.buildError = false;
+  S.buildQueue = ['corrige'];
+  S.previewMode = 'layout';
+  socket_emit('doc-update', 'sujet');
+}
+
+/* ---------- View: print ---------- */
+
+function viewPrint() {
+  const st = S.status || {};
+  const L = locked();
+  if (!L && !st.layout_ok) {
+    return `<div class="page">${header('print', 'Print')}${guideBox('print')}
+      <section class="card"><div class="empty"><div class="empty-icon">${ic('page-search')}</div><h2>${st.layout_pages ? 'Check the layout first' : 'Build the papers first'}</h2>
+        <p>${st.layout_pages ? 'Printing opens once you\'ve confirmed the layout in Papers. It catches problems before every copy is printed.' : 'Build the papers in step 3, check the layout, and printing opens here.'}</p>
+        <div class="btn-row"><a class="btn btn-primary" href="${examPath(S.project, 'papers')}" data-nav>Go to Papers</a></div></div></section></div>`;
+  }
+  const pr = S.printers || { available: false, printers: [] };
+  const route = pr.available ? S.printRoute : 'files';
+  const r = st.copies_range || [1, st.copies || 1];
+  return `<div class="page">
+    ${header('print', 'Print', 'Save the papers as PDFs to print anywhere, or print directly on the shared machine.')}
+    ${guideBox('print')}
+    ${L ? lockBanner('You can save or print the same papers again: they are identical to the ones already printed.') : ''}
+    <div class="grid grid-2" role="radiogroup" aria-label="How to print">
+      <button class="choice" role="radio" aria-checked="${route === 'files'}" data-act="print-route" data-route="files"><span class="choice-icon">${ic('download')}</span>
+        <span><span class="choice-title">Save PDFs for printing</span><br><span class="subtle">Download the papers and print them anywhere, for example from a pendrive.</span></span></button>
+      <button class="choice" role="radio" aria-checked="${route === 'printer'}" aria-disabled="${!pr.available}" data-act="print-route" data-route="printer"><span class="choice-icon">${ic('printer')}</span>
+        <span><span class="choice-title">Print on this machine</span><br><span class="subtle">${S.printers === null ? 'Looking for printers…' : pr.available ? 'Send the papers to a printer attached to the shared machine.' : 'Only when the shared machine runs Linux and its printer is connected (<code>./amc printer on</code>).'}</span></span></button>
+    </div>
+    <div class="grid grid-2" style="margin-top:16px">
+      <section class="card"><div class="card-header"><h2>What to print</h2></div><div class="card-body">
+        <div class="form-grid"><label class="field"><span class="field-label">From copy</span><input class="input" type="number" id="print-from" min="${r[0]}" max="${r[1]}" value="${r[0]}"></label>
+        <label class="field"><span class="field-label">To copy</span><input class="input" type="number" id="print-to" min="${r[0]}" max="${r[1]}" value="${r[1]}"></label></div>
+        ${route === 'printer' ? `<label class="field" style="margin-top:14px"><span class="field-label">Printer</span><select class="select" id="print-printer">${pr.printers.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label>` : ''}
+      </div></section>
+      <section class="card"><div class="card-header"><h2>Before you print</h2></div><div class="card-body"><div class="checklist">
+        <div class="checklist-item ok">${ic('page')}<span>A4 paper</span></div>
+        <div class="checklist-item warn">${ic('warning-triangle')}<span><b>100% scale</b> ("Actual size"), never "Fit to page"</span></div>
+        <div class="checklist-item ok">${ic('multiple-pages')}<span>Single- or double-sided, as the papers are laid out</span></div>
+        <div class="checklist-item ok">${ic('frame-select')}<span>Corner marks fully visible on every page</span></div>
+      </div></div></section>
+    </div>
+    <div class="row" style="margin-top:18px">
+      ${L ? '' : '<button class="link-btn" data-act="mark-printed">Already printed another way? Mark as printed</button>'}
+      <span class="spacer"></span>
+      <button class="btn btn-primary btn-lg" data-act="print">${ic(route === 'printer' ? 'printer' : 'download')} ${route === 'printer' ? (L ? 'Print again' : 'Print…') : (L ? 'Save PDFs again' : 'Save PDFs for printing…')}</button>
+    </div>
+    <div style="margin-top:16px">${activityCard()}</div>
+  </div>`;
+}
+
+async function printPapers() {
+  const from = parseInt($('#print-from').value, 10);
+  const to = parseInt($('#print-to').value, 10);
+  if (!(from >= 1) || !(to >= from)) { toast('Check the range of copies.', 'warning-triangle'); return; }
+  const printer = S.printRoute === 'printer' && S.printers && S.printers.available;
+  if (!locked()) {
+    const ok = await confirmDialog({
+      icon: 'lock', title: 'This locks the exam',
+      body: `<p>After printing, the questions and layout must stay exactly as printed, or the scans can't be read.</p>
+        <ul><li>Locked: question and answer text, layout, number of copies.</li><li>Still editable: marking scheme, answer key corrections, final mark settings.</li></ul>
+        <p class="subtle">Unlocking later is possible, but removes scans and marks.</p>`,
+      ok: printer ? 'Print and lock' : 'Save PDFs and lock',
+    });
+    if (!ok) return;
+  }
+  S.printing = { how: printer ? 'printer' : 'files', copies: `${from}–${to}` };
+  // As text, like upstream's page: the server's command logger expects strings.
+  if (printer) socket_emit('print-to-printer', [String(from), String(to), $('#print-printer').value]);
+  else socket_emit('print-to-files', [String(from), String(to)]);
+}
+
+async function markPrinted() {
+  const ok = await confirmDialog({ icon: 'lock', title: 'Mark this exam as printed?', body: '<p>Use this when the papers were printed another way. The exam locks: questions, layout and number of copies can no longer change.</p>', ok: 'Mark as printed and lock' });
+  if (ok) socket_emit('ui-mark-printed');
 }
 
 /* ---------- Dialogs, toasts, progress ---------- */
@@ -846,8 +1178,32 @@ const ACTIONS = {
   menu: (el) => { const m = el.dataset.menu; S.menu = S.menu === m ? null : m; renderTop(); if (S.route.kind === 'exams') renderMain(true); },
   'toggle-preview': () => { S.previewOpen = !S.previewOpen; S.previewMax = false; store.set('previewOpen', S.previewOpen); renderTop(); renderPreview(); resizeEditor(); },
   'preview-max': () => { S.previewMax = !S.previewMax; renderPreview(); resizeEditor(); },
-  'preview-docs': () => { S.previewFile = null; renderPreview(); },
-  'show-doc': (el) => { S.previewDoc = el.dataset.doc; S.previewFile = null; renderPreview(); },
+  'preview-docs': () => { S.previewFile = null; S.previewMode = null; renderPreview(); },
+  'show-doc': (el) => { S.previewDoc = el.dataset.doc; S.previewFile = null; S.previewMode = null; if (!S.previewOpen) { S.previewOpen = true; store.set('previewOpen', true); renderTop(); } renderPreview(); },
+  unlock: () => unlockExam(),
+  'save-scoring': () => {
+    const value = (kind) => { const sel = $(`#score-${kind}-preset`).value; return sel === 'custom' ? $(`#score-${kind}-custom`).value.trim() : sel; };
+    socket_emit('ui-scoring-defaults', { S: value('S'), M: value('M') });
+  },
+  'build-papers': () => buildPapers(),
+  'build-doc': (el) => { S.buildQueue = []; S.buildError = false; socket_emit('doc-update', el.dataset.doc); },
+  'show-layout': () => showLayout(),
+  'layout-step': (el) => { if (S.layoutPage) socket_emit('layout-add', [S.layoutPage.page, parseInt(el.dataset.delta, 10)]); },
+  'layout-ok': () => socket_emit('ui-layout-ok'),
+  'layout-help': () => openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('help-circle')}</span><div><h2 id="dlg-title">When the layout looks wrong</h2></div></div>
+    <div class="dialog-body"><ul>
+      <li><b>A box isn't outlined:</b> it was drawn without AMC's commands (for example an image of a box). Use <code>\\correctchoice</code> and <code>\\wrongchoice</code>.</li>
+      <li><b>Outlines are shifted:</b> the LaTeX engine or a package changes the page after AMC places the marks. Try pdflatex in Exam settings, then rebuild.</li>
+      <li><b>Corner marks missing:</b> something covers the page corners, such as a header image. Keep the corners clear.</li>
+      <li><b>Material outside the page:</b> a question group starts too close to the bottom; add <code>\\needspace</code> or a page break.</li>
+    </ul><p class="subtle">Fix the source in Questions, then build the papers again.</p></div>
+    <div class="dialog-foot"><a class="btn" href="${examPath(S.project, 'questions')}" data-nav data-act="dialog-ok">Go to Questions</a><button class="btn btn-primary" data-act="dialog-ok">OK</button></div>`),
+  'print-route': (el) => {
+    if (el.dataset.route === 'printer' && !(S.printers && S.printers.available)) { toast('Direct printing needs a Linux shared machine with its printer connected. Save the PDFs instead.', 'info-circle'); return; }
+    S.printRoute = el.dataset.route; renderMain(true);
+  },
+  print: () => printPapers(),
+  'mark-printed': () => markPrinted(),
   'guide-toggle': (el) => { const k = el.dataset.step; S.guide[k] = !S.guide[k]; store.set('guide', S.guide); const g = el.closest('.guide'); g.classList.toggle('is-collapsed', S.guide[k]); el.setAttribute('aria-expanded', !S.guide[k]); resizeEditor(); },
   'new-exam': () => newExam(),
   'rename-exam': (el) => { S.menu = null; renameExam(el.dataset.name); },
@@ -872,6 +1228,7 @@ document.addEventListener('click', (e) => {
   const nav = e.target.closest('a[data-nav]');
   if (nav && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) {
     e.preventDefault();
+    if (nav.closest('#layer')) closeDialog(false);
     navigate(nav.getAttribute('href'));
     return;
   }
@@ -899,6 +1256,19 @@ document.addEventListener('change', async (e) => {
     t.value = '';
   }
   if (t.id === 'cfg-engine') { socket_emit('set-config', ['moteur_latex_b', t.value]); toast('LaTeX engine saved.'); }
+  if (t.matches('[data-option]')) {
+    socket_emit('set-config', [t.dataset.option, t.value]);
+    if (S.config) S.config.options[t.dataset.option] = t.value;
+    toast('Saved.');
+  }
+  if (/^score-[SM]-preset$/.test(t.id)) $(`#score-${t.id[6]}-custom-field`).classList.toggle('hidden', t.value !== 'custom');
+  if (t.id === 'copies') {
+    const n = t.value.trim() === '' ? 0 : parseInt(t.value, 10); // 0: as in the source
+    if (!(n >= 0)) { toast('Enter a number of copies, or leave it empty.', 'warning-triangle'); return; }
+    socket_emit('ncopies', n);
+    if (S.status) S.status.copies = String(n);
+    toast(S.status && S.status.layout_pages ? 'Saved. Build the papers again to apply it.' : 'Saved.');
+  }
 });
 
 document.addEventListener('keydown', (e) => {

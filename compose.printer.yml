@@ -1,0 +1,8 @@
+# Direct printing on a Linux shared machine: the app uses the machine's own
+# print system (CUPS) through its socket. Added by "./amc printer on".
+services:
+  amc-web:
+    environment:
+      CUPS_SERVER: /run/cups/cups.sock
+    volumes:
+      - "${AMC_CUPS_SOCKET:-/run/cups/cups.sock}:/run/cups/cups.sock"

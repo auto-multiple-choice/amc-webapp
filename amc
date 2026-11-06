@@ -51,6 +51,10 @@ Shared machine (sign-in, HTTPS, one projects folder per teacher):
   user enable NAME     Re-enable a disabled account
   cert                 Show how browsers can trust the app's HTTPS certificate
 
+  printer on|off|status
+                       Print directly on this machine's printers (Linux only;
+                       elsewhere teachers save PDFs and print them anywhere)
+
   backup               Save all projects (and, on a shared machine, accounts and
                        the certificate authority) to AMC_DATA_DIR/backups
 
@@ -620,6 +624,82 @@ create_first_admin() {
   copy_single_user_projects "$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
 }
 
+# The compose files the app runs with, from the settings in .env.
+apply_compose_files() {
+  local files=""
+  if login_mode; then files=$LOGIN_FILES; fi
+  if [ "$(env_get AMC_PRINTER 0)" = 1 ]; then
+    files="${files:-docker-compose.yml,docker-compose.override.yml},compose.printer.yml"
+  fi
+  if [ -n "$files" ]; then
+    env_set COMPOSE_PATH_SEPARATOR ,
+    env_set COMPOSE_FILE "$files"
+  else
+    env_unset COMPOSE_FILE
+    env_unset COMPOSE_PATH_SEPARATOR
+  fi
+}
+
+cups_socket() {
+  local s
+  for s in /run/cups/cups.sock /var/run/cups/cups.sock; do
+    if [ -S "$s" ]; then printf '%s\n' "$s"; return 0; fi
+  done
+  return 1
+}
+
+printer_list() {
+  local out
+  if ! out=$(docker compose exec -T amc-web /venv/bin/python -c \
+      'import cups; print(*sorted(cups.Connection().getPrinters()) or ["(none yet)"], sep="\n")' 2>&1); then
+    warn "The app can't reach the print system: $out"
+    return
+  fi
+  say "Printers the app can use:"
+  printf '%s\n' "$out" | sed 's/^/  /'
+}
+
+cmd_printer() {
+  local sub=${1:-status} sock
+  [ $# -gt 0 ] && shift
+  [ $# -eq 0 ] || die "Usage: ./amc printer on | off | status"
+  case $sub in
+    on)
+      [ "$(uname -s)" = Linux ] || die "Direct printing only works when this machine runs Linux. Here, teachers save the PDFs in the Print step and print them from any computer."
+      sock=$(cups_socket) || die "No print system (CUPS) found. Install CUPS, add the printer, then run ./amc printer on again."
+      ensure_docker
+      ensure_env
+      say "Connecting the app to this machine's printers ($sock)."
+      docker compose down >/dev/null 2>&1 || true
+      env_set AMC_PRINTER 1
+      env_set AMC_CUPS_SOCKET "$sock"
+      apply_compose_files
+      cmd_start --no-open
+      printer_list
+      ;;
+    off)
+      ensure_docker
+      ensure_env
+      docker compose down >/dev/null 2>&1 || true
+      env_set AMC_PRINTER 0
+      apply_compose_files
+      cmd_start --no-open
+      say "Direct printing is off: teachers save the PDFs and print them elsewhere."
+      ;;
+    status)
+      ensure_env
+      if [ "$(env_get AMC_PRINTER 0)" = 1 ]; then
+        say "Direct printing is on."
+        ensure_docker
+        printer_list
+      else
+        say "Direct printing is off. Turn it on with ./amc printer on (Linux only)."
+      fi
+      ;;
+    *) die "Usage: ./amc printer on | off | status" ;;
+  esac
+}
+
 cmd_login() {
   local sub=${1:-} bind=0.0.0.0 a
   [ $# -gt 0 ] && shift
@@ -636,8 +716,7 @@ cmd_login() {
         say "Turning on shared-machine mode: sign-in, HTTPS, one projects folder per teacher."
         docker compose down >/dev/null 2>&1 || true
         env_set AMC_LOGIN 1
-        env_set COMPOSE_PATH_SEPARATOR ,
-        env_set COMPOSE_FILE "$LOGIN_FILES"
+        apply_compose_files
       fi
       env_set AMC_BIND "$bind"
       cmd_start --no-open
@@ -654,8 +733,7 @@ cmd_login() {
         say "Shared-machine mode is already off."
       fi
       env_set AMC_LOGIN 0
-      env_unset COMPOSE_FILE
-      env_unset COMPOSE_PATH_SEPARATOR
+      apply_compose_files
       env_set AMC_BIND 127.0.0.1
       cmd_start --no-open
       warn "Teachers' projects stay in the Docker volume and come back with ./amc login on."
@@ -755,6 +833,7 @@ case $cmd in
   user)           cmd_user "$@" ;;
   cert)           cmd_cert ;;
   backup)         cmd_backup ;;
+  printer)        cmd_printer "$@" ;;
   help|-h|--help) usage ;;
   *)              usage >&2; exit 1 ;;
 esac

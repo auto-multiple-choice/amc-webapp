@@ -11,6 +11,9 @@
  * Shared-machine mode: set AMC_E2E_USER and AMC_E2E_PASS to sign in first
  * (the base URL is then https://..., and the app's own certificate is
  * accepted for the test).
+ *
+ * Direct printing: with AMC_E2E_PRINTER=1 the test prints on the app's
+ * printer instead of saving PDFs (the app must see a print system).
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
@@ -149,19 +152,104 @@ async function main() {
   check('The question paper was built', st.docs && st.docs.sujet, JSON.stringify(st.docs));
   check('Layout detection ran', st.layout_pages > 0, `layout_pages=${st.layout_pages}`);
   check('The preview panel shows the question paper', await waitFor(`!!document.querySelector('#preview iframe[src*="DOC-sujet.pdf"]')`, 10000));
-  check('The sidebar marks Questions and Papers done', await waitFor(`document.querySelector('.step[href$="/questions"]').classList.contains('is-done') && document.querySelector('.step[href$="/papers"]').classList.contains('is-done')`));
-  check('The top bar shows "Papers built"', (await text('#topbar')).includes('Papers built'));
+  check('The sidebar marks Questions done and asks for the layout check in Papers', await waitFor(`document.querySelector('.step[href$="/questions"]').classList.contains('is-done') && document.querySelector('.step[href$="/papers"]').classList.contains('is-attention')`));
+  check('The top bar asks for the layout check', (await text('#topbar')).includes('Layout to check'));
   await sleep(1500);
   await shot('04-built');
 
-  // A step from a later phase
+  // Phase 2: papers and the layout check
+  check('Print is closed until the layout is checked', await (async () => { await click('.step[href$="/print"]'); return waitFor(`document.querySelector('#main').textContent.includes('Check the layout first')`); })());
   await click('.step[href$="/papers"]');
-  check('Later steps explain when they arrive', await waitFor(`document.querySelector('#main').textContent.includes('Coming in phase 2')`));
-  check('...and show the exam\'s real data', (await text('#main')).includes('Pages laid out'));
+  check('Papers asks to check the layout', await waitFor(`document.querySelector('#main').textContent.includes('Check the layout') && !!document.querySelector('[data-act="layout-ok"]')`));
+  check('The layout picture opens in the preview', await waitFor(`!!document.querySelector('#preview object.layout-svg')`, 20000));
+  const firstPage = await text('#preview .preview-title');
+  await click('#preview [data-act="layout-step"][data-delta="1"]');
+  check('Next page shows another page of the layout', await waitFor(`document.querySelector('#preview .preview-title').textContent !== ${JSON.stringify(firstPage)}`, 15000), firstPage);
+  await sleep(800);
+  await shot('05-layout-check');
+  await setValue('#copies', '6');
+  check('Changing the number of copies is saved', await waitFor(`fetch('/ui/api/config', {headers: {'AMC-project': S.project}}).then(r => r.json()).then(c => c.options.nombre_copies === '6')`, 5000));
+  await click('[data-act="layout-ok"]');
+  check('"Looks correct" confirms the layout', await waitFor(`S.status && !!S.status.layout_ok`, 10000));
+  check('...and opens Print', await waitFor(`document.querySelector('.step[href$="/print"]').classList.contains('is-attention')`));
+
+  // Marking scheme
+  await click('.step[href$="/marking-scheme"]');
+  check('Marking scheme loads the default scoring', await waitFor(`!!document.querySelector('#score-S-preset')`, 10000));
+  await setValue('#score-S-preset', 'b=1,m=-0.25');
+  await setValue('#score-M-preset', 'mz=1');
+  await click('[data-act="save-scoring"]');
+  check('Default scoring is saved', await waitFor(`S.scoring && S.scoring.S === 'b=1,m=-0.25' && S.scoring.M === 'mz=1'`, 10000));
+  const src = await js(`fetch('/fs/' + encodeURIComponent(S.project) + '/' + encodeURIComponent(S.status.source) + '?attach=0', {cache: 'no-store'}).then(r => r.text())`);
+  check('...in the source, as \\scoringDefaultS/M', src.includes('\\scoringDefaultS{b=1,m=-0.25}') && src.includes('\\scoringDefaultM{mz=1}'));
+  await setValue('[data-option="note_max"]', '20');
+  check('Final mark settings are saved', await waitFor(`fetch('/ui/api/config', {headers: {'AMC-project': S.project}}).then(r => r.json()).then(c => c.options.note_max === '20')`, 5000));
+  await shot('06-marking');
+
+  // Print: save PDFs, which locks the exam
+  await click('.step[href$="/print"]');
+  check('Print offers saving PDFs', await waitFor(`!!document.querySelector('[data-act="print"]')`));
+  if (process.env.AMC_E2E_PRINTER) {
+    check('Direct printing is offered when a print system is connected', await waitFor(`document.querySelector('[data-route="printer"]').getAttribute('aria-disabled') === 'false'`, 15000));
+    await click('[data-route="printer"]');
+    check('The printers of the machine are listed', await waitFor(`!!document.querySelector('#print-printer option')`));
+  } else {
+    check('Direct printing is off without a Linux print system', await waitFor(`document.querySelector('[data-route="printer"]').getAttribute('aria-disabled') === 'true'`, 10000));
+  }
+  await shot('07-print');
+  await click('[data-act="print"]');
+  check('Printing warns that it locks the exam', await waitFor(`document.querySelector('#layer').textContent.includes('This locks the exam')`));
+  await click('[data-act="dialog-ok"]');
+  if (process.env.AMC_E2E_PRINTER && await waitFor(`!!document.querySelector('.server-dialog')`, 60000)) {
+    console.log('  server message: ' + (await text('.server-dialog')).replace(/\s+/g, ' ').slice(0, 200));
+    await js(`warn_ok(); true`);
+  }
+  check('Printing runs and locks the exam', await waitFor(`S.status && !!S.status.lock`, 120000));
+  check('The top bar says printed and locked', await waitFor(`document.querySelector('#topbar').textContent.includes('locked')`));
+  check('Questions and Papers show a lock', await js(`document.querySelector('.step[href$="/questions"]').classList.contains('is-locked') && document.querySelector('.step[href$="/papers"]').classList.contains('is-locked')`));
+
+  // The server refuses changes that would move things on the printed papers
+  await js(`socket_emit('ncopies', 99); true`);
+  check('The server refuses a new number of copies', await waitFor(`!!document.querySelector('.server-dialog') && document.querySelector('.server-dialog').textContent.includes('locked')`, 10000));
+  await js(`warn_ok(); true`);
+  const before = (await status()).layout_pages;
+  await js(`socket_emit('doc-update', 'sujet'); true`);
+  check('The server refuses rebuilding the question paper', await waitFor(`!!document.querySelector('.server-dialog')`, 10000) && (await status()).layout_pages === before);
+  await js(`warn_ok(); true`);
+  check('...and the copies are unchanged', (await js(`fetch('/ui/api/config', {headers: {'AMC-project': S.project}}).then(r => r.json()).then(c => c.options.nombre_copies)`)) === '6');
+
+  await click('.step[href$="/questions"]');
+  check('Questions explains what can still change', await waitFor(`typeof editor !== 'undefined' && editor && editor.getValue().length > 0 && document.querySelector('#main').textContent.includes('only answer key and scoring')`, 20000));
+  check('Building the preview is not offered', await js(`!document.querySelector('[data-act="build"]')`));
+  await js(`editor.session.insert({row: 0, column: 0}, 'Changed text\\n'); true`);
+  await click('[data-act="save"]');
+  check('Saving a text change is refused', await waitFor(`document.querySelector('#layer').textContent.includes('Not saved')`, 10000));
+  await click('[data-act="dialog-ok"]');
+  await js(`setEditorText(S.source.text); true`);
+  const swapped = await js(`(() => { const t = editor.getValue(); const i = t.indexOf('\\\\correctchoice'); const j = t.indexOf('\\\\wrongchoice'); if (i < 0 || j < 0) return null; return t.replace('\\\\correctchoice', '\\\\TMPCHOICE').replace('\\\\wrongchoice', '\\\\correctchoice').replace('\\\\TMPCHOICE', '\\\\wrongchoice'); })()`);
+  if (swapped) {
+    await js(`editor.setValue(${JSON.stringify(swapped)}, -1); true`);
+    await click('[data-act="save"]');
+    check('Saving an answer key correction is allowed', await waitFor(`!S.source.dirty && !document.querySelector('#layer').innerHTML`, 10000));
+  } else check('Saving an answer key correction is allowed', false, 'no \\correctchoice in the template');
+
+  // Unlock
+  await click('[data-act="unlock"]');
+  check('Unlocking asks for the exam name', await waitFor(`!!document.querySelector('#dlg-form [name="name"]')`));
+  await setValue('#dlg-form [name="name"]', 'wrong name');
+  await js(`document.querySelector('#dlg-form').requestSubmit(); true`);
+  check('A wrong name doesn\'t unlock', (await text('#dlg-error')).includes("doesn't match"));
+  await setValue('#dlg-form [name="name"]', await js('S.project'));
+  await js(`document.querySelector('#dlg-form').requestSubmit(); true`);
+  check('Unlocking removes the lock and the layout', await waitFor(`S.status && !S.status.lock && !S.status.layout_pages`, 20000));
+  check('The editor offers building again', await waitFor(`!!document.querySelector('[data-act="build"]')`, 10000));
+
+  // A step from a later phase
+  await click('.step[href$="/upload-scans"]');
+  check('Later steps explain when they arrive', await waitFor(`document.querySelector('#main').textContent.includes('Coming in phase 3')`));
   check('Leaving Questions closed the editor', await js('editor === null'));
 
-  // Preview panel: switch document, close, reopen
-  check('With one document built, the panel shows it without tabs', await js(`document.querySelectorAll('#preview [data-act="show-doc"]').length === 0 && !!document.querySelector('#preview iframe')`));
+  // Preview panel: close, reopen
   await click('#topbar [data-act="toggle-preview"]');
   check('The preview panel closes', await waitFor(`document.querySelector('#app').classList.contains('preview-closed')`));
   await click('#topbar [data-act="toggle-preview"]');
@@ -169,14 +257,15 @@ async function main() {
 
   // Settings: rename
   await click('.side-link[href$="/settings"]');
-  check('Exam settings open', await waitFor(`!!document.querySelector('#cfg-name')`));
+  check('Exam settings open', await waitFor(`!!document.querySelector('#cfg-name') && S.config && S.config.project === S.project`));
   await setValue('#cfg-name', `${EXAM} 2`);
   await click('[data-act="rename-current"]');
   check('Renaming follows the new name in the address', await waitFor(`decodeURIComponent(location.pathname) === '/exam/${EXAM} 2/settings'`, 10000), await path());
+  check('Settings show the exam\'s history', await waitFor(`document.querySelector('#main').textContent.includes('Layout checked and confirmed') && document.querySelector('#main').textContent.includes('Unlocked')`, 10000));
 
   // Back to the list: state, duplicate, delete
   await click('.crumbs a[href="/exams"]');
-  check('The exams list shows the renamed exam as "Papers built"', await waitFor(`[...document.querySelectorAll('.exam-card')].some(c => c.textContent.includes('${EXAM} 2') && c.textContent.includes('Papers built'))`));
+  check('The exams list shows the renamed exam as a draft again', await waitFor(`[...document.querySelectorAll('.exam-card')].some(c => c.textContent.includes('${EXAM} 2') && c.textContent.includes('Draft'))`));
   await shot('05-exams');
   await click(`[data-act="menu"][data-menu="${EXAM} 2"]`);
   await click(`[data-act="clone-exam"][data-name="${EXAM} 2"]`);

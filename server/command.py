@@ -84,6 +84,10 @@ def amc_command(*args,
             ]
             if allow_cups:
                 isolate += [ '--env', 'CUPS_SERVER', '--connect-tcp', '631' ]
+                # A local print system's socket (./amc printer on, Linux)
+                cups = os.environ.get('CUPS_SERVER', '')
+                if cups.startswith('/'):
+                    isolate += [ '--rw', cups ]
             if not os.environ.get("AMC_USERHEADER"):
                 isolate += [ '--ro', user_confdir() ]
             isolate.append('--')

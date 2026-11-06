@@ -153,7 +153,7 @@ The layout check happens only before the first print. Once locked, the layout ca
   Opening or downloading a document to look at it in step 3 doesn't lock.
 - **Lock record:** the app's existing print time, plus our own record of who locked the exam and when, stored with the project.
 - **Banner:** a locked exam shows "Printed on 5 Nov by Priya. Questions and layout are locked. You can still change the marking scheme and correct the answer key."
-- **Read-only editor:** the LaTeX editor becomes read-only. Answer key and scoring changes go through the marking panel, which edits only the scoring and correct/wrong macros in the source.
+- **Editor after printing:** until the per-question marking panel exists (phase 5), the LaTeX editor stays editable but the server only accepts saves that change scoring or which answers are correct (the safety check below); anything else is refused with an explanation. Once the panel exists, the editor becomes read-only and corrections go through the panel.
 - **Server enforcement:** the server refuses saves, rebuilds, copy-count changes and build settings on a locked exam. A stale browser tab or a second teacher can't bypass the lock.
 - **Safety check on save:** when a locked exam's source is saved, the server compares the old and new source. Any difference outside the allowed macros (`\scoring{…}`, `\scoringDefaultS/M{…}`, `\correctchoice` ↔ `\wrongchoice` and the French `\bonne` ↔ `\mauvaise`) is refused with an explanation. It's a cheap text comparison, with no compile needed.
 - **Re-marking:** after an allowed change, step 7 shows "The answer key changed. Recompute marks?", which runs Mark with "Update marking scale". The change is recorded in the exam's activity list.
