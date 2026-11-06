@@ -117,6 +117,19 @@ real_home() {
   fi
 }
 
+# mkdir -p that, under sudo, gives the new folders to the real user: the app
+# runs as that user (AMC_UID) and must be able to write in them.
+make_dirs() {
+  local d
+  for d in "$@"; do
+    [ -d "$d" ] && continue
+    mkdir -p "$d" || die "Could not create $d"
+    if [ -n "${SUDO_UID:-}" ] && [ "$(id -u)" = 0 ]; then
+      chown "$SUDO_UID:${SUDO_GID:-$SUDO_UID}" "$d" 2>/dev/null || true
+    fi
+  done
+}
+
 ensure_env() {
   [ -f .env ] && return 0
   say "First run: writing settings to .env"
@@ -132,6 +145,9 @@ ensure_env() {
     echo "TZ=$(detect_tz)"
     echo "AMC_SERVER_LOGGING=INFO"
   } > .env
+  if [ -n "${SUDO_UID:-}" ] && [ "$(id -u)" = 0 ]; then
+    chown "$SUDO_UID:${SUDO_GID:-$SUDO_UID}" .env 2>/dev/null || true
+  fi
 }
 
 load_settings() {
@@ -289,6 +305,11 @@ export_sites() {
   done
   LAN_IP=$(lan_address)
   export AMC_SITES="$sites" AMC_ORIGINS="$origins" AMC_DEFAULT_SNI="${LAN_IP:-localhost}"
+  # A label on the caddy service (compose.login.yml), so that `up` recreates
+  # caddy when the Caddyfile changed (after ./amc update, say): caddy reads
+  # it only when it starts.
+  AMC_CADDYFILE_HASH=$(cksum caddy/Caddyfile | cut -d' ' -f1)
+  export AMC_CADDYFILE_HASH
 }
 
 wait_ready() {
@@ -429,7 +450,13 @@ cmd_start() {
     fi
   fi
 
-  mkdir -p "$DATA_DIR/MC-Projects" || die "Could not create $DATA_DIR/MC-Projects"
+  make_dirs "$DATA_DIR" "$DATA_DIR/MC-Projects"
+  if login_mode; then
+    # amc-auth and caddy keep their data in these. Made here, as the user:
+    # on Linux, Docker would otherwise create them owned by root, and
+    # amc-auth (running as the user) couldn't write its accounts database.
+    make_dirs "$DATA_DIR/auth" "$DATA_DIR/caddy"
+  fi
   check_readable
   write_version
   remove_appledouble
@@ -458,6 +485,7 @@ cmd_start() {
 }
 
 cmd_stop() {
+  [ -f .env ] || { echo "Not set up yet, so nothing is running."; return 0; }
   ensure_docker
   docker compose down
   ok "Stopped. Your projects are kept."
@@ -477,6 +505,7 @@ cmd_status() {
 }
 
 cmd_logs() {
+  [ -f .env ] || die "Not set up yet. Run ./amc start"
   ensure_docker
   docker compose logs -f --tail 100
 }
@@ -502,7 +531,7 @@ cmd_import() {
   local user=""
   if [ "${1:-}" = --user ]; then
     [ $# -ge 2 ] || die "Usage: ./amc import --user NAME <project folder>..."
-    user=$2; shift 2
+    user=$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]'); shift 2  # accounts are lower-case
   fi
   [ $# -gt 0 ] || die "Usage: ./amc import [--user NAME] <project folder>..."
   ensure_env
@@ -510,7 +539,8 @@ cmd_import() {
   local base="$DATA_DIR/MC-Projects" src name dest
   if login_mode; then
     [ -n "$user" ] || die "In shared-machine mode, say whose projects these are: ./amc import --user NAME <folder>..."
-    case $user in ''|_*|.*|*/*) die "Invalid username: $user" ;; esac
+    printf '%s' "$user" | grep -Eq '^[a-z0-9][a-z0-9._-]{1,31}$' ||
+      die "Invalid username: $user (2 to 32 letters, digits, '.', '_' or '-', as for ./amc user add)"
     ensure_docker
     local uid gid abs
     uid=$(env_get AMC_UID 1000); gid=$(env_get AMC_GID 0)
@@ -737,7 +767,8 @@ cmd_backup() {
       -v "$DATA_DIR/caddy:/caddy:ro" --entrypoint sh amc-home-init -c "
         mkdir /stage && ln -s /amc-web/files/MC-Projects /stage/MC-Projects &&
         ln -s /auth /stage/auth && ln -s /caddy /stage/caddy &&
-        tar czhf /backup/$name -C /stage MC-Projects auth caddy" ||
+        tar czhf /backup/$name -C /stage MC-Projects auth caddy &&
+        chmod 600 /backup/$name" ||
       { rm -f "$dir/$name"; die "The backup failed (messages above)."; }
   else
     if [ -d "$DATA_DIR/.AMC.d" ]; then
@@ -745,6 +776,7 @@ cmd_backup() {
     else
       tar czf "$dir/$name" -C "$DATA_DIR" MC-Projects
     fi || { rm -f "$dir/$name"; die "The backup failed (messages above)."; }
+    chmod 600 "$dir/$name"
   fi
   ok "Backup written to $dir/$name"
 }
@@ -753,9 +785,20 @@ cmd_cert() {
   ensure_env
   load_settings
   login_mode || die "HTTPS is only used in shared-machine mode (./amc login on)."
-  local ca="$DATA_DIR/caddy/caddy/pki/authorities/local/root.crt"
-  [ -f "$ca" ] || die "There is no certificate yet. Start the app once with ./amc start"
-  cp "$ca" "$DATA_DIR/amc-ca.crt"
+  local ca="$DATA_DIR/caddy/caddy/pki/authorities/local/root.crt" out="$DATA_DIR/amc-ca.crt"
+  if [ -r "$ca" ]; then
+    cp "$ca" "$out"
+  else
+    # On Linux, caddy's files belong to root (caddy runs as root in its
+    # container), so read the certificate through the container.
+    ensure_docker
+    is_running caddy || die "There is no certificate yet. Start the app once with ./amc start"
+    if ! docker compose exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > "$out" 2>/dev/null ||
+       [ ! -s "$out" ]; then
+      rm -f "$out"
+      die "There is no certificate yet. Start the app once with ./amc start"
+    fi
+  fi
   LAN_IP=$(lan_address)
   cat <<EOF
 The app's HTTPS certificate comes from its own certificate authority:
