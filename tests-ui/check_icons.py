@@ -2,7 +2,7 @@
 """Check that every icon the new interface uses will be in icons.css.
 
 Upstream's icon build keeps only icons named in server/templates/*.html, so
-icons used from server/static/ui/app.js must be listed in
+icons used from server/static/ui/app.js and builder.js must be listed in
 server/templates/ui_icons.html, and must exist in the Iconoir set.
 
 Run from the repository root:  python3 tests-ui/check_icons.py
@@ -11,11 +11,12 @@ Rewrite the list:               python3 tests-ui/check_icons.py --write
 import re
 import sys
 
-JS = "server/static/ui/app.js"
+JS = "server/static/ui/app.js and builder.js"
+JS_FILES = ("server/static/ui/app.js", "server/static/ui/builder.js")
 LIST = "server/templates/ui_icons.html"
 ICONOIR = "src-icons/iconoir.css"
 
-js = open(JS, encoding="utf-8").read()
+js = "\n".join(open(f, encoding="utf-8").read() for f in JS_FILES)
 available = set(re.findall(r"\.iconoir-([a-z0-9-]+)::before",
                            open(ICONOIR, encoding="utf-8").read()))
 # Icons are often chosen at runtime (ic(open ? 'expand' : 'collapse'), or

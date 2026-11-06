@@ -48,7 +48,7 @@ const STEPS = [
   { id: 'annotate', n: 10, label: 'Annotate', group: 'after', phase: 4, built: true },
 ];
 const GUIDES = {
-  questions: ['Pick a question on the left and change it in the form: its text, answers, which answers are correct, scoring. Changes are saved as you type.', 'Add, move and delete questions with the buttons. Build the preview to see the question paper on the right.', 'Paper design sets the sections: which questions are printed, how many per copy, shuffled or not, and their headings; and how many versions of the paper are printed.', 'Prefer LaTeX? The LaTeX tab edits the source itself; Edit in LaTeX jumps to the question.'],
+  questions: ['Pick a question on the left and change it in the form: its text, answers, which answers are correct, scoring. Changes are saved as you type.', 'Add, move and delete questions with the buttons. Build the preview to see the question paper on the right.', 'Paper builder lays out the paper: on an exam made with the RJ Style Paper Builder, rows and columns of blocks for the question paper and the answer sheet; on any exam, the sections (which questions are printed, how many per copy, shuffled or not) and the versions.', 'Prefer LaTeX? The LaTeX tab edits the source itself; Edit in LaTeX jumps to the question.'],
   'marking-scheme': ['Choose how single- and multiple-answer questions are scored by default.', 'Set what the final mark is out of, and how it is rounded.', 'All of this can still change after printing.'],
   papers: ['Choose how many copies to print. Add a few spares.', 'Build the papers. The layout is detected automatically.', 'Check the layout in the preview, then confirm it looks correct. Printing opens after that.'],
   print: ['Save the PDFs and print them anywhere, or print directly when the shared machine runs Linux.', 'Print on A4 at 100% (actual size), never "fit to page".', 'The exam locks after printing: questions and layout can no longer change.'],
@@ -362,6 +362,7 @@ window.addEventListener('popstate', async () => {
 window.addEventListener('beforeunload', (e) => {
   if (S.qform && S.qform.pending.length) { flushQ(); e.preventDefault(); e.returnValue = ''; }
   if (S.dform && S.dform.pending.length) { flushD(); e.preventDefault(); e.returnValue = ''; }
+  if (S.bform && S.bform.pending) { flushB(); e.preventDefault(); e.returnValue = ''; }
   if (S.source.dirty) { saveDraft(); e.preventDefault(); e.returnValue = ''; }
 });
 
@@ -373,7 +374,7 @@ function onRoute() {
   S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false;
   S.previewMode = keepGuide ? 'guide' : null;
   S.review = null; S.previewImage = null; S.previewList = null;
-  if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) { dropEditor(); S.history = null; S.qdata = null; S.qform = null; S.design = null; S.dform = null; }
+  if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) { dropEditor(); S.history = null; S.qdata = null; S.qform = null; S.design = null; S.dform = null; S.builder = null; S.bform = null; }
   if (r.kind === 'exams' || r.kind === 'new' || r.kind === 'appearance') {
     S.project = null; S.status = null; S.files = null;
     document.title = `${{ new: 'New exam', appearance: 'Appearance' }[r.kind] || 'Exams'} · ${BRAND}`;
@@ -958,7 +959,7 @@ async function editExamDetails(name) {
 /* ---------- View: new exam ---------- */
 
 const todayIso = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
-const newWizard = () => ({ step: 1, name: '', class: '', subject: '', date: todayIso(), gid: 'school', id: 'blank', group: 'school', query: '', style: 'paper', code: false, digits: 8, copies: '' });
+const newWizard = () => ({ step: 1, name: '', class: '', subject: '', date: todayIso(), gid: 'school', id: 'blank', group: 'school', query: '', style: 'paper', code: false, digits: 8, copies: '', design: null });
 const thumbUrl = (gid, id) => `/ui/gallery/${enc(gid)}/${enc(id)}/thumb`;
 
 async function loadGallery() {
@@ -1023,6 +1024,8 @@ function wizardOptions() {
   const w = S.wizard;
   const t = wizardTemplate();
   if (!t) return '';
+  if (t.builder) return builderWizardOptions(w, t); // builder.js: kind of paper, layout, details, versions
+  w.design = null;
   const styleCard = (v, title, hint, thumb) => `<button class="choice style-choice" role="radio" aria-checked="${w.style === v}" data-act="wiz-style" data-v="${v}">
     ${thumb ? `<img class="style-thumb" src="${thumb}" alt="">` : `<span class="choice-icon">${ic(v === 'paper' ? 'page' : 'multiple-pages')}</span>`}
     <span><span class="choice-title">${title}</span><br><span class="subtle">${hint}</span></span></button>`;
@@ -1066,16 +1069,16 @@ function questionsHead() {
   const L = locked();
   const form = useForm();
   const design = useDesign();
-  const tabs = canForm() ? `<div class="segmented q-tabs" role="tablist" aria-label="How to edit"><button role="tab" aria-pressed="${form}" data-act="qtab" data-v="form">${ic('list')} Questions</button><button role="tab" aria-pressed="${design}" data-act="qtab" data-v="design">${ic('page')} Paper design</button><button role="tab" aria-pressed="${!form && !design}" data-act="qtab" data-v="latex">${ic('code')} LaTeX</button></div>` : '';
+  const tabs = canForm() ? `<div class="segmented q-tabs" role="tablist" aria-label="How to edit"><button role="tab" aria-pressed="${form}" data-act="qtab" data-v="form">${ic('list')} Questions</button><button role="tab" aria-pressed="${design}" data-act="qtab" data-v="design">${ic('page')} Paper builder</button><button role="tab" aria-pressed="${!form && !design}" data-act="qtab" data-v="latex">${ic('code')} LaTeX</button></div>` : '';
   const sub = L ? 'The exam is printed, so the questions and the paper are read-only: only the correct answers and scoring can change.'
     : form ? 'Pick a question and change it in the form; changes are saved as you type. Build the preview to see the question paper.'
-      : design ? 'Sections: which questions are printed, how many per copy, shuffled or not, and their headings. Versions: how many different papers are printed.'
+      : design ? (S.builder && S.builder.builder ? 'Compose the question paper and the answer sheet from rows of blocks; set the instructions, the sections and the versions.' : 'Sections: which questions are printed, how many per copy, shuffled or not, and their headings. Versions: how many different papers are printed.')
         : 'Write the questions and answers. Save, then build the preview to see the question paper.';
   const build = `<button class="btn ${form || design ? 'btn-primary' : ''}" data-act="build" ${(form ? S.qdata : design ? S.design && !S.design.error : S.source.loaded) ? '' : 'disabled'}>${ic('refresh')} Build preview</button>`;
   const marking = `<a class="btn btn-primary" href="${examPath(S.project, 'marking-scheme')}" data-nav>${ic('percentage-circle')} Marking scheme</a>`;
   const actions = form
     ? `<button class="btn btn-ghost" data-act="qf-history" ${S.qdata ? '' : 'disabled'}>${ic('clock-rotate-right')} History</button>${L ? marking : build}`
-    : design ? `<button class="btn btn-ghost" data-act="d-history" ${S.design && S.design.file ? '' : 'disabled'}>${ic('clock-rotate-right')} History</button>${L ? marking : build}`
+    : design ? `<button class="btn btn-ghost" data-act="${S.builder && S.builder.builder ? 'pb-history' : 'd-history'}" ${S.design && S.design.file ? '' : 'disabled'}>${ic('clock-rotate-right')} History</button>${L ? marking : build}`
     : L ? `<a class="btn btn-primary" href="${examPath(S.project, 'marking-scheme')}" data-nav>${ic('percentage-circle')} Correct the answer key</a>`
       : `${build}<button class="btn btn-primary" data-act="save" id="save-btn" disabled>${ic('floppy-disk')} Save</button>`;
   return `
@@ -1358,7 +1361,7 @@ function diffHtml(a, b) {
 }
 
 async function buildPreview() {
-  await flushQ(); await flushD();
+  await flushQ(); await flushD(); await flushB();
   if (S.source.dirty && !(await saveSource())) return;
   const st = S.status || {};
   if (st.printed || st.scans) {
@@ -1869,14 +1872,15 @@ async function insertFigure(file) {
 
 async function loadDesign() {
   const project = S.project;
-  let r;
-  try { r = await getJSON('/ui/api/structure'); } catch (e) {
+  let r; let b;
+  try { [r, b] = await Promise.all([getJSON('/ui/api/structure'), getJSON('/ui/api/builder')]); } catch (e) {
     console.error(e);
     if (S.project === project) { S.design = { error: 'The paper couldn\'t be read.' }; renderDesign(); }
     return;
   }
   if (S.project !== project || r.project !== project) return;
   S.design = r;
+  S.builder = b && b.builder ? b : null; // the paper builder's design (builder.js), when the exam has one
   if (!S.dform) S.dform = { pending: [], saving: false, open: null };
   renderDesign();
   const h = $('#q-head'); if (h) h.innerHTML = questionsHead();
@@ -1892,6 +1896,8 @@ function renderDesign() {
   if (d.error) { host.innerHTML = banner('warning', 'warning-triangle', d.error, '', `<button class="btn btn-sm" data-act="d-reload">Try again</button>`); return; }
   const L = locked();
   if (S.dform) S.dform.locked = L;
+  if (S.builder && S.builder.builder) { renderBuilder(host); return; } // builder.js: rows and columns of blocks
+  host.className = 'design';
   host.innerHTML = `<div class="d-card" id="d-sections">${renderDSections(d, L)}</div><div class="d-card" id="d-paper">${renderDPaper(d, L)}</div>`;
   renderDStatus();
 }
@@ -1944,9 +1950,9 @@ function renderDSectionForm(s, L) {
 function renderDPaper(d, L) {
   const dis = L ? 'disabled' : '';
   return `<div class="d-head"><b>The paper</b><span class="spacer"></span><span class="subtle" id="d-status"></span></div><div class="d-body">
-    <p class="muted" style="margin:0">The layout of the paper (its header, instructions and answer sheet) is edited in the <b>LaTeX</b> tab. The sections on the left are printed where the file inserts them.</p>
+    <p class="muted" style="margin:0">The layout of the paper (its header, instructions and answer sheet) is edited in the <b>LaTeX</b> tab. The sections on the left are printed where the file inserts them. An exam made with the <b>RJ Style Paper Builder</b> composes them here instead.</p>
     <div class="d-block"><div class="d-row"><b>Versions</b></div>
-    <label class="field"><span class="field-label">Versions of the paper (A, B, C…)</span><input class="input input-num" type="number" min="1" max="26" id="d-copies" value="${esc(d.copies || '')}" ${d.onecopy ? dis : 'disabled'}><span class="field-hint">Each version draws its own questions from the sections; the app's number of copies follows. Copies are photocopied from the versions: when uploading scans, say that the sheets were photocopied.</span></label></div>
+    <label class="field"><span class="field-label">Versions of the paper (A, B, C…)</span><input class="input input-num" type="number" min="1" max="999" id="d-copies" value="${esc(d.copies || '')}" ${d.onecopy ? dis : 'disabled'}><span class="field-hint">Each version draws its own questions from the sections; the app's number of copies follows. Copies are photocopied from the versions: when uploading scans, say that the sheets were photocopied.</span></label></div>
     ${d.summary ? `<div class="d-block"><div class="d-row"><b>Instructions summary</b></div><div class="d-sub">The instructions carry one line per section, between the <code>%%AMCUI:SUMMARY%%</code> markers.</div>
       ${L ? '' : `<div class="d-row"><button class="btn btn-ghost btn-sm" data-act="d-summary" title="Rewrite the line per section from the sections' counts and marks">${ic('refresh')} Update the line per section</button></div>`}</div>` : ''}
   </div>`;
@@ -2060,7 +2066,7 @@ async function addQuestionTo(group) {
 async function switchQTab(v) {
   if (v === S.qtab || !['form', 'design', 'latex'].includes(v)) return;
   if (S.qtab === 'latex' && S.source.dirty && !(await saveSource())) return;
-  await flushQ(); await flushD();
+  await flushQ(); await flushD(); await flushB();
   if (editor) dropEditor();
   S.qtab = v; store.set('qtab', v);
   renderMain();
@@ -2069,7 +2075,7 @@ async function switchQTab(v) {
   else if (!S.source.loaded) loadSource('');
 }
 async function editInLatex(file, line) {
-  await flushQ(); await flushD();
+  await flushQ(); await flushD(); await flushB();
   S.qtab = 'latex'; store.set('qtab', 'latex');
   S.gotoLine = line || null;
   renderMain();
@@ -3513,7 +3519,7 @@ const ACTIONS = {
     if (S.creating) return;
     S.creating = w.name.trim();
     renderMain(true);
-    socket_emit('ui-create-exam', { name: w.name.trim(), class: w.class, subject: w.subject, date: w.date, gid: w.gid, id: w.id, style: w.style, code: w.code ? w.digits : 0, copies: w.copies });
+    socket_emit('ui-create-exam', { name: w.name.trim(), class: w.class, subject: w.subject, date: w.date, gid: w.gid, id: w.id, style: w.style, code: w.code ? w.digits : 0, copies: w.copies, design: w.design ? { preset: w.design.preset, codes: w.design.codes, versions: w.design.versions, fields: w.design.fields } : undefined });
   },
   'rename-exam': (el) => { S.menu = null; renameExam(el.dataset.name); },
   'clone-exam': (el) => { S.menu = null; socket_emit('project-clone', el.dataset.name); },
@@ -3589,7 +3595,8 @@ document.addEventListener('click', (e) => {
   if (!el) return;
   const act = el.dataset.act;
   if (act === 'dialog-backdrop') { if (e.target === el && !el.querySelector('.sticky')) closeDialog(false); return; }
-  if (ACTIONS[act]) { e.preventDefault(); ACTIONS[act](el); }
+  const fn = ACTIONS[act] || (typeof BUILDER_ACTIONS !== 'undefined' ? BUILDER_ACTIONS[act] : null);
+  if (fn) { e.preventDefault(); fn(el); }
 });
 
 document.addEventListener('change', async (e) => {

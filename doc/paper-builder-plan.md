@@ -5,8 +5,9 @@ Proposal, November 2026, after the review of MR !12 (phase 8). Replaces the
 with a builder in which teachers compose the question paper and the OMR
 sheet from blocks laid out in rows and columns, the way Bootstrap lays out
 a web page. Status (7 November 2026): step B0 is done on the !12 branch
-(the starter is gone, the sections stay); the builder (B1 to B4) is being
-built on `feature/paper-builder`. The decisions of section 14 are taken.
+(the starter is gone, the sections stay); the builder (B1 to B4) is built
+on `feature/paper-builder` (section 16 says how). The decisions of
+section 14 are taken.
 
 ## 1. Summary
 
@@ -359,10 +360,17 @@ merge request on top of !12.
 | Step | Delivers | Size |
 |---|---|---|
 | **B0** ✓ | !12 without the Olympiad starter and its parts (section 12) | S |
-| **B1** | Layout engine (rows, columns, widths, borders, alignment, same height), question paper blocks, `paper.json` and the generated layout file, the canvas with drag and drop, first-page preview | L |
-| **B2** | Kind of paper, the answer sheet designer and its checks | L |
-| **B3** | Instructions panel, versions and codes, page and footer | M |
-| **B4** | Wizard and gallery card, presets (RJ Olympiad, Simple, Blank), guide | M |
+| **B1** ✓ | Layout engine (rows, columns, widths, borders, alignment, same height), question paper blocks, `paper.json` and the generated layout file, the canvas with drag and drop | L |
+| **B2** ✓ | Kind of paper, the answer sheet designer and its checks | L |
+| **B3** ✓ | Instructions panel, versions and codes, page and footer | M |
+| **B4** ✓ | Wizard and gallery card, presets (RJ Olympiad, Simple, Blank), guide | M |
+
+Left out for now: the one-copy "Preview the first page" (Build preview
+builds the versions, which takes a little longer), paper size and font
+size in the builder (they are the `\documentclass` options in `exam.tex`,
+edited in the LaTeX tab), dragging a column's edge to resize it (the width
+is chosen from a list), and starting the builder on an exam that wasn't
+created from it.
 
 Question banks (phase 9) come after B4, or before B1 (section 14, point 3).
 
@@ -391,3 +399,76 @@ Question banks (phase 9) come after B4, or before B1 (section 14, point 3).
 | Boxes too close together to read | The RJ box style and spacing are the defaults; a minimum is enforced |
 | Hand edits to the generated layout file | Digest check, then "Keep my changes" or "Rewrite it" (section 9) |
 | The design format changes later | `"format": 1` in `paper.json`, one generator, server-side checks |
+
+## 16. How it was built (7 November 2026)
+
+- `server/ui_builder.py` (standard library): the design's schema with
+  defaults and checks (`normalize` raises `EditError` for anything that
+  can't be printed: a row over 12, an unknown block, a block where it
+  can't go, an unbalanced brace, a bad file name or length), the version
+  codes (`letters`, `codes_table`, `max_versions`: letters up to 702, 676
+  with "same length"), the presets, the checks shown in the panel
+  (`check`: errors stop the build, warnings and notes don't), and the
+  LaTeX generator (`layout`).
+- **The generated file.** `paper-layout.tex` holds the packages (it loads
+  `automultiplechoice` itself, with `separateanswersheet` when the kind
+  of paper says so, and `noshuffle` unless answers are shuffled), the
+  geometry, the box style, the RJ question numbers when chosen, the
+  footer (`\AMCsetFoot`, a segment whose detail is empty dropped), the
+  code macro (`\amcuiCode`: a lookup table from AMC's copy number, so AA
+  and beyond work and numbers can be zero-padded), small macros (digit
+  and prefix boxes, logo, bullet point, centred rule, rough-work pages)
+  and two macros the main source calls inside `\onecopy`:
+  `\amcuiPaperFront` (the rows before the Questions block, after
+  setting the paper's footer) and `\amcuiPaperBack` (the rows after it,
+  `\AMCaddpagesto`, then `\clearpage\AMCformBegin`, the sheet's footer
+  and the answer sheet's rows).
+- **Rows in TeX.** A row is `\noindent\begingroup … \endgroup\par`
+  with one `minipage` per column. Fixed widths are
+  `\dimexpr(\linewidth-gaps)*N/12`; a "fit" column is set first in a
+  `varwidth` box (`\sbox`) and its width read; auto columns share what is
+  left. Borders are `\dbox` (dashed), `\fbox` (solid) or nothing, with
+  the column's padding as `\fboxsep`, the inner minipage narrowed by it.
+  "Same height" measures each box in an `\sbox`, takes the tallest and
+  gives the others a fixed-height minipage. Blocks that register boxes
+  with AMC (the ID and class grids, the answer areas) are never typeset
+  in a measuring box, because AMC would see them twice: they can't be
+  "fit" columns and keep their own height. The name field is wrapped
+  around the first student block of the answer sheet (separate sheet) or
+  of the paper. A full-width flowing block without a border (the
+  instructions, a text, the questions, an answer area) is printed in the
+  normal flow so it can break across pages; a block with nothing to print
+  (an empty field, no logo yet) takes no column.
+- **Server** (`ui.py`): `GET/POST /ui/api/builder` (the whole design each
+  time, checked, written to `paper.json` through the history with the
+  digest it was read at, then the layout file rewritten),
+  `POST /ui/api/builder/layout` (keep or rewrite a hand-edited file; the
+  file's digest is kept in `amcweb.json` under `builder`), `write_layout`
+  (also after a sections edit and after a History restore) and
+  `before_build`, called from `amc.py` before any document is built: it
+  rewrites the layout file and refuses the build with the first error of
+  `check`. The wizard installs the starter from a preset with the
+  wizard's details, writes `\onecopy{n}` and the layout file, and sets
+  `assoc_code` to the ID grid's code. `.json` files are tracked by the
+  history.
+- **Browser** (`static/ui/builder.js`, loaded after `app.js`): the Paper
+  builder tab's six sub-tabs; the canvas as a CSS grid of 12 columns
+  (spans from the widths); the settings panel for the selected row or
+  block, one form per block type; drag and drop of rows (by the handle)
+  and blocks (between columns and rows, the 12 limit checked); typing
+  saved 0.9 s after the last keystroke without redrawing the field (the
+  canvas only), other changes at once; KaTeX previews for LaTeX items;
+  the wizard's options page for the starter. `app.js` loads the structure
+  and the builder together and dispatches `pb-*` actions to it. Both are
+  classic scripts sharing one global scope: a function declared in both
+  silently replaces the first (a `renderSide` in the builder once blanked
+  the sidebar), so the builder's names start with `b`, `pb` or `renderB`.
+- **Starter** `school_templates/builder/`: `exam.tex` (preamble,
+  `\input{paper-layout}`, the section macros, three sections inside
+  `\onecopy` between `\amcuiPaperFront` and `\amcuiPaperBack`),
+  `questions.tex` (eight sample questions), `paper.json` (the RJ preset)
+  and `presets/`. The gallery build writes the layout file before
+  compiling (`ui_gallery.py` imports `ui_builder`; the Dockerfile copies
+  the `ui_*.py` modules to the build folder).
+- **Tests:** 36 logic checks (`test_ui_logic.py`, builder section) and
+  `tests-ui/e2e-builder.mjs`.

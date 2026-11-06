@@ -4,7 +4,7 @@
 
 - Pick a question on the left and change it in the form: its text, answers, which answers are correct, scoring. Changes are saved as you type.
 - Add, move and delete questions with the buttons. Build the preview to see the question paper on the right.
-- **Paper design** sets the sections: which questions are printed, how many per copy, shuffled or not, and their headings; and how many versions of the paper are printed.
+- **Paper builder** lays out the paper. On an exam made with the RJ Style Paper Builder: rows and columns of blocks for the question paper and the answer sheet, the instructions, the details printed on the paper. On any exam: the sections (which questions are printed, how many per copy, shuffled or not) and the versions.
 - Prefer LaTeX? The **LaTeX** tab edits the source itself; **Edit in LaTeX** jumps to the question.
 
 ## What this step is for
@@ -21,9 +21,9 @@ The questions live in a source file, written in LaTeX or in AMC's plain-text for
 - **Name:** how the question is called in the marks (letters, digits, `.`, `_`, `-`). **Scoring:** the question's own rule, if it shouldn't follow the default from [Marking scheme](guide:marking-scheme).
 - A question written in a way the form can't read (a macro, two `\scoring` commands) is listed with a warning: open it with **Edit in LaTeX**.
 
-## Paper design
+## Paper builder
 
-The **Paper design** tab lays out the paper. It changes the exam's LaTeX like the form does, and every change goes to History.
+The **Paper builder** tab lays out the paper. It changes the exam's files like the form does, and every change goes to History.
 
 **Sections.** A section is a group of questions printed together, under a heading. For each one:
 
@@ -34,11 +34,22 @@ The **Paper design** tab lays out the paper. It changes the exam's LaTeX like th
 - In an exam written by hand (AMC's own templates, for example), a heading printed above a section in the LaTeX stays as it is; a heading set here is printed in addition.
 - An exam whose questions are written directly in the paper, outside any section, shows **Organise into a section**: the questions are moved into one section, unchanged, so they can be counted and shuffled.
 
-**The paper.** The layout of the paper (its header, instructions and answer sheet) is edited in the LaTeX tab; the sections are printed where the file inserts them. A paper whose instructions carry a line per section (between `%%AMCUI:SUMMARY%%` markers) has **Update the line per section**, which rewrites those lines from the sections' counts and marks.
+**The paper.** On an exam made from AMC's templates or the blank starter, the layout of the paper (its header, instructions and answer sheet) is edited in the LaTeX tab; the sections are printed where the file inserts them. A paper whose instructions carry a line per section (between `%%AMCUI:SUMMARY%%` markers) has **Update the line per section**, which rewrites those lines from the sections' counts and marks.
 
 **Versions.** A paper can be printed in a few versions (A, B, C…), each drawing its own questions from the sections; the copies are photocopied from them, and the app's number of copies follows. When you upload the scans, say that the sheets were photocopied.
 
-Once the exam is printed, Paper design is read-only.
+### The RJ Style Paper Builder
+
+An exam created from the **RJ Style Paper Builder** composes its paper here, from blocks laid out in rows and columns the way a web page is, and keeps the design in `paper.json`.
+
+- **Question paper** and **Answer sheet** tabs show the page as rows. A row is split into columns on a 12-column grid: a column takes a fixed share ("8 of 12"), **auto** (what is left, shared equally) or **fit** (as wide as its content, for a logo or the paper code). Each column holds one block, with a border (dashed, solid or none), an alignment and a padding; a row can align its columns and draw its boxes at the same height. Click a block to change it on the right; drag blocks between columns and rows, or use the buttons. **Add a row** offers a few splits.
+- **Blocks** on the question paper: logo, title lines, student details (name, registration number in boxes, class, level), paper code, exam information, labelled box, instructions, text in LaTeX, the questions (the sections, in order), line, space, page break, end of paper, rough-work pages. On the answer sheet: student details (AMC's name field), ID and class grids that AMC reads, signatures, numeric answers, choice answers or all answers, and the same logo, title, code and text blocks.
+- **Instructions:** a list of LaTeX items with a preview, a heading, the bullet style, and **the line per section**, made from the sections' counts and marks.
+- **Details:** the exam name, organiser, level, date, time and maximum marks, typed once and printed wherever a block or the footer uses them; the registration number's prefix and digits.
+- **Versions and page:** the kind of paper (answers on the question paper, or a separate answer sheet), the versions and their codes (letters A, B… then AA, AB…, numbers, or none), margins, borders, question numbers, the footer pattern (`Level {level} // Code {code} // Page {page}`; a segment whose detail is empty is left out) and the same number of pages in every copy.
+- The builder writes `paper-layout.tex` from the design, at each change and before each build. Edit that file by hand and the builder asks whether to keep your changes (it then stops writing the file) or rewrite it. A design that can't be printed (no Questions block, an answer sheet without answer boxes or a name field) is flagged, and the build waits until it is fixed.
+
+Once the exam is printed, the Paper builder is read-only.
 
 ## In LaTeX
 

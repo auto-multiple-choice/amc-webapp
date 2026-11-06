@@ -450,8 +450,8 @@ def set_copies(text, n):
         n = int(n)
     except (TypeError, ValueError):
         raise EditError("The number of versions is a whole number.") from None
-    if not 1 <= n <= 26:
-        raise EditError("Versions: 1 to 26 (A to Z).")
+    if not 1 <= n <= 999:
+        raise EditError("Versions: 1 to 999.")
     oc = onecopy(text)
     if not oc:
         raise EditError("The file has no \\onecopy{...}{...} block.")
@@ -588,6 +588,12 @@ def pools(questions):
         if q.get("numeric") and not p["numeric"]:
             p["numeric"] = q["numeric"].get("options") or ""
     return out
+
+
+def sections_with_pools(text, questions):
+    """The sections of TEXT with their pools, kinds and marks from QUESTIONS
+    (every question of the exam, ui_scale.read_latex)."""
+    return _with_pools(text, read_sections(text), pools(questions))
 
 
 def _with_pools(text, sections, by_group):

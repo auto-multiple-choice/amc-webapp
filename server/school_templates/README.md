@@ -16,9 +16,23 @@ source (`server/ui.py`, `starter_source()`):
 - `%%AMCUI:OPTIONS%%`: AMC-TXT header lines (code boxes, separate answer
   sheet).
 
-## Markers for Paper design
+## The paper builder's starter (`builder/`)
 
-Questions › Paper design (`server/ui_structure.py`) reads and writes these
+The RJ Style Paper Builder (`server/ui_builder.py`, `doc/paper-builder-plan.md`)
+keeps the paper's design in `paper.json` and writes `paper-layout.tex` from
+it: the packages, the page and footer, the version code and the macros
+`\amcuiPaperFront` and `\amcuiPaperBack` that `exam.tex` calls inside
+`\onecopy` around the sections. `presets/` holds the layouts the wizard
+offers (`rj-olympiad`, `simple`, `blank`; `title`, `text` and `order` are
+for the wizard, the rest is a design); `paper.json` of the folder is the RJ
+preset, so the gallery shows it. The gallery build writes the layout file
+before compiling (`ui_gallery.py` imports `ui_builder`), and so does the
+wizard when an exam is created; the exam's copy of the starter has no
+`presets/` folder.
+
+## Markers for Paper builder
+
+Questions › Paper builder (`server/ui_structure.py`) reads and writes these
 markers in a LaTeX source, each on a line of its own:
 
 - `%%AMCUI:SECTION name%%` … `%%AMCUI:END SECTION%%`: one section, rewritten

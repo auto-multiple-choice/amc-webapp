@@ -1327,7 +1327,7 @@ def io_doc_update(t):
     if not t:
         return { "error": "Document type missing" }
     app.logger.info(f"Doc update: {t} for {flask_g.project_name}")
-    if t == "sujet" and ui.refuse_if_locked("Rebuilding the question paper would make the printed papers unreadable."):
+    if (t == "sujet" and ui.refuse_if_locked("Rebuilding the question paper would make the printed papers unreadable.")) or ui.before_build():
         return
     emit_msg("begin-command")
 

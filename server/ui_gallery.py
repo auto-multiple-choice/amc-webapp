@@ -12,7 +12,8 @@ Templates are AMC's (one folder per language, .tgz files) and our own
 starters (server/school_templates, group "school").
 
 Also used by the server: starter_source() fills in a starter's markers.
-Standard library only, no Flask.
+Standard library only, no Flask (ui_builder, imported for the paper
+builder's starter, is standard library too).
 """
 import json
 import os
@@ -167,6 +168,15 @@ def build(amc_dir, starters_dir, out):
                         with open(path, "w", encoding="utf-8") as fh:
                             fh.write(starter_source(text, "plain" if f.endswith(".txt") else "latex",
                                                     school_name="Your school"))
+                if os.path.isfile(os.path.join(project, "paper.json")):  # the paper builder's starter
+                    import ui_builder
+                    import ui_scale
+                    questions = []
+                    for f in sorted(os.listdir(project)):
+                        if f.endswith(".tex") and f != ui_builder.LAYOUT_FILE:
+                            with open(os.path.join(project, f), encoding="utf-8") as fh:
+                                questions += ui_scale.read_latex(fh.read(), f)
+                    ui_builder.write_layout_file(project, 1, questions)
             pdf = _compile(project, env)
             if pdf:
                 _store(pdf, os.path.join(out, group, tid))

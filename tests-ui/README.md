@@ -118,6 +118,14 @@ node tests-ui/e2e-editor.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 node tests-ui/e2e-design.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 ```
 
+### Paper builder
+
+`e2e-builder.mjs` tests Questions › Paper builder on an exam from the RJ Style Paper Builder: the wizard (kind of paper, layout, details, versions); the canvas (a block's settings and width, a typed setting saved without redrawing, a width the row has no room for, blocks and rows moved, rows added and removed, a block's type changed); the answer sheet's checks and a build refused by them; the Instructions, Details and Versions and page tabs (an item with its preview, a detail escaped for LaTeX, 30 versions with codes past Z, the kind of paper); the layout file written from the design, edited by hand, kept or rewritten; the build; History; read-only after printing. The logic checks in `test_ui_logic.py` cover `ui_builder.py`: codes, presets, refusals, the checks and the generated LaTeX.
+
+```
+node tests-ui/e2e-builder.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
+```
+
 ### Marking scheme panel
 
 `e2e-marking.mjs` tests the per-question panel: the answer key, preset and own rules, "all or nothing", neutralising (full marks, not counted) and back, totals, the read-only editor and allowed corrections after printing, and an AMC-TXT exam. `e2e-results.mjs` also checks that the panel's points equal AMC's after marking, and that a "not counted" question drops out of the total.

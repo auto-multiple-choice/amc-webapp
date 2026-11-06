@@ -1,0 +1,39 @@
+{
+ "title": "Simple",
+ "text": "Title lines, a box for the student's details next to the date and marks, instructions, the sections and the end-of-paper line. Solid borders, AMC's own question numbers.",
+ "order": 2,
+ "format": 1,
+ "kind": "paper",
+ "codes": {"style": "letters", "same_length": false, "zero_pad": false},
+ "fields": {"exam_name": "", "organiser": "", "level": "", "date": "", "time": "", "max_marks": ""},
+ "student": {"id_prefix": "", "id_digits": 4, "class_digits": 2},
+ "page": {"margins": "normal", "border": "solid", "shuffle_answers": false, "question_style": "default",
+          "footer": {"pattern": "Code {code} // Page {page}", "align": "center", "border": "none", "mono": false},
+          "sheet_footer": null, "fill_pages": 0},
+ "instructions": {
+  "heading": "Instructions", "bullet": "dot", "rule": true,
+  "items": [
+   {"latex": "Write your name and registration number before you start."},
+   {"summary": true},
+   {"latex": "Darken the box of your answer completely with a blue or black pen."}
+  ]
+ },
+ "paper": [
+  {"id": "r1", "after": "3mm", "cells": [{"id": "c1", "width": 12, "border": "none", "align": "center", "block": {"type": "title", "lines": [
+   {"field": "exam_name", "size": "LARGE", "style": "bold"}, {"field": "organiser", "size": "large", "style": "plain"}]}}]},
+  {"id": "r2", "same_height": true, "after": "4mm", "cells": [
+   {"id": "c1", "width": 8, "block": {"type": "student", "name": true, "id": true, "klass": false, "level": false}},
+   {"id": "c2", "width": "auto", "block": {"type": "info", "lines": ["date", "max_marks", "time"]}}]},
+  {"id": "r3", "cells": [{"id": "c1", "width": 12, "border": "none", "block": {"type": "instructions", "heading": true}}]},
+  {"id": "r4", "cells": [{"id": "c1", "width": 12, "border": "none", "block": {"type": "questions"}}]},
+  {"id": "r5", "cells": [{"id": "c1", "width": 12, "border": "none", "block": {"type": "end", "text": "End of Question Paper"}}]}
+ ],
+ "answer_sheet": [
+  {"id": "s1", "align": "middle", "after": "3mm", "cells": [
+   {"id": "c1", "width": "auto", "border": "none", "align": "center", "block": {"type": "title", "lines": [
+    {"text": "Answer sheet", "size": "LARGE", "style": "bold"}, {"field": "exam_name", "size": "large", "style": "plain"}]}},
+   {"id": "c2", "width": "fit", "align": "center", "block": {"type": "code", "label": "Code", "size": "Huge"}}]},
+  {"id": "s2", "after": "4mm", "cells": [{"id": "c1", "width": 12, "block": {"type": "student", "name": true, "id": true, "klass": false, "level": false}}]},
+  {"id": "s3", "cells": [{"id": "c1", "width": 12, "border": "none", "block": {"type": "all_answers", "columns": 2, "heading": ""}}]}
+ ]
+}

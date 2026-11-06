@@ -30,7 +30,7 @@ KEEP_AT_LEAST = 12
 MAX_VERSIONS = 100
 # Files whose earlier versions are kept: the sources and what they
 # include, and class lists. Images and PDFs are not.
-EXTENSIONS = ("tex", "latex", "txt", "sty", "cls", "yml", "yaml", "csv")
+EXTENSIONS = ("tex", "latex", "txt", "sty", "cls", "yml", "yaml", "csv", "json")  # json: the paper builder's design
 MAX_SIZE = 4 * 1024 * 1024  # bigger than any source; images stay out
 _ID = re.compile(r"^\d{8}T\d{6}Z(-\d+)?$")
 

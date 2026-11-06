@@ -1,0 +1,57 @@
+{
+ "title": "RJ Olympiad",
+ "text": "Logos and title lines, header boxes with the student's details, the paper code and the exam information, an instructions page, notation and a table of values, the sections, rough-work pages, and an OMR sheet with class and registration grids.",
+ "order": 1,
+ "format": 1,
+ "kind": "separate",
+ "codes": {"style": "letters", "same_length": false, "zero_pad": false},
+ "fields": {"exam_name": "Mathematics Olympiad 2026", "organiser": "Mathematics Association, Your school", "level": "I",
+            "date": "9 February 2026", "time": "09:30 to 11:30", "max_marks": "100"},
+ "student": {"id_prefix": "MO26", "id_digits": 3, "class_digits": 2},
+ "page": {"margins": "normal", "border": "dashed", "shuffle_answers": false, "question_style": "rj",
+          "footer": {"pattern": "Level {level} // Code {code} // Page {page}", "align": "center", "border": "dashed", "mono": true},
+          "sheet_footer": null, "fill_pages": 10},
+ "instructions": {
+  "heading": "Read the following instructions carefully before attempting the question paper.",
+  "bullet": "arrow", "rule": true,
+  "items": [
+   {"latex": "Do not open this booklet until the invigilators say so."},
+   {"latex": "Answer on the \\textbf{O}ptical \\textbf{M}ark \\textbf{R}ecognition sheet (\\textbf{OMR}) by darkening the appropriate squares (marked A, B, C, D or $0$--$9$) with a blue or black ball pen."},
+   {"latex": "Write your registration number, your name and the question paper code (the letter printed at the top of this paper) in the space provided on the OMR sheet."},
+   {"summary": true},
+   {"latex": "You won't be allowed to leave the examination hall during the exam."}
+  ]
+ },
+ "paper": [
+  {"id": "r1", "align": "middle", "after": "3mm", "cells": [
+   {"id": "c1", "width": "fit", "border": "none", "block": {"type": "logo", "file": "", "height": "18mm"}},
+   {"id": "c2", "width": "auto", "border": "none", "align": "center", "block": {"type": "title", "lines": [
+    {"field": "exam_name", "size": "LARGE", "style": "boldsc"}, {"field": "organiser", "size": "large", "style": "plain"}]}},
+   {"id": "c3", "width": "fit", "border": "none", "block": {"type": "logo", "file": "", "height": "18mm"}}]},
+  {"id": "r2", "same_height": true, "after": "4mm", "cells": [
+   {"id": "c1", "width": 8, "block": {"type": "student", "name": true, "id": true, "klass": false, "level": true}},
+   {"id": "c2", "width": "fit", "align": "center", "block": {"type": "code", "label": "Code", "size": "Huge"}},
+   {"id": "c3", "width": "auto", "block": {"type": "info", "lines": ["date", "max_marks", "time"]}}]},
+  {"id": "r3", "cells": [{"id": "c1", "width": 12, "border": "none", "block": {"type": "instructions", "heading": true}}]},
+  {"id": "r4", "cells": [{"id": "c1", "width": 12, "border": "none", "block": {"type": "text", "latex": "\\clearpage\n\\centerline{\\bfseries\\Large Notation}\n\\begin{itemize}\n  \\item For a set $A$, $x\\in A$ means ``$x$ is an element of $A$''; $|A|$ is the number of elements of $A$.\n  \\item $A \\setminus B$ is the set of elements of $A$ that are not in $B$.\n  \\item $\\mathbb{N}=\\{1,2,3,\\ldots\\}$ is the set of natural numbers, $\\mathbb{Z}$ the set of integers and $\\mathbb{R}$ the set of real numbers.\n  \\item For $a,b\\in\\mathbb{R}$: $[a,b]=\\{x\\in\\mathbb{R}\\mid a\\le x\\le b\\}$ and $(a,b)=\\{x\\in\\mathbb{R}\\mid a<x<b\\}$; $a\\mid b$ means ``$a$ divides $b$''.\n  \\item $n!=n\\cdot(n-1)\\cdots 2\\cdot 1$, and $\\lfloor x\\rfloor$ is the largest integer not greater than $x$.\n  \\item $[ABC]$ is the area of triangle $ABC$.\n\\end{itemize}\n\\vspace{2ex}\\hrule\\vspace{2ex}"}}]},
+  {"id": "r5", "cells": [{"id": "c1", "width": 12, "border": "none", "block": {"type": "text", "latex": "\\centerline{\\bfseries\\Large Table of values}\n\\begin{center}\\renewcommand{\\arraystretch}{1.4}\n  \\begin{tabular}{|l|c|}\\hline\n    Constant & Value \\\\\\hline\n    $e$ & 2.718 \\\\\\hline\n    $\\pi$ & 3.142 \\\\\\hline\n    $\\ln 2$ & 0.693 \\\\\\hline\n    $\\ln 3$ & 1.099 \\\\\\hline\n  \\end{tabular}\n\\end{center}"}}]},
+  {"id": "r6", "cells": [{"id": "c1", "width": 12, "border": "none", "block": {"type": "questions"}}]},
+  {"id": "r7", "cells": [{"id": "c1", "width": 12, "border": "none", "block": {"type": "end", "text": "End of Question Paper"}}]},
+  {"id": "r8", "cells": [{"id": "c1", "width": 12, "border": "none", "block": {"type": "rough", "pages": 2, "text": "Space for Rough Work"}}]}
+ ],
+ "answer_sheet": [
+  {"id": "s1", "align": "middle", "after": "2mm", "cells": [
+   {"id": "c1", "width": "auto", "border": "none", "align": "center", "block": {"type": "title", "lines": [
+    {"text": "Optical Mark Recognition (OMR) Sheet", "size": "LARGE", "style": "bold"}, {"field": "exam_name", "size": "large", "style": "plain"}]}},
+   {"id": "c2", "width": "fit", "align": "center", "block": {"type": "code", "label": "", "size": "giant"}}]},
+  {"id": "s2", "same_height": true, "after": "3mm", "cells": [
+   {"id": "c1", "width": 9, "block": {"type": "student", "name": true, "id": true, "klass": true, "level": false}},
+   {"id": "c2", "width": "auto", "block": {"type": "signatures", "lines": ["Student's signature", "Invigilator's signature"]}}]},
+  {"id": "s3", "after": "2mm", "cells": [{"id": "c1", "width": 12, "block": {"type": "text", "latex": "$\\bullet$ Darken your class and the digits of your registration number in the grids below.\\\\\n$\\bullet$ For a numerical answer, darken one digit in each column: if your answer is 073, darken 0 in the first column (hundreds), 7 in the second (tens) and 3 in the third (ones)."}}]},
+  {"id": "s4", "after": "3mm", "cells": [
+   {"id": "c1", "width": 2, "block": {"type": "class_grid", "label": "Class", "orientation": "v"}},
+   {"id": "c2", "width": 3, "block": {"type": "id_grid", "label": "Reg. No.", "orientation": "v"}},
+   {"id": "c3", "width": "auto", "block": {"type": "numeric_answers", "columns": 6, "heading": "Mark your numerical answers here"}}]},
+  {"id": "s5", "cells": [{"id": "c1", "width": 12, "block": {"type": "choice_answers", "columns": 3, "heading": "Mark your choice for the objective questions"}}]}
+ ]
+}
