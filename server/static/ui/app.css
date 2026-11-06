@@ -1,0 +1,123 @@
+/*
+ * AMC new interface: styles for the app's own screens.
+ * The design system (tokens, shell, components) is ui.css.
+ */
+
+.hidden { display: none !important; }
+
+/* ---------- Pages that fill the height (editor) ---------- */
+
+.main.fill { overflow: hidden; display: flex; flex-direction: column; }
+.main.fill .page { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; padding-bottom: 16px; }
+.main.fill .page > .grow { flex: 1; min-height: 0; }
+
+/* ---------- Exams list ---------- */
+
+.exam-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; position: relative; }
+.exam-card h3 { font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exam-card h3 a { color: var(--text); }
+.exam-card .card-actions { display: flex; gap: 6px; align-items: center; }
+.card-menu { position: relative; }
+.skeleton { background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2)); background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite; border-radius: var(--radius-l); height: 132px; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* ---------- Questions: editor ---------- */
+
+.editor-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.editor-bar .select { width: auto; min-width: 200px; max-width: 320px; }
+.editor-frame {
+  position: relative; min-height: 320px; border: 1px solid var(--border); border-radius: var(--radius-l);
+  overflow: hidden; background: var(--surface); box-shadow: var(--shadow-1);
+}
+.editor-frame .ace_editor { position: absolute; inset: 0; font-size: 13.5px; font-family: var(--mono); }
+.dirty-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); display: inline-block; }
+
+/* AMC's LaTeX mode marks answers and scoring; colours for both themes. */
+.ace_correct { background: color-mix(in oklab, var(--success) 12%, transparent); }
+.ace_wrong { background: color-mix(in oklab, var(--danger) 10%, transparent); }
+.ace_parameter, .ace_filename { color: #8200af; }
+.ace_declaration { color: #d6336c; }
+.ace_option { color: #2b8a3e; }
+.ace_scoring { color: #1c4fd6; }
+.ace_angles { color: #0b8f8c; }
+
+/* Dark theme for the editor (only the light "textmate" theme is bundled). */
+:root[data-theme="dark"] .ace-tm { background: var(--surface); color: var(--text); }
+:root[data-theme="dark"] .ace-tm .ace_gutter { background: var(--surface-2); color: var(--text-3); }
+:root[data-theme="dark"] .ace-tm .ace_gutter-active-line,
+:root[data-theme="dark"] .ace-tm .ace_marker-layer .ace_active-line { background: color-mix(in oklab, var(--brand) 10%, var(--surface)); }
+:root[data-theme="dark"] .ace-tm .ace_marker-layer .ace_selection { background: color-mix(in oklab, var(--brand) 35%, var(--surface)); }
+:root[data-theme="dark"] .ace-tm .ace_cursor { color: var(--text); }
+:root[data-theme="dark"] .ace-tm .ace_keyword, :root[data-theme="dark"] .ace-tm .ace_storage { color: #74c0fc; }
+:root[data-theme="dark"] .ace-tm .ace_comment { color: #8b929e; }
+:root[data-theme="dark"] .ace-tm .ace_string, :root[data-theme="dark"] .ace-tm .ace_constant { color: #8ce99a; }
+:root[data-theme="dark"] .ace-tm .ace_support, :root[data-theme="dark"] .ace-tm .ace_function { color: #f783ac; }
+:root[data-theme="dark"] .ace_parameter, :root[data-theme="dark"] .ace_filename { color: #da77f2; }
+:root[data-theme="dark"] .ace_scoring { color: #91a7ff; }
+:root[data-theme="dark"] .ace_option { color: #8ce99a; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ace-tm { background: var(--surface); color: var(--text); }
+  :root:not([data-theme="light"]) .ace-tm .ace_gutter { background: var(--surface-2); color: var(--text-3); }
+  :root:not([data-theme="light"]) .ace-tm .ace_gutter-active-line,
+  :root:not([data-theme="light"]) .ace-tm .ace_marker-layer .ace_active-line { background: color-mix(in oklab, var(--brand) 10%, var(--surface)); }
+  :root:not([data-theme="light"]) .ace-tm .ace_marker-layer .ace_selection { background: color-mix(in oklab, var(--brand) 35%, var(--surface)); }
+  :root:not([data-theme="light"]) .ace-tm .ace_cursor { color: var(--text); }
+  :root:not([data-theme="light"]) .ace-tm .ace_keyword, :root:not([data-theme="light"]) .ace-tm .ace_storage { color: #74c0fc; }
+  :root:not([data-theme="light"]) .ace-tm .ace_comment { color: #8b929e; }
+  :root:not([data-theme="light"]) .ace-tm .ace_string, :root:not([data-theme="light"]) .ace-tm .ace_constant { color: #8ce99a; }
+  :root:not([data-theme="light"]) .ace-tm .ace_support, :root:not([data-theme="light"]) .ace-tm .ace_function { color: #f783ac; }
+  :root:not([data-theme="light"]) .ace_parameter, :root:not([data-theme="light"]) .ace_filename { color: #da77f2; }
+  :root:not([data-theme="light"]) .ace_scoring { color: #91a7ff; }
+  :root:not([data-theme="light"]) .ace_option { color: #8ce99a; }
+}
+
+/* ---------- Preview panel content ---------- */
+
+.preview-body.frame { padding: 0; overflow: hidden; }
+.pdf-frame { width: 100%; height: 100%; border: 0; display: block; background: var(--paper-bg); }
+.preview-body img.preview-img { max-width: 100%; display: block; margin: 0 auto; box-shadow: var(--shadow-1); }
+.preview-text { margin: 0; padding: 16px; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; word-break: break-word; color: var(--text); }
+.preview-empty { padding: 40px 24px; text-align: center; color: var(--text-2); }
+
+/* ---------- Server work in progress ---------- */
+
+.work {
+  position: fixed; inset: 0; z-index: 45; display: grid; place-items: center; padding: 24px;
+  background: rgb(var(--shadow-rgb) / .28); backdrop-filter: blur(1px);
+}
+.work-card {
+  width: min(440px, 100%); padding: 18px 20px; border-radius: 16px; background: var(--surface);
+  border: 1px solid var(--border); box-shadow: var(--shadow-3); display: grid; gap: 12px;
+}
+.work-title { display: flex; align-items: center; gap: 10px; font-weight: 650; }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--accent-soft); border-top-color: var(--brand); animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.progress.indeterminate > span { width: 35% !important; animation: indet 1.2s ease-in-out infinite; }
+@keyframes indet { from { margin-left: -35%; } to { margin-left: 100%; } }
+
+/* ---------- Messages sent by the server (warn_dialog.html) ---------- */
+
+.server-dialog .dialog-body { padding: 18px 20px 4px; }
+.server-dialog .message { margin: 0 0 10px; color: var(--text); display: flex; gap: 12px; align-items: flex-start; }
+.server-dialog .dialog-img { width: 28px; height: 28px; flex: none; }
+.server-dialog .msg-err { padding: 12px 14px; border-radius: var(--radius); background: var(--danger-soft); border: 1px solid var(--danger-border); margin-bottom: 10px; }
+.server-dialog .msg-warn { padding: 12px 14px; border-radius: var(--radius); background: var(--warning-soft); border: 1px solid var(--warning-border); margin-bottom: 10px; }
+.server-dialog .msg-info { padding: 12px 14px; border-radius: var(--radius); background: var(--accent-softer); border: 1px solid var(--accent-border); margin-bottom: 10px; }
+.server-dialog .message a { font-weight: 600; }
+.server-dialog .msgcode { font-family: var(--mono); font-size: 12px; }
+.server-dialog .bandeau { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 0 0; }
+.server-dialog .btn-neutral, .server-dialog .btn-ok, .server-dialog .btn-warning { background: var(--surface); color: var(--text); }
+.server-dialog .btn-danger { background: var(--danger); color: #fff; border-color: transparent; }
+.server-dialog ul { margin: 6px 0; padding-left: 18px; }
+
+/* ---------- Coming next ---------- */
+
+.soon { display: grid; gap: 14px; }
+.soon .facts { display: flex; gap: 12px; flex-wrap: wrap; }
+
+/* ---------- Small screens ---------- */
+
+@media (max-width: 1279px) {
+  .editor-bar .select { min-width: 160px; }
+}

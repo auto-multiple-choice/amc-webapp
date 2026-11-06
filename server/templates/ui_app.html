@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AMC</title>
+  <script>
+    /* Apply the saved theme before the page paints. */
+    try {
+      var t = localStorage.getItem('amc-ui:theme');
+      if (t === '"light"' || t === '"dark"') document.documentElement.setAttribute('data-theme', JSON.parse(t));
+    } catch (e) { /* storage unavailable */ }
+  </script>
+  <link rel="stylesheet" href="{{ static_url_for('static', filename='icons.css') }}">
+  <link rel="stylesheet" href="{{ static_url_for('static', filename='ui/ui.css') }}">
+  <link rel="stylesheet" href="{{ static_url_for('static', filename='ui/app.css') }}">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="{{ url_for('static', filename='menu-amc.svg') }}">
+</head>
+<body>
+  <div id="app" class="app no-sidebar preview-closed" data-version="{{ app_version }}" data-user="{{ username }}">
+    <header class="topbar" id="topbar"></header>
+    <nav class="sidebar" id="sidebar" aria-label="Exam steps"></nav>
+    <main class="main" id="main" tabindex="-1"></main>
+    <aside class="preview" id="preview" aria-label="Preview"></aside>
+  </div>
+  <div id="layer"></div>
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <noscript><p style="padding:24px">AMC needs JavaScript turned on.</p></noscript>
+  <script src="{{ static_url_for('static', filename='socket.io.js') }}"></script>
+  <script src="/ace/ace.js"></script>
+  <script src="{{ static_url_for('static', filename='ui/app.js') }}"></script>
+</body>
+</html>

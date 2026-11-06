@@ -277,7 +277,7 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
-@app.route('/')
+# The new interface answers at "/" (ui.py); upstream's page is no longer served.
 def index():
     resp = make_response(render_template(
         'index.html',
@@ -2361,6 +2361,10 @@ def x_manifest():
         "theme_color": "#000000",
         "background_color": "#ffffff",
     }
+
+# The new interface (doc/ui-redesign-plan.md)
+import ui
+ui.init_app(app, sys.modules[__name__])
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
