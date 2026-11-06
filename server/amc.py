@@ -315,7 +315,13 @@ def public_status():
 def marks_csv(uuids):
     csv_content = "id,mark,total\n"
 
-    for uuid in uuids.split(":"):
+    # Each uuid means a walk over every project folder, and this address
+    # needs no sign-in: keep the list short and the ids plausible.
+    uuid_list = uuids.split(":")
+    if len(uuid_list) > 20 or not all(re.fullmatch(r'[0-9A-Za-z-]{1,64}', u) for u in uuid_list):
+        abort(404)
+
+    for uuid in uuid_list:
         pdirs = find_projects_by_uuid(uuid, check_option="app_public_marks")
         if len(pdirs) == 0:
             app.logger.warning(f"Project not found: UUID={uuid}")
@@ -425,8 +431,15 @@ def fs_file(path):
                 mtype = None
                 if path.lower().endswith( (".log", ".tex", ".py", ".pl") ):
                     mtype = "text/plain"
-                return send_file(path, mimetype=mtype,
+                resp = send_file(path, mimetype=mtype,
                                  as_attachment=attach)
+                if not attach and ext not in ('pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp') \
+                   and mtype != "text/plain":
+                    # An HTML or SVG file from an imported project would
+                    # otherwise run its scripts as this site.
+                    resp.headers['Content-Security-Policy'] = 'sandbox'
+                    resp.headers['X-Content-Type-Options'] = 'nosniff'
+                return resp
         elif os.path.isdir(path):
             return send_dir_as_zip(path,
                                    filename=request.args.get('filename'),
@@ -546,7 +559,10 @@ def io_project_clone(name):
 @socketio_name('project-rename')
 def io_project_rename(data):
     old, new = data
-    new.replace('/','')
+    if problem := project_name_problem(new):
+        dialog_msg(err=problem)
+        emit_msg("u-projects-list")
+        return
 
     if new == old:
         app.logger.info(f"Project {old} not renamed")
@@ -640,6 +656,11 @@ def create_project_dirs(rep):
             os.mkdir(rep + d)
 
 def check_unused_name(name, warn=True):
+    if problem := project_name_problem(name):
+        app.logger.warning(f"Refused project name {name!r}: {problem}")
+        if warn:
+            dialog_msg(err=problem)
+        return None
     rep = project_dir(p=name)
     if os.path.exists(rep):
         app.logger.warn(f"Project already exists: {rep}")
@@ -720,7 +741,7 @@ def io_create_project_empty(data):
         remove_uuid(name)
         emit_msg("project-open", [name, True])
 
-def info_remove_root(m, root, skip_special=True):
+def info_remove_root(m, root, dest=None, skip_special=True):
     flask_g.files_n += 1
     n = flask_g.files_n
     total = flask_g.files_total
@@ -738,6 +759,16 @@ def info_remove_root(m, root, skip_special=True):
         m.gid = None
         m.uname = None
         m.gname = None
+        # The archive comes from the browser: a member named "../x", an
+        # absolute name or a link pointing elsewhere would land outside the
+        # project folder (another user's project, in multi-user mode).
+        # Python's "data" filter refuses exactly those.
+        if dest is not None:
+            try:
+                return tarfile.data_filter(m, dest)
+            except tarfile.FilterError as e:
+                app.logger.warning(f"Skip from Tar file: {m.name} ({e})")
+                return None
         return m
     else:
         return None
@@ -761,7 +792,7 @@ def tar_extract_options_siblings(tarf, dest, skip_special=True):
         if not os.path.exists(dest):
             os.mkdir(dest)
         tarf.extractall(
-            dest, filter=lambda m,p: info_remove_root(m, root,
+            dest, filter=lambda m,p: info_remove_root(m, root, dest=p,
                                                       skip_special=skip_special))
         return True
     else:
@@ -997,7 +1028,11 @@ def file_upload(dest):
 @socketio_name('data-capture')
 def io_data_capture(list_path):
     rep = amc_user_tmp("scans")
-    list_path = lstrip_text(list_path, "%SCANS", rep)
+    list_path = os.path.normpath(lstrip_text(str(list_path), "%SCANS", rep))
+    if not list_path.startswith(rep + "/"):
+        # The list names the files AMC reads: only the ones this session uploaded.
+        app.logger.error(f"Scan list outside the session's folder: {list_path}")
+        return
     db = get_db()
     orientation = db.orientation()
     lock_scans_mode()
@@ -1901,7 +1936,9 @@ def students_list_file():
             set_students_list("%PROJET/" + filename)
             path = f"{pdir}/{filename}"
                           
-    if path and not os.path.realpath(path).startswith(os.path.realpath(projects_dir())):
+    # With the separator: without it, user "ann" could point her list at
+    # "anna"'s projects.
+    if path and not os.path.realpath(path).startswith(os.path.realpath(projects_dir()) + os.sep):
         app.logger.error(f"Students list file outside base: {path}")
         path = None
         set_students_list(None)

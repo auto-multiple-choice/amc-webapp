@@ -48,6 +48,22 @@ def check_dir_name(name, what):
         raise ValueError(f"Invalid {what} name: {name!r}")
     return name
 
+def project_name_problem(name):
+    # Why a project can't be given this name, or None. New names only: the
+    # traversal guard above is what existing projects must pass. Keeps out
+    # the "_" prefix the app uses for its own folders (_config, _branding),
+    # characters AMC's commands and Windows folders can't take, and
+    # control characters.
+    if not isinstance(name, str) or not name.strip():
+        return "Give the project a name."
+    if len(name.encode("utf-8", "replace")) > 120:
+        return "This name is too long (120 characters at most)."
+    if name.startswith(("_", ".", "-")):
+        return "A project name can't start with \"_\", \".\" or \"-\"."
+    if re.search(r'[\x00-\x1f\x7f/\\:*?"<>|]', name):
+        return "A project name can't contain / \\ : * ? \" < > | or control characters."
+    return None
+
 def emit_msg(*data):
     if getattr(request, 'sid', None):
         # socket.io context, use direct emit
