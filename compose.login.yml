@@ -68,6 +68,11 @@ services:
     environment:
       AMC_SITES: ${AMC_SITES:-https://localhost:8090}
       AMC_DEFAULT_SNI: ${AMC_DEFAULT_SNI:-localhost}
+    labels:
+      # Set by the launcher from the Caddyfile's checksum: a changed
+      # Caddyfile changes the label, and `up -d` recreates caddy, which
+      # reads its configuration only when it starts.
+      amc.caddyfile: ${AMC_CADDYFILE_HASH:-}
     depends_on:
       - amc-web
       - amc-auth
