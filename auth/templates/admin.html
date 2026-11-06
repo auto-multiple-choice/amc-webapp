@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Accounts{% endblock %}
+{% block width %}wide{% endblock %}
+{% block content %}
+<h1>Accounts</h1>
+
+{% if revealed %}
+  <div class="notice reveal">
+    <p>Starting password for <strong>{{ revealed[0] }}</strong>:</p>
+    <p class="password">{{ revealed[1] }}</p>
+    <p>Give it to them privately. They'll choose their own at first sign-in.
+       It won't be shown again.</p>
+  </div>
+{% endif %}
+
+<section class="card">
+  <h2>Add a teacher</h2>
+  <form method="post" action="{{ url_for('admin') }}" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="create">
+    <label>Username
+      <input name="username" required pattern="[a-z0-9][a-z0-9._\-]{1,31}"
+             title="2 to 32 lowercase letters, digits, '.', '_' or '-'"
+             autocapitalize="none" spellcheck="false">
+    </label>
+    <label>Starting password <span class="muted">(empty: generate one)</span>
+      <input name="password" type="text" autocomplete="off" minlength="8">
+    </label>
+    <label class="check"><input type="checkbox" name="is_admin" value="1"> Can manage accounts</label>
+    <button type="submit" class="primary">Add account</button>
+  </form>
+</section>
+
+<table>
+  <thead>
+    <tr><th>Username</th><th>Status</th><th>Last sign-in</th><th>Created</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for u in users %}
+    <tr class="{{ 'off' if u.disabled }}">
+      <td><strong>{{ u.username }}</strong>{% if u.username == me.username %} <span class="muted">(you)</span>{% endif %}</td>
+      <td>
+        {% if u.disabled %}<span class="tag off">disabled</span>{% endif %}
+        {% if u.is_admin %}<span class="tag">manages accounts</span>{% endif %}
+        {% if u.must_change %}<span class="tag wait">password not chosen yet</span>{% endif %}
+      </td>
+      <td>{{ u.last_login | when }}</td>
+      <td>{{ u.created_at | when }}</td>
+      <td class="actions">
+        {% for action, label in [('reset', 'Reset password'),
+                                 ('enable' if u.disabled else 'disable', 'Enable' if u.disabled else 'Disable'),
+                                 ('demote' if u.is_admin else 'promote', 'Stop managing accounts' if u.is_admin else 'Let manage accounts')] %}
+          {% if u.username != me.username or action == 'reset' %}
+          <form method="post" action="{{ url_for('admin') }}">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="username" value="{{ u.username }}">
+            <button type="submit" name="action" value="{{ action }}">{{ label }}</button>
+          </form>
+          {% endif %}
+        {% endfor %}
+        {% if u.username != me.username %}
+        <details>
+          <summary>Delete</summary>
+          <form method="post" action="{{ url_for('admin') }}">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="username" value="{{ u.username }}">
+            <button type="submit" name="action" value="delete" class="danger">Delete {{ u.username }}</button>
+            <span class="muted">Their exam projects stay on disk.</span>
+          </form>
+        </details>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

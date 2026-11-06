@@ -22,6 +22,10 @@
               onclick="admin_search();"><i class="iconoir-crown"></i></span>
         <span id="menu-admin-back" class="hidden admin-action adapt-menu"
               onclick="admin_back();"><i class="iconoir-profile-circle"></i></span>
+        {% if username %}
+        <a id="menu-account" class="admin-action" href="/auth/account"
+           style="color: inherit" title="{{ username }}"><i class="iconoir-user-circle"></i></a>
+        {% endif %}
       </div>
       <div id="menu-main" class="menubtn adapt-menu" onclick="tab_main();"
            title="{{ _('menu.main') }}"
