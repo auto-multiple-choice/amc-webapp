@@ -66,7 +66,7 @@ Settings are in .env, created on first start (see .env.example).
 function Get-EnvValue([string]$Key, [string]$Default) {
   if (-not (Test-Path -LiteralPath $EnvFile)) { return $Default }
   $pattern = '^\s*' + [regex]::Escape($Key) + '='
-  $line = Get-Content -LiteralPath $EnvFile | Where-Object { $_ -match $pattern } | Select-Object -Last 1
+  $line = Get-Content -LiteralPath $EnvFile -Encoding UTF8 | Where-Object { $_ -match $pattern } | Select-Object -Last 1
   if (-not $line) { return $Default }
   return ($line -split '=', 2)[1].Trim().Trim('"').Trim("'")
 }
@@ -80,7 +80,7 @@ function Set-EnvValue([string]$Key, [string]$Value) {
   $pattern = '^\s*' + [regex]::Escape($Key) + '='
   $done = $false
   $out = New-Object System.Collections.ArrayList
-  foreach ($l in @(Get-Content -LiteralPath $EnvFile)) {
+  foreach ($l in @(Get-Content -LiteralPath $EnvFile -Encoding UTF8)) {
     if ($l -match $pattern) {
       if (-not $done) { [void]$out.Add("$Key=$Value"); $done = $true }
     } else {
@@ -93,7 +93,7 @@ function Set-EnvValue([string]$Key, [string]$Value) {
 
 function Remove-EnvValue([string]$Key) {
   $pattern = '^\s*' + [regex]::Escape($Key) + '='
-  Write-EnvLines @(Get-Content -LiteralPath $EnvFile | Where-Object { $_ -notmatch $pattern })
+  Write-EnvLines @(Get-Content -LiteralPath $EnvFile -Encoding UTF8 | Where-Object { $_ -notmatch $pattern })
 }
 
 function Get-IanaTimeZone {
@@ -267,6 +267,9 @@ function Set-SiteVariables {
   $env:AMC_SITES = $sites -join ', '
   $env:AMC_ORIGINS = $sites -join ','
   if ($script:LanIp) { $env:AMC_DEFAULT_SNI = $script:LanIp } else { $env:AMC_DEFAULT_SNI = 'localhost' }
+  # A label on the caddy service (compose.login.yml), so that `up` recreates
+  # caddy when the Caddyfile changed: caddy reads it only when it starts.
+  $env:AMC_CADDYFILE_HASH = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'caddy/Caddyfile') -Algorithm SHA256).Hash
 }
 
 function Test-PageContains([string]$Uri, [string]$Text) {
@@ -393,6 +396,10 @@ function Invoke-Start([string[]]$Options) {
   }
 
   New-Item -ItemType Directory -Force -Path (Join-Path $script:DataDir 'MC-Projects') -ErrorAction Stop | Out-Null
+  if (Test-LoginMode) {
+    # amc-auth and caddy keep their data in these; make them before `up`.
+    foreach ($d in 'auth', 'caddy') { New-Item -ItemType Directory -Force -Path (Join-Path $script:DataDir $d) -ErrorAction Stop | Out-Null }
+  }
   Write-AppVersion
 
   if (-not (Test-Native { docker image inspect $Image })) {
@@ -452,7 +459,7 @@ function Invoke-Import([string[]]$Arguments) {
   $folders = @($Arguments)
   if ($folders.Count -ge 1 -and $folders[0] -eq '--user') {
     if ($folders.Count -lt 2) { Die 'Usage: amc import --user NAME <project folder>...' }
-    $user = $folders[1]
+    $user = $folders[1].ToLowerInvariant()   # accounts are lower-case
     $folders = @($folders | Select-Object -Skip 2)
   }
   if ($folders.Count -eq 0) { Die 'Usage: amc import [--user NAME] <project folder>...' }
@@ -590,10 +597,10 @@ function Invoke-Backup {
     # busybox tar honours only one -C, so gather the folders with symlinks.
     foreach ($d in 'auth', 'caddy') { New-Item -ItemType Directory -Force -Path (Join-Path $script:DataDir $d) | Out-Null }
     $script = "mkdir /stage && ln -s /amc-web/files/MC-Projects /stage/MC-Projects && ln -s /auth /stage/auth && " +
-              "ln -s /caddy /stage/caddy && tar czhf /backup/$name -C /stage MC-Projects auth caddy"
+              "ln -s /caddy /stage/caddy && tar czhf /backup/$name -C /stage MC-Projects auth caddy && chmod 600 /backup/$name"
     $ok = Invoke-VolumeShell @('-v', "${data}/backups:/backup", '-v', "${data}/auth:/auth:ro", '-v', "${data}/caddy:/caddy:ro") $script
   } else {
-    $script = "cd /data && tar czf /backup/$name MC-Projects `$(ls -d .AMC.d 2>/dev/null)"
+    $script = "cd /data && tar czf /backup/$name MC-Projects `$(ls -d .AMC.d 2>/dev/null) && chmod 600 /backup/$name"
     & docker run --rm -v "${data}:/data:ro" -v "${data}/backups:/backup" alpine:3 sh -c $script
     $ok = ($LASTEXITCODE -eq 0)
   }
@@ -609,9 +616,16 @@ function Invoke-Cert {
   Read-Settings
   if (-not (Test-LoginMode)) { Die 'HTTPS is only used in shared-machine mode (amc login on).' }
   $ca = Join-Path $script:DataDir 'caddy/caddy/pki/authorities/local/root.crt'
-  if (-not (Test-Path -LiteralPath $ca)) { Die 'There is no certificate yet. Start the app once with: amc start' }
   $copy = Join-Path $script:DataDir 'amc-ca.crt'
-  Copy-Item -LiteralPath $ca -Destination $copy -Force
+  if (Test-Path -LiteralPath $ca) {
+    Copy-Item -LiteralPath $ca -Destination $copy -Force
+  } else {
+    # Read it through the container when the host can't see caddy's files.
+    Assert-Docker
+    $pem = ((& docker compose exec -T caddy cat /data/caddy/pki/authorities/local/root.crt 2>$null) | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $pem) { Die 'There is no certificate yet. Start the app once with: amc start' }
+    [System.IO.File]::WriteAllText($copy, $pem + "`n", $Utf8NoBom)
+  }
   $ip = Get-LanAddress
   if (-not $ip) { $ip = 'localhost' }
   Write-Host @"
