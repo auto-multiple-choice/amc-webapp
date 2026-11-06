@@ -20,7 +20,7 @@ The work is split into seven phases (0–6). Each phase is one merge request tha
 | Layout check | Building the papers runs layout detection automatically, then asks the teacher to check the layout. Printing opens only after they confirm "Looks correct". A locked exam skips the check. |
 | Locking | After printing, the layout is locked. Only the marking scheme, answer key corrections and similar settings can change (section 6). |
 | Mark anyway | Yes: marks can be computed while scan problems remain, behind a warning. |
-| Printing | Both ways: save the PDF and print elsewhere (for example from a pendrive), or print on a printer attached to the shared machine (section 7). |
+| Printing | Save the PDF and print elsewhere (for example from a pendrive) everywhere. Printing directly on a printer attached to the shared machine only when that machine runs Linux (section 7). |
 | Languages | English first. |
 | Classic style | Kept until phase 6 is done, as "Classic style". Each teacher can switch between Classic and the new style, and the new style is offered to Classic users. Discontinuing Classic is decided after phase 6. |
 | Look | Neutral by default. Admins can set the school name, logo and a colour palette, detected from the logo or chosen by hand (section 12). |
@@ -100,7 +100,7 @@ The existing logic we build on:
 | **1 Questions** | Writes and edits questions | LaTeX editor today, the form editor later (#4). A live preview of the paper sits in the preview panel, and errors are explained in plain words with a link to the line | The source compiles without errors |
 | **2 Marking scheme** | Sets scoring rules and the answer key | The marking panel (section 8): defaults, per-question rules, final mark conversion, answer key. Stays editable after printing | The scale has been extracted and shows a total |
 | **3 Papers** | Chooses the number of copies, builds the final papers and checks the layout | Number of copies with a "print a few spare copies" hint; builds the question paper, answer key and catalogue; preview of each document. Templates that print names on the papers ask for the class list here. Building runs **layout detection automatically**. Then a **"Check the layout"** prompt shows the detected corner marks, boxes and name field over each page, lists any layout warnings, and asks the teacher to confirm "Looks correct". Rebuilding the papers clears the confirmation. A locked exam skips the check | Papers built and the layout confirmed |
-| **4 Print** | Saves the PDF to print elsewhere, or prints on the shared machine's printer | Opens once the layout is confirmed; before that it explains why and links to the check. Both methods side by side (section 7). The exam locks afterwards (section 6) | Saved for printing, printed, or marked as printed |
+| **4 Print** | Saves the PDF to print elsewhere, or prints on the shared machine's printer (Linux shared machines only) | Opens once the layout is confirmed; before that it explains why and links to the check. Both methods side by side where direct printing is available (section 7). The exam locks afterwards (section 6) | Saved for printing, printed, or marked as printed |
 
 ### After the exam
 
@@ -161,17 +161,12 @@ The layout check happens only before the first print. Once locked, the layout ca
 
 ## 7. Printing
 
-| Save for printing elsewhere | Print on the shared machine |
+| Save for printing elsewhere (every system) | Print on the shared machine (Linux only) |
 |---|---|
 | Choose the range of copies, then download the print-ready PDF files to take on a pendrive. This is the existing "print to files", made clearer | Pick a printer attached to the shared machine and the range of copies. Shows the queue and lets the teacher cancel jobs. The printer list, queue and cancel already exist |
 
 - **Print checklist:** both routes show it before the file or job is produced: paper size A4, print at 100% (no "fit to page"), single- or double-sided as the template expects, and corner marks fully visible. A wrong scale is the most common reason scans fail later.
-- **Connecting the shared machine's printer:** the app runs inside Docker, so it needs a route to the machine's print system. This depends on the operating system:
-  - **Linux:** connect to the machine's own print system (CUPS) directly.
-  - **macOS:** turn on printer sharing so the container can reach the printer over the network print protocol (IPP).
-  - **Windows:** a small print-server container that talks to network printers, or to printers shared by Windows.
-
-  A new launcher command, `./amc printer`, will detect and set this up. Until the shared machine's OS is known, this part stays a spike.
+- **Direct printing is Linux only.** On a Linux shared machine, the app connects to the machine's own print system (CUPS), and a new launcher command, `./amc printer`, sets that up. On macOS and Windows, saving PDFs is the only route: the Print step shows just that option, and `./amc printer` explains why.
 
 ## 8. Marking scheme and answer key panel (#3)
 
@@ -311,7 +306,7 @@ Each phase is one branch and one merge request. Sizes are relative (S, M, L).
 | **1 Shell, design system, style switch** | Top bar, step sidebar with live statuses, work area, generic preview panel, light and dark themes, links per exam and step, exam status endpoint. Existing screens hosted in the new shell and restyled; Classic style at `/classic` with the per-teacher switch | #1 | L |
 | **2 Dashboard, wizard, gallery, branding** | Exam dashboard with states and filters, new-exam wizard, template gallery with cached previews, the admin Appearance page, branding on the sign-in page | #2 | M |
 | **3 Guided steps** | All ten step pages with "What to do here", empty states, next actions, the "out of date" logic, the dashboard checklist, guide content and the first-run tour | #1 | M |
-| **4 Layout check, print and lock** | Automatic layout detection and the "Check the layout" confirmation; print step with both routes and the print checklist, opened by the confirmation; lock after printing with server enforcement and source comparison; unlock flow; activity list; `./amc printer` for the shared machine's OS | new | L |
+| **4 Layout check, print and lock** | Automatic layout detection and the "Check the layout" confirmation; print step with both routes and the print checklist, opened by the confirmation; lock after printing with server enforcement and source comparison; unlock flow; activity list; `./amc printer` for Linux shared machines | new | L |
 | **5 Marking scheme panel** | Marking scheme and answer key panel, final mark settings, neutralising questions, the recompute prompt | #3 | M |
 | **6 Scans, matching and results** | Check-scans review queue with shortcuts; mark checklist with "Mark anyway"; class-list import preview and manual matching queue; marks table and histogram; CSV table view; annotation settings with "Preview one student" and the annotated sheets browser | #1 | L |
 
@@ -329,11 +324,11 @@ Later, plugging into the same steps:
 | AMC team interface changes won't appear in the new style automatically | Review their front-end changes at each update merge; keep our changes to upstream files small; keep Classic until the decision |
 | Teachers' LaTeX varies, and the marking panel can't understand everything | Support AMC's standard macros; show anything else read-only with "edit in LaTeX"; the form editor (#4) removes this problem for new exams |
 | Lock bypassed by editing LaTeX directly or from Classic | Enforced on the server, plus the source comparison on every save of a locked exam |
-| Printing from Docker differs per operating system | Spike on the real shared machine; saving PDFs always works as the fallback |
+| Direct printing needs a Linux shared machine with a working print system | Saving PDFs works everywhere; `./amc printer` checks the setup and says what's missing |
 | A school colour makes text hard to read | The palette is derived and contrast-checked; "Reset to neutral" |
 | Browsers' built-in PDF viewers differ (Safari) | Test the main browsers in phase 1; switch to bundled PDF.js if needed |
 | Phases 1, 4 and 6 are large | Each is split into smaller commits behind the Classic fallback; nothing is removed until its replacement works |
 
 ## 17. Still open
 
-1. **Which operating system does the shared machine run?** It decides how `./amc printer` connects the printer (section 7) and is tracked in #8. Saving PDFs for printing works on every system.
+Nothing. Testing on the real shared machine is tracked in #8.
