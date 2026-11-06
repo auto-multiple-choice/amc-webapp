@@ -373,7 +373,7 @@ Question banks (phase 9) come after B4, or before B1 (section 14, point 3).
    length for every version" as an option?
 5. Drag and drop on the canvas, with buttons as well (recommended)?
 6. FontAwesome icons: build the image with `texmf-dist-fontsextra`, or keep
-   the Zapf Dingbats look?
+   the Zapf Dingbats look? (I think latex has fontawesome5 style file, can we not use that?)
 7. Later: saving a row or a whole layout to reuse in other exams, and
    sharing layouts across the school.
 
