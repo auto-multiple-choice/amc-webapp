@@ -308,6 +308,82 @@ import basic
 check("names: '_branding', '.hidden', '-x' refused", all(basic.project_name_problem(n) for n in ("_branding", ".hidden", "-x", "", "  ", "a/b", "a\\b", "a:b", "x" * 130, "tab\there")))
 check("names: ordinary names allowed", all(basic.project_name_problem(n) is None for n in ("Physics 10B", "Quiz #3", "Épreuve n°2 (2026)", "exam.v2")))
 
+# source history (ui_source.py)
+import json, shutil, tempfile, time
+import ui_source as hist
+tmp = tempfile.mkdtemp()
+try:
+    exam = os.path.join(tmp, "exam"); os.makedirs(exam); open(os.path.join(exam, "options.xml"), "w").close()
+    check("history: sources, class lists and includes are tracked, images and folders aren't",
+          all(hist.tracked(n) for n in ("exam.tex", "a.txt", "list.csv", "macros.sty", "x.yml"))
+          and not any(hist.tracked(n) for n in ("logo.png", "paper.pdf", "a/b.tex", ".hidden.tex", "noext", "")))
+    d1 = hist.write_source(exam, "exam.tex", b"v1\n", by="ann", what="Created")
+    check("history: a new file has no earlier version", hist.versions(exam, "exam.tex") == [] and d1 == hist.digest(b"v1\n"))
+    time.sleep(1.1)  # ids are per second
+    d2 = hist.write_source(exam, "exam.tex", b"v2\n", by="bob", what="Saved in the editor", based_on=d1)
+    vs = hist.versions(exam, "exam.tex")
+    check("history: the replaced version is kept, with how it was made", len(vs) == 1 and vs[0]["digest"] == d1 and vs[0]["by"] == "ann" and vs[0]["what"] == "Created" and not vs[0]["built"])
+    check("history: the file holds the new text", open(os.path.join(exam, "exam.tex"), "rb").read() == b"v2\n")
+    try:
+        hist.write_source(exam, "exam.tex", b"v3\n", based_on=d1); check("history: a stale based_on is refused", False)
+    except hist.Conflict as c:
+        check("history: a stale based_on is refused, naming the digest on disk", str(c) == d2)
+    check("history: an unchanged save keeps nothing", hist.write_source(exam, "exam.tex", b"v2\n", based_on=d2) == d2 and len(hist.versions(exam, "exam.tex")) == 1)
+    time.sleep(1.1)
+    hist.write_source(exam, "exam.tex", b"v3\n", by="bob", what="Saved in the editor", built_digest=d2)
+    vs = hist.versions(exam, "exam.tex")
+    check("history: newest first, and the built version is marked", [v["digest"] for v in vs] == [d2, d1] and vs[0]["built"] and not vs[1]["built"])
+    hist.mark_built(exam, {"exam.tex": d1})
+    check("history: mark_built marks an older version too", all(v["built"] for v in hist.versions(exam, "exam.tex")))
+    check("history: a version can be read back", hist.read_version(exam, "exam.tex", vs[1]["id"]) == b"v1\n")
+    check("history: bad ids and names are refused", hist.read_version(exam, "exam.tex", "../x") is None and hist.read_version(exam, "../exam.tex", vs[0]["id"]) is None)
+    time.sleep(1.1)
+    hist.restore(exam, "exam.tex", vs[1]["id"], by="ann")
+    check("history: restore writes the old text and keeps the replaced one", open(os.path.join(exam, "exam.tex"), "rb").read() == b"v1\n" and len(hist.versions(exam, "exam.tex")) == 3)
+    with open(os.path.join(exam, "exam.tex"), "wb") as f: f.write(b"outside\n")
+    time.sleep(1.1)
+    hist.write_source(exam, "exam.tex", b"v5\n", by="ann", what="Saved")
+    check("history: a change made outside the app is kept and said so", hist.versions(exam, "exam.tex")[0]["what"] == "Changed outside the app")
+    # deleted files
+    hist.write_source(exam, "extra.tex", b"e1\n", by="ann", what="Uploaded")
+    e = hist.delete_source(exam, "extra.tex", by="bob")
+    check("history: a deleted file is kept as deleted", e and e["deleted"] and not os.path.exists(os.path.join(exam, "extra.tex")) and hist.versions(exam, "extra.tex")[0]["deleted"])
+    fl = {f["file"]: f for f in hist.files_with_history(exam)}
+    check("history: files_with_history tells deleted from existing", fl["exam.tex"]["exists"] and not fl["extra.tex"]["exists"] and fl["extra.tex"]["deleted_at"])
+    hist.restore(exam, "extra.tex", hist.versions(exam, "extra.tex")[0]["id"], by="bob")
+    check("history: restoring a deleted file brings it back", open(os.path.join(exam, "extra.tex"), "rb").read() == b"e1\n")
+    open(os.path.join(exam, "logo.png"), "wb").write(b"png")
+    check("history: deleting an untracked file just removes it", hist.delete_source(exam, "logo.png") is None and not os.path.exists(os.path.join(exam, "logo.png")))
+    # pruning: fake old versions
+    d = os.path.join(exam, hist.HISTORY_DIR, "exam.tex")
+    now = time.time()
+    real = len(hist.versions(exam, "exam.tex"))
+    for i in range(45):
+        vid = "20200101T%06dZ" % i
+        open(os.path.join(d, vid + ".tex"), "wb").write(b"old")
+        json.dump({"id": vid, "file": "exam.tex", "at": int(now - (200 - i) * 86400), "by": None, "what": "Saved",
+                   "size": 3, "digest": "x%d" % i, "built": i == 3, "deleted": False}, open(os.path.join(d, vid + ".json"), "w"))
+    before_vs = hist.versions(exam, "exam.tex")
+    newest_built = next(v["id"] for v in before_vs if v["built"])
+    hist.prune(exam, "exam.tex", now=now)
+    after = hist.versions(exam, "exam.tex")
+    check("history: pruning keeps the newest 30 and the newest built version, and drops older ones (a built one too)",
+          len(before_vs) == real + 45 and len(after) == 30 and any(v["id"] == newest_built for v in after)
+          and not any(v["id"] == "20200101T000003Z" for v in after))
+    # ...but an old built version is kept when no newer one built
+    hist.write_source(exam, "c.csv", b"a\n", what="Uploaded"); hist.write_source(exam, "c.csv", b"b\n", what="Uploaded")
+    d = os.path.join(exam, hist.HISTORY_DIR, "c.csv")
+    for i in range(40):
+        vid = "20200101T%06dZ" % i
+        open(os.path.join(d, vid + ".csv"), "wb").write(b"old")
+        json.dump({"id": vid, "file": "c.csv", "at": int(now - (200 - i) * 86400), "by": None, "what": "Uploaded",
+                   "size": 3, "digest": "y%d" % i, "built": i == 2, "deleted": False}, open(os.path.join(d, vid + ".json"), "w"))
+    hist.prune(exam, "c.csv", now=now)
+    after = hist.versions(exam, "c.csv")
+    check("history: the newest version that built survives pruning however old", len(after) == 31 and any(v["id"] == "20200101T000002Z" for v in after))
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)
+
 
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

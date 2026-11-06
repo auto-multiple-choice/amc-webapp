@@ -36,10 +36,22 @@ In **plain text**, start a single-answer question with `*`, a multiple-answer on
 
 Once the exam is printed, the questions are read-only. Correct the answer key and scoring in [Marking scheme](guide:marking-scheme).
 
+## Earlier versions
+
+Every time a source file is saved, the version it replaces is kept. **History** (in the bar above the editor) lists them with who saved them and when; the version the question paper was last built from is marked **built OK**. Click a version to see what changed since, and **Restore this version** to make it the file again (the file as it is now is kept too).
+
+A file deleted with **Delete** also goes to History and can be restored from there. The exam's main source file can't be deleted. Versions are kept for 60 days, and at least the last 30 of each file.
+
+Text typed but not saved is kept in your browser: if the page is closed by accident, the editor offers it back the next time the file is opened.
+
 ## Common problems
 
 **The build fails.** It's usually a LaTeX error. Open the log from the message: the line number shows where. Common causes are a missing closing brace `}` and a special character used without a backslash: write `\%`, `\&`, `\#` and `\_`.
 
 **An image doesn't appear.** Add the image file with **Add a file**, and use exactly the same name in `\includegraphics{...}`.
 
-**"Leave without saving?"** You changed the source without saving. Save first, or leave and lose the changes.
+**"Leave without saving?"** You changed the source without saving. Save first, or leave and lose the changes (the unsaved text is still offered back the next time you open the file).
+
+**A file was broken or deleted.** Open **History**: pick the version marked **built OK**, or the one from before the change, and restore it.
+
+**"This file was changed since you opened it."** The same file was saved from another tab or by another teacher. Keep your version (theirs stays in History), or load theirs (your text is kept as unsaved text).

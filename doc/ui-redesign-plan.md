@@ -332,6 +332,8 @@ Each phase is one branch and one merge request, in exam order, and leaves every 
 | **4 Results** | Mark (checklist, "Mark anyway", rule-breaking answers); Match students (class list, automatic and manual matching); Export marks (table, histogram, CSV/ODS, private link); Annotate (settings, one-student preview, annotated sheets) | #1, #11 | L |
 | **5 Polish** | Dashboard with states and filters; new-exam wizard with the template gallery; branding (Appearance page, sign-in page); the full guide and first-run tour; per-question marking scheme panel with answer key corrections | #2, #3, #12, #13 | L |
 
+Phases 6 to 9 (source history, the form question editor, sections with the RJ template, question banks) are planned in `questions-banks-templates-plan.md`.
+
 Later, plugging into the same steps:
 - the form question editor (#4) and question bank (#5) go in step 1;
 - item analysis (#6) and email (#7) go in step 9;

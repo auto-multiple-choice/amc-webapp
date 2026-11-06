@@ -15,6 +15,7 @@ import colorsys
 import functools
 import hashlib
 import html
+import io
 import json
 import os
 import re
@@ -26,6 +27,9 @@ import uuid
 
 import ui_gallery as gallery
 import ui_scale as scale
+import ui_source as source_history
+
+HISTORY_DIR = source_history.HISTORY_DIR  # kept out of exam downloads (amc.py)
 
 from flask import Blueprint, Response, abort, jsonify, make_response, render_template, request, send_file
 from flask import g as flask_g
@@ -361,6 +365,60 @@ def add_activity(pdir, what):
     _update_record(pdir, change)
 
 
+# ---------------------------------------------------------------- source history
+#
+# Every write to a source file goes through ui_source, which keeps the
+# version it replaces (doc/questions-banks-templates-plan.md, section 4).
+
+def _built_digest(rec, filename):
+    return (rec.get("built_sources") or {}).get(filename)
+
+
+def save_source(pdir, filename, data, what, based_on=None):
+    """Write a source file of the exam at PDIR, keeping the earlier
+    version. Raises ui_source.Conflict when BASED_ON isn't the digest of
+    the file as it is on disk."""
+    return source_history.write_source(pdir, filename, data, by=_who(), what=what, based_on=based_on,
+                                       built_digest=_built_digest(read_record(pdir), filename))
+
+
+def store_upload(path, upload, what):
+    """Save an uploaded file (/upload, /fs): through the history when it
+    is a source file in an exam folder, plainly otherwise."""
+    pdir, fn = os.path.split(path)
+    if _is_exam(pdir) and source_history.tracked(fn):
+        upload.stream.seek(0)
+        save_source(pdir, fn, upload.stream.read(), what)
+    else:
+        upload.save(path)
+
+
+def delete_file(path):
+    """Delete a project file (project-delete-file): a source file of an
+    exam goes into the history instead of being lost."""
+    pdir, fn = os.path.split(path)
+    if _is_exam(pdir) and source_history.tracked(fn):
+        source_history.delete_source(pdir, fn, by=_who(), built_digest=_built_digest(read_record(pdir), fn))
+        add_activity(pdir, f"File deleted: {fn} (kept in History)")
+    else:
+        os.unlink(path)
+
+
+def note_built():
+    """After the question paper built: remember which version of each
+    source it was built from, so History can show "built OK"."""
+    pdir = core.project_dir()
+    digests = {}
+    for f in _source_files(pdir):
+        try:
+            with open(os.path.join(pdir, f), "rb") as fh:
+                digests[f] = source_history.digest(fh.read())
+        except OSError:
+            pass
+    _update_record(pdir, lambda rec: rec.__setitem__("built_sources", digests))
+    source_history.mark_built(pdir, digests)
+
+
 def _build_stamp(pdir):
     try:
         return str(os.stat(f"{pdir}/DOC-sujet.pdf").st_mtime_ns)
@@ -451,6 +509,9 @@ def option_refused(name):
 
 def delete_refused(filename):
     filename = str(filename)
+    if filename == core.main_source_file():
+        core.dialog_msg(warn="This is the exam's main source file, so it can't be deleted.")
+        return True
     if filename in (RECORD, "options.xml"):
         return refuse_if_locked("The exam's settings and record can't be deleted.")
     ext = filename.rsplit(".", 1)[-1].lower()
@@ -472,6 +533,14 @@ def _lock_for_path(path):
 def write_refusal(path, upload):
     """In /upload and /fs (POST): the reason this file can't be written
     to PATH, or None."""
+    new = upload.stream.read()
+    upload.stream.seek(0)
+    return write_refusal_bytes(path, new)
+
+
+def write_refusal_bytes(path, new):
+    """The reason these bytes can't be written to PATH (an exam that is
+    printed), or None."""
     if not _lock_for_path(path):
         return None
     fn = os.path.basename(path)
@@ -480,8 +549,6 @@ def write_refusal(path, upload):
         return LOCKED.format(what="This file holds the exam's settings and record.")
     if ext not in SOURCE_EXTENSIONS or not os.path.isfile(path):
         return None  # a new file isn't used by the printed papers
-    new = upload.stream.read()
-    upload.stream.seek(0)
     with open(path, "rb") as f:
         old = f.read()
     if same_layout(old.decode("utf-8", "replace"),
@@ -710,13 +777,10 @@ def on_scoring_defaults(data):
         core.dialog_msg(warn=html.escape(str(e)) if isinstance(e, ValueError) else "The main source file can't be changed.")
         return
     if new != text:
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8", newline="") as f:
-            f.write(new)
-        os.replace(tmp, path)
-        add_activity(core.project_dir(), "Default scoring changed: single "
-                     + (values["S"] or "AMC default") + "; multiple "
-                     + (values["M"] or "AMC default"))
+        what = ("Default scoring changed: single " + (values["S"] or "AMC default")
+                + "; multiple " + (values["M"] or "AMC default"))
+        save_source(core.project_dir(), os.path.basename(path), new.encode("utf-8"), what)
+        add_activity(core.project_dir(), what)
     core.emit_msg("ui-scoring-saved", values)
 
 
@@ -1740,14 +1804,145 @@ def on_question_edit(data):
     if exam_lock(pdir) and not same_layout(old, new, ext):
         core.dialog_msg(warn=ONLY_SCORING)
         return
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8", newline="") as f:
-        f.write(new)
-    os.replace(tmp, path)
+    save_source(pdir, q["file"], new.encode("utf-8"), what)
     _update_record(pdir, lambda r: r.__setitem__("neutral", neutral))
     add_activity(pdir, what)
     core.emit_msg("ui-changed", "questions")
     refresh_scale(pdir)
+    core.emit_msg("ui-changed", "questions")
+
+
+# ---------------------------------------------------------------- source files and history
+
+def _editable_file(pdir, name):
+    """A file the editor may open: a plain name of an editable file (or a
+    new one) in the exam folder."""
+    if not name or "/" in name or "\\" in name or name.startswith("."):
+        return False
+    return core.file_level(pdir, core.main_source_file(), name) <= 0
+
+
+@bp.route("/ui/api/source")
+def api_source():
+    """A source file's text, with the digest the editor saves against."""
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    fn = request.args.get("file", "")
+    if not _editable_file(pdir, fn):
+        return jsonify(project=name, error="Not a file of this exam."), 400
+    try:
+        with open(os.path.join(pdir, fn), "rb") as f:
+            data = f.read()
+    except OSError:
+        return jsonify(project=name, file=fn, error="The file doesn't exist."), 404
+    problem = None
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        text = data.decode("utf-8", "replace")
+        problem = "The file isn't UTF-8 text, so it is shown read-only."
+    return jsonify(project=name, file=fn, text=text, digest=source_history.digest(data),
+                   problem=problem, tracked=source_history.tracked(fn))
+
+
+@bp.route("/ui/api/source", methods=["POST"])
+def api_source_save():
+    """The editor's save: the text, and the digest of the version it was
+    edited from. A file changed meanwhile (another tab, another teacher)
+    is refused with conflict=true; the browser decides."""
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    data = request.get_json(silent=True) or {}
+    fn, text = str(data.get("file") or ""), data.get("text")
+    pdir = core.project_dir()
+    if not isinstance(text, str) or not _editable_file(pdir, fn):
+        return jsonify(error="Not a file of this exam.")
+    raw = text.encode("utf-8")
+    path = os.path.join(pdir, fn)
+    if refusal := write_refusal_bytes(path, raw):
+        return jsonify(error=refusal)
+    try:
+        if source_history.tracked(fn):
+            dg = save_source(pdir, fn, raw, "Saved in the editor",
+                             based_on=str(data.get("based_on") or "") or None)
+        else:
+            tmp = path + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(raw)
+            os.replace(tmp, path)
+            dg = source_history.digest(raw)
+    except source_history.Conflict as c:
+        return jsonify(error="This file was changed since you opened it.", conflict=True, digest=str(c))
+    core.emit_msg("source-saved")
+    return jsonify(ok=True, digest=dg)
+
+
+@bp.route("/ui/api/history")
+def api_history():
+    """The versions kept of one file (or of every file), and which files
+    have a history, including deleted ones."""
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    fn = request.args.get("file") or None
+    if fn is not None and not source_history.tracked(fn):
+        return jsonify(project=name, error="No history is kept for this file."), 400
+    out = {"project": name, "file": fn, "versions": source_history.versions(pdir, fn),
+           "files": source_history.files_with_history(pdir), "current": None,
+           "keep_days": source_history.KEEP_DAYS, "keep_at_least": source_history.KEEP_AT_LEAST}
+    if fn:
+        cur = source_history.current_info(pdir, fn)
+        if cur:
+            cur["built"] = cur["digest"] == _built_digest(read_record(pdir), fn)
+            out["current"] = cur
+    return jsonify(out)
+
+
+@bp.route("/ui/api/history/<vid>")
+def api_history_version(vid):
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    fn = request.args.get("file", "")
+    data = source_history.read_version(pdir, fn, vid)
+    if data is None:
+        return jsonify(project=name, error="This version doesn't exist."), 404
+    if request.args.get("raw"):  # the version as a file to download
+        stem, ext = fn.rsplit(".", 1)
+        return send_file(io.BytesIO(data), mimetype="text/plain", as_attachment=True,
+                         download_name=f"{stem}.{vid}.{ext}")
+    return jsonify(project=name, file=fn, id=vid, text=data.decode("utf-8", "replace"),
+                   entry=source_history.entry(pdir, fn, vid))
+
+
+def on_history_restore(data):
+    """Make a kept version the file again; the file as it is now is kept.
+    A deleted file comes back."""
+    data = data if isinstance(data, dict) else {}
+    fn, vid = str(data.get("file") or ""), str(data.get("id") or "")
+    pdir = core.project_dir()
+    e = source_history.entry(pdir, fn, vid)
+    text = source_history.read_version(pdir, fn, vid) if e else None
+    if text is None:
+        core.dialog_msg(warn="This version doesn't exist any more.")
+        return
+    path = os.path.join(pdir, fn)
+    if refusal := write_refusal_bytes(path, text):
+        core.dialog_msg(warn=refusal)
+        return
+    existed = os.path.isfile(path)
+    label = time.strftime("%d %b %Y %H:%M", time.localtime(e.get("at") or 0))
+    source_history.restore(pdir, fn, vid, by=_who(), what=f"Restored the version of {label}",
+                           built_digest=_built_digest(read_record(pdir), fn))
+    add_activity(pdir, f"{fn}: the version of {label} restored" + ("" if existed else " (the file had been deleted)"))
+    if not existed:
+        core.emit_msg("project-files-list")
+    core.emit_msg("ui-history-restored", {"file": fn, "id": vid})
     core.emit_msg("ui-changed", "questions")
 
 
@@ -2097,6 +2292,8 @@ def on_create_exam(data):
     meta = {k: str(data.get(k) or "").strip()[:120] for k in META_FIELDS}
     _update_record(rep, lambda rec: rec.__setitem__("meta", meta))
     add_activity(rep, f"Exam created from the template \"{title}\"")
+    if core.main_source_file():
+        source_history.note_current(rep, core.main_source_file(), by=_who(), what=f"Created from the template \"{title}\"")
     core.emit_msg("project-open", [name, True])
 
 
@@ -2309,4 +2506,5 @@ SOCKET_EVENTS = {
     "ui-create-exam": on_create_exam,
     "ui-exam-meta": on_exam_meta,
     "ui-exam-archive": on_exam_archive,
+    "ui-history-restore": on_history_restore,
 }

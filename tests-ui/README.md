@@ -19,6 +19,7 @@ The app's icon file only keeps icons named in `server/templates/*.html`, so icon
 - the results helpers: match states, student names from the class list, which files can be uploaded as a class list, and the fingerprint that tells when marks are out of date;
 - the marking scheme panel (`server/ui_scale.py`): question maximums the way AMC computes them, reading questions from LaTeX and AMC-TXT, and answer key and scoring edits;
 - branding: the contrast-checked palette, logo file types, and the starters' school header.
+- the source history (`server/ui_source.py`): versions kept and read back, the "changed meanwhile" check, deleted files, "built OK", restore and pruning.
 
 It runs with the app's image:
 
@@ -91,6 +92,14 @@ node tests-ui/e2e-results.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 ```
 
 With `AMC_E2E_KEEP=1`, the test exam is kept afterwards, to look at it.
+
+### Source history
+
+`e2e-history.mjs` tests the Questions step's History: versions kept on each save, the History panel with its line diff, restoring a version, "built OK" after a build, a save that conflicts with another tab (keep mine, load theirs), the unsaved text kept in the browser across a reload, deleting a file into the history and restoring it, the main source that can't be deleted, and the exam zip without the history folder.
+
+```
+node tests-ui/e2e-history.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
+```
 
 ### Marking scheme panel
 

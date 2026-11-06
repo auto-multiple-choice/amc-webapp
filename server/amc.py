@@ -420,7 +420,7 @@ def fs_file(path):
         if f:
             if refusal := ui.write_refusal(path, f):
                 return { "error": refusal }  # printed exam (ui.py)
-            f.save(path)
+            ui.store_upload(path, f, "Saved")  # history (ui.py)
             return { "ok": True }
     else:
         app.logger.info(f"Send file: {path}")
@@ -985,7 +985,7 @@ def file_upload(dest):
         if rep and (refusal := ui.upload_refusal(request_files[0], dest)):
             return { "error": refusal }  # printed exam (ui.py)
         if rep:
-            request_files[0].save(f"{rep}/{fn}");
+            ui.store_upload(f"{rep}/{fn}", request_files[0], "Saved in the editor" if dest=="source" else "Uploaded")  # history (ui.py)
             if dest=="source":
                 emit_msg("source-saved")
             return { "ok": True }
@@ -1201,7 +1201,7 @@ def io_project_delete_file(data):
     path = fs_path_to_local(filename, with_fs=False, current_project=True)
     if path:
         try:
-            os.unlink(path)
+            ui.delete_file(path)  # source files go into the history (ui.py)
         except Exception as e:
             app.logger.error("Can't delete project file: " + str(e))
             return
@@ -1355,6 +1355,7 @@ def io_doc_update(t):
 
     e = len(messages["ERR"])
     if t == "sujet" and e == 0:
+        ui.note_built()  # history: which source versions built (ui.py)
         db = get_db()
         
         emit_msg("t", _('t.layouts'))
@@ -1521,6 +1522,7 @@ def send_dir_as_zip(path, name=None, recursive=True,
     with zipfile.ZipFile(data, mode='w') as z:
         if recursive:
             for root, dirs, files in os.walk(path):
+                dirs[:] = [d for d in dirs if d != ui.HISTORY_DIR]  # earlier versions stay out of the zip (ui.py)
                 subroot = lstrip_text(root, path, ".")
                 for f in files:
                     if f not in exclude_files:

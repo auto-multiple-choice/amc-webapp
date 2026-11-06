@@ -23,6 +23,7 @@ const store = {
     catch { return d; }
   },
   set(k, v) { try { localStorage.setItem('amc-ui:' + k, JSON.stringify(v)); } catch { /* private mode */ } },
+  remove(k) { try { localStorage.removeItem('amc-ui:' + k); } catch { /* private mode */ } },
 };
 const APP = document.getElementById('app');
 const USER = APP.dataset.user || '';
@@ -84,7 +85,9 @@ const S = {
   templates: null,
   files: null,
   config: null,
-  source: { name: null, mode: null, url: null, dirty: false, loaded: false, failed: false },
+  source: { name: null, mode: null, url: null, dirty: false, loaded: false, failed: false, digest: null, tracked: false, draft: null },
+  history: null,          // earlier versions of a source file, shown in the preview panel (/ui/api/history)
+  deletingFile: null,     // file being deleted, so the editor moves off it
   theme: store.get('theme', 'auto'),
   previewOpen: store.get('previewOpen', window.innerWidth >= 1280),
   previewMax: false,
@@ -230,7 +233,21 @@ socket.on('menu', () => refreshStatus());
 socket.on('project-open', (data) => onProjectOpen(data[0]));
 socket.on('source-name', (data) => onSourceName(...data));
 socket.on('source-saved', () => { if (!editor || editor.getValue() === S.source.text) S.source.dirty = false; renderEditorBar(); });
-socket.on('project-files-list', () => loadFiles());
+socket.on('project-files-list', () => {
+  loadFiles();
+  const f = S.deletingFile;
+  if (f) {
+    S.deletingFile = null;
+    toast(`${f} deleted. It stays in History.`, 'trash');
+    if (S.source.name === f) { S.source.dirty = false; S.source.loaded = false; clearDraft(); loadSource(''); }
+    if (S.history) loadHistory();
+  }
+});
+socket.on('ui-history-restored', (r) => {
+  toast(`${r.file} restored.`, 'undo');
+  if (S.source.name === r.file) { S.source.dirty = false; S.source.loaded = false; loadSource(r.file); } else if (S.history) loadHistory();
+  if (S.route.step === 'questions') loadFiles();
+});
 socket.on('ui-changed', (what) => {
   if (what === 'unlock') { toast('Exam unlocked. Rebuild the papers, then check the layout again.', 'lock-slash'); S.previewMode = null; }
   if (what === 'layout_ok') toast('Layout confirmed. You can print now.');
@@ -335,7 +352,7 @@ window.addEventListener('popstate', async () => {
   }
   onRoute();
 });
-window.addEventListener('beforeunload', (e) => { if (S.source.dirty) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', (e) => { if (S.source.dirty) { saveDraft(); e.preventDefault(); e.returnValue = ''; } });
 
 function onRoute() {
   const r = parsePath(location.pathname);
@@ -345,7 +362,7 @@ function onRoute() {
   S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false;
   S.previewMode = keepGuide ? 'guide' : null;
   S.review = null; S.previewImage = null; S.previewList = null;
-  if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) dropEditor();
+  if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) { dropEditor(); S.history = null; }
   if (r.kind === 'exams' || r.kind === 'new' || r.kind === 'appearance') {
     S.project = null; S.status = null; S.files = null;
     document.title = `${{ new: 'New exam', appearance: 'Appearance' }[r.kind] || 'Exams'} · ${BRAND}`;
@@ -688,6 +705,9 @@ function renderPreview() {
   let title; let body; let bodyClass = 'preview-body'; let url = null; let tabs = '';
   if (S.previewMode === 'guide') {
     ({ title, body, tabs } = guidePreview());
+  } else if (S.previewMode === 'history' && S.history) {
+    ({ title, body, tabs } = historyPreview());
+    bodyClass = 'preview-body plain hist';
   } else if (S.previewMode === 'image' && S.previewImage) {
     title = S.previewImage.title;
     url = S.previewImage.url;
@@ -1007,6 +1027,7 @@ function viewQuestions() {
   return `<div class="page wide">
     <div id="q-head">${questionsHead()}</div>
     <div class="editor-bar" id="editor-bar"></div>
+    <div id="draft-bar"></div>
     <div class="editor-frame grow" id="editor-frame"><div id="ace-host"></div></div>
   </div>`;
 }
@@ -1039,10 +1060,19 @@ function renderEditorBar() {
     ${S.source.dirty ? '<span class="row" style="gap:6px"><span class="dirty-dot"></span><span class="subtle">Unsaved changes</span></span>' : (S.source.loaded ? '<span class="subtle">Saved</span>' : '<span class="subtle">Loading…</span>')}
     <span class="spacer"></span>
     ${S.source.dirty ? `<button class="btn btn-ghost btn-sm" data-act="revert">${ic('undo')} Revert</button>` : ''}
+    <button class="btn btn-ghost btn-sm" data-act="history" ${cur && S.source.tracked ? '' : 'disabled'} title="Earlier versions of this file">${ic('clock-rotate-right')} History</button>
+    ${cur && f && cur !== f.main && !locked() ? `<button class="btn btn-ghost btn-sm" data-act="delete-file" title="Delete this file; it stays in History">${ic('trash')} Delete</button>` : ''}
     <label class="btn btn-sm">${ic('upload')} Add a file<input type="file" id="add-file" hidden></label>
     ${others.length ? `<select class="select input-sm" id="other-file" style="min-width:160px" aria-label="Other project files"><option value="">Other files…</option>${others.map((x) => `<option>${esc(x.name)}</option>`).join('')}</select>` : ''}`;
   const save = $('#save-btn');
   if (save) save.disabled = !S.source.dirty;
+  const db = $('#draft-bar');
+  if (db) {
+    const d = S.source.draft;
+    db.innerHTML = d ? banner('info', 'floppy-disk', `Unsaved text from ${esc(fmtWhen(d.at / 1000))} was found on this computer.`, 'It was typed in this file but not saved. Use it to put it back in the editor, then save.',
+      `<button class="btn btn-sm btn-primary" data-act="draft-use">Use it</button><button class="btn btn-sm" data-act="draft-discard">Discard</button>`) : '';
+    resizeEditor();
+  }
 }
 
 function mountEditor() {
@@ -1057,12 +1087,14 @@ function mountEditor() {
   editor.session.on('change', () => {
     if (S.source.loading) return;
     if (!S.source.dirty) { S.source.dirty = true; renderEditorBar(); }
+    scheduleDraft();
   });
   if (S.source.text !== undefined) setEditorText(S.source.text);
 }
 function dropEditor() {
+  saveDraft();
   if (editor) { editor.destroy(); editor = null; }
-  S.source = { name: null, mode: null, url: null, dirty: false, loaded: false, failed: false };
+  S.source = { name: null, mode: null, url: null, dirty: false, loaded: false, failed: false, digest: null, tracked: false, draft: null };
 }
 function setEditorText(text) {
   if (!editor) return;
@@ -1075,49 +1107,212 @@ function setEditorText(text) {
   renderEditorBar();
 }
 
+/* The editor's draft: text typed but not saved, kept in this browser (per exam and file). */
+const draftKey = () => (S.project && S.source.name ? `draft:${S.project}/${S.source.name}` : null);
+let draftTimer = null;
+function scheduleDraft() { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 800); }
+function saveDraft() {
+  clearTimeout(draftTimer);
+  const key = draftKey();
+  if (!key || !editor || !S.source.loaded || S.source.loading) return;
+  const text = editor.getValue();
+  if (text === S.source.text || text.length > 2000000) { store.remove(key); return; }
+  store.set(key, { text, at: Date.now(), base: S.source.digest });
+}
+function clearDraft() { clearTimeout(draftTimer); const key = draftKey(); if (key) store.remove(key); }
+
 function loadSource(filename) { socket_emit('source-code', filename); }
 async function onSourceName(name, mode, url) {
   const project = S.project;
   S.source.name = name; S.source.mode = mode; S.source.url = url;
-  S.source.loaded = false; S.source.failed = false;
-  let text = null;
+  S.source.loaded = false; S.source.failed = false; S.source.problem = null; S.source.draft = null;
+  let r = null;
   try {
-    // Our own address for the file: the server's has the exam name as is,
-    // and a "#" or "?" in it would cut the address short.
-    const r = await fetch(fsUrl(name), { headers: headers(), cache: 'no-store' });
-    if (!r.ok) throw new Error(r.status);
-    if (/^application\/json/.test(r.headers.get('content-type') || '')) throw new Error((await r.json()).error || 'not a file');
-    text = await r.text();
+    // Our own route: the text with the digest a save is checked against.
+    const resp = await fetch(`/ui/api/source?file=${enc(name)}`, { headers: headers(), cache: 'no-store' });
+    const j = await resp.json();
+    if (!resp.ok || j.error || typeof j.text !== 'string') throw new Error(j.error || resp.status);
+    r = j;
   } catch (e) { console.error(e); }
   if (S.project !== project || S.source.name !== name) return; // another exam or file was chosen meanwhile
-  if (text === null) { S.source.failed = true; toast(`Couldn't open ${name}. Reload the page to try again.`, 'warning-triangle'); }
-  S.source.text = text === null ? '' : text;
+  if (!r) toast(`Couldn't open ${name}. Reload the page to try again.`, 'warning-triangle');
+  else if (r.problem) toast(r.problem, 'warning-triangle');
+  S.source.failed = !r || !!r.problem;
+  S.source.problem = r ? r.problem : null;
+  S.source.text = r ? r.text : '';
+  S.source.digest = r ? r.digest : null;
+  S.source.tracked = !!(r && r.tracked);
   S.source.loaded = true;
+  const d = r && store.get(draftKey(), null);
+  if (d && typeof d.text === 'string' && d.text !== r.text) S.source.draft = d; else if (d) store.remove(draftKey());
   if (S.route.step === 'questions') {
     if (!editor) renderMain();
     setEditorText(S.source.text);
     if (editor) editor.setReadOnly(locked() || S.source.failed);
     const b = $('[data-act="build"]'); if (b) b.disabled = S.source.failed;
   }
+  if (S.history && S.history.file === name && S.previewMode === 'history') loadHistory();
 }
 
-async function saveSource() {
+async function saveSource({ force = false } = {}) {
   if (!editor || !S.source.name || !S.source.loaded) return false;
-  if (S.source.failed) { toast(`${S.source.name} couldn't be opened, so it isn't saved over. Reload the page.`, 'warning-triangle'); return false; }
+  if (S.source.failed) { toast(S.source.problem || `${S.source.name} couldn't be opened, so it isn't saved over. Reload the page.`, 'warning-triangle'); return false; }
   if (locked()) { toast('The exam is printed: correct the answer key in Marking scheme.', 'lock'); return false; }
+  const name = S.source.name;
   const text = editor.getValue();
+  let r;
   try {
-    await upload('/upload/source', [[new Blob([text], { type: 'text/plain' }), S.source.name]]);
-    S.source.text = text;
-    if (editor && editor.getValue() === text) S.source.dirty = false; // typed meanwhile: still unsaved
-    renderEditorBar();
-    toast(`${S.source.name} saved.`);
-    return true;
-  } catch (e) {
-    openDialog(`<div class="dialog-head"><span class="dialog-icon danger">${ic('warning-triangle')}</span><div><h2 id="dlg-title">Not saved</h2></div></div>
-      <div class="dialog-body"><p>${esc(e.message)}</p></div><div class="dialog-foot"><button class="btn btn-primary" data-act="dialog-ok">OK</button></div>`);
+    const resp = await fetch('/ui/api/source', { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: name, text, based_on: force ? '' : (S.source.digest || '') }) });
+    r = await resp.json();
+  } catch { r = { error: 'The server couldn\'t be reached.' }; }
+  if (S.source.name !== name) return false; // another file was opened meanwhile
+  if (r.conflict) {
+    const choice = await choiceDialog({
+      title: 'Changed elsewhere', icon: 'warning-triangle',
+      body: `<p><b>${esc(name)}</b> was saved from another tab or by another teacher after you opened it.</p><p class="subtle">Keep yours: their version stays in History. Load theirs: your text is kept as unsaved text, to put back with "Use it".</p>`,
+      choices: [['theirs', 'Load their version', ''], ['mine', 'Keep my version', 'btn-primary']],
+    });
+    if (choice === 'mine') return saveSource({ force: true });
+    if (choice === 'theirs') { store.set(draftKey(), { text, at: Date.now(), base: S.source.digest }); S.source.dirty = false; S.source.loaded = false; loadSource(name); }
     return false;
   }
+  if (!r.ok) {
+    openDialog(`<div class="dialog-head"><span class="dialog-icon danger">${ic('warning-triangle')}</span><div><h2 id="dlg-title">Not saved</h2></div></div>
+      <div class="dialog-body"><p>${esc(r.error || 'Unknown error')}</p></div><div class="dialog-foot"><button class="btn btn-primary" data-act="dialog-ok">OK</button></div>`);
+    return false;
+  }
+  S.source.text = text; S.source.digest = r.digest;
+  if (editor && editor.getValue() === text) S.source.dirty = false; // typed meanwhile: still unsaved
+  if (!S.source.dirty) clearDraft();
+  renderEditorBar();
+  toast(`${name} saved.`);
+  if (S.history && S.history.file === name) loadHistory();
+  return true;
+}
+
+function choiceDialog({ title, body, choices, icon = 'info-circle' }) {
+  return new Promise((resolve) => {
+    openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic(icon)}</span><div><h2 id="dlg-title">${title}</h2></div></div>
+      <div class="dialog-body">${body}</div>
+      <div class="dialog-foot"><button class="btn" data-act="dialog-cancel">Cancel</button>${choices.map(([v, label, cls]) => `<button class="btn ${cls || ''}" data-act="dialog-result" data-v="${esc(v)}">${esc(label)}</button>`).join('')}</div>`);
+    dialogResolve = resolve;
+  });
+}
+
+/* ---------- Source history (preview panel) ---------- */
+
+const fmtWhen = (t) => (t ? new Date(t * 1000).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+const fmtSize = (n) => (n < 1024 ? `${n} B` : `${Math.round(n / 102.4) / 10} KB`);
+
+function openHistory(file) {
+  S.history = { file, versions: null, files: [], current: null, selected: null, text: null, loading: true };
+  S.previewMode = 'history'; S.previewFile = null; S.previewList = null;
+  openPreview();
+  return loadHistory();
+}
+async function loadHistory() {
+  const h = S.history;
+  if (!h) return;
+  const project = S.project;
+  try {
+    const r = await getJSON(`/ui/api/history?file=${enc(h.file)}`);
+    if (S.history !== h || S.project !== project) return;
+    h.versions = r.versions; h.files = r.files; h.current = r.current; h.keepDays = r.keep_days; h.keepAtLeast = r.keep_at_least;
+  } catch (e) { console.error(e); if (S.history !== h) return; h.versions = h.versions || []; }
+  h.loading = false;
+  if (h.selected && !h.versions.some((v) => v.id === h.selected)) { h.selected = null; h.text = null; }
+  renderPreview();
+}
+async function pickVersion(id) {
+  const h = S.history;
+  if (!h) return;
+  h.selected = id; h.text = null;
+  renderPreview();
+  try {
+    const r = await getJSON(`/ui/api/history/${enc(id)}?file=${enc(h.file)}`);
+    if (S.history === h && h.selected === id) { h.text = r.text; renderPreview(); }
+  } catch (e) { console.error(e); if (S.history === h && h.selected === id) { h.selected = null; renderPreview(); toast('Couldn\'t load this version.', 'warning-triangle'); } }
+}
+async function restoreVersion(id) {
+  const h = S.history;
+  const v = h && h.versions.find((x) => x.id === id);
+  if (!v) return;
+  if (S.source.name === h.file && S.source.dirty) { toast('Save or revert your changes first.', 'warning-triangle'); return; }
+  const ok = await confirmDialog({ title: `Restore the version of ${fmtWhen(v.at)}?`, icon: 'undo', ok: 'Restore',
+    body: `<p><b>${esc(h.file)}</b> becomes this version again${h.current ? '. The file as it is now is kept in History.' : ', and the file is back in the exam.'}</p>` });
+  if (ok) socket_emit('ui-history-restore', { file: h.file, id });
+}
+async function deleteCurrentFile() {
+  const name = S.source.name;
+  if (!name || !S.files || name === S.files.main) return;
+  const ok = await confirmDialog({ title: `Delete ${esc(name)}?`, ok: 'Delete', danger: true, icon: 'trash',
+    body: `<p>The file is removed from the exam. ${S.source.tracked ? 'Its versions stay in History, so it can be restored.' : 'This can\'t be undone.'}</p>` });
+  if (!ok) return;
+  S.deletingFile = name;
+  socket_emit('project-delete-file', [name, false]);
+}
+
+function historyPreview() {
+  const h = S.history;
+  const title = `History · ${h.file}`;
+  const files = [...new Set([h.file, ...h.files.map((f) => f.file)])];
+  const label = (f) => { const x = h.files.find((y) => y.file === f); return x && !x.exists ? `${f} (deleted)` : f; };
+  const tabs = `<div class="preview-tabs"><label class="sr-only" for="hist-file">File</label><select class="select input-sm" id="hist-file">${files.map((f) => `<option value="${esc(f)}" ${f === h.file ? 'selected' : ''}>${esc(label(f))}</option>`).join('')}</select>
+    <span class="spacer"></span><button data-act="preview-docs">Documents</button></div>`;
+  if (h.loading || !h.versions) return { title, body: '<div class="preview-empty">Loading…</div>', tabs };
+  const current = h.current
+    ? `<div class="hist-row is-current"><span class="hist-when">The file now · ${esc(fmtWhen(h.current.at))}</span><span class="hist-what">${esc(h.current.what || 'Saved')}${h.current.by ? ` · ${esc(h.current.by)}` : ''}</span><span class="hist-tags">${h.current.built ? '<span class="chip chip-success">built OK</span>' : ''}</span></div>`
+    : '<div class="hist-row is-current"><span class="hist-when">This file is deleted</span><span class="hist-what">Restore a version to bring it back.</span></div>';
+  const rows = h.versions.map((v) => `<button class="hist-row ${v.id === h.selected ? 'is-selected' : ''}" data-act="hist-pick" data-id="${esc(v.id)}" aria-pressed="${v.id === h.selected}">
+      <span class="hist-when">${esc(fmtWhen(v.at))}</span><span class="hist-what">${esc(v.what || 'Saved')}${v.by ? ` · ${esc(v.by)}` : ''}</span>
+      <span class="hist-tags">${v.built ? '<span class="chip chip-success">built OK</span>' : ''}${v.deleted ? '<span class="chip chip-warning">deleted</span>' : ''}<span class="subtle">${fmtSize(v.size)}</span></span></button>`).join('');
+  const list = `<div class="hist-list">${current}${rows || `<p class="subtle" style="padding:10px 14px;margin:0">No earlier version yet. One is kept each time the file is saved${h.keepDays ? `, for ${h.keepDays} days and at least the last ${h.keepAtLeast}` : ''}.</p>`}</div>`;
+  let detail = '<div class="preview-empty"><p class="subtle">Click a version to see what changed since, and to restore it.</p></div>';
+  if (h.selected) {
+    const v = h.versions.find((x) => x.id === h.selected);
+    const now = S.source.name === h.file && S.source.loaded ? (editor ? editor.getValue() : S.source.text) : null;
+    detail = `<div class="hist-detail"><div class="hist-detail-head"><b>${esc(fmtWhen(v.at))}</b><span class="subtle">${esc(v.what || '')}</span><span class="spacer"></span>
+        <a class="btn btn-sm" href="/ui/api/history/${enc(v.id)}?file=${enc(h.file)}&raw=1">${ic('download')} Download</a>
+        <button class="btn btn-sm btn-primary" data-act="hist-restore" data-id="${esc(v.id)}">${ic('undo')} Restore this version</button></div>
+      ${h.text === null ? '<div class="preview-empty">Loading…</div>' : now === null ? `<pre class="preview-text">${esc(h.text)}</pre>`
+    : `<div class="diff-note">Compared with the file now: red lines are only in this version, green lines only in the file now.</div>${diffHtml(h.text, now)}`}</div>`;
+  }
+  return { title, body: list + detail, tabs };
+}
+
+/* Line diff of A (a kept version) against B (the file now): the longest common subsequence of the lines between the common start and end. */
+function diffHtml(a, b) {
+  const lines = (t) => { const L = t.split('\n'); if (L.length > 1 && L[L.length - 1] === '') L.pop(); return L; }; // a final newline isn't a line
+  const A = lines(a); const B = lines(b);
+  let s = 0; while (s < A.length && s < B.length && A[s] === B[s]) s += 1;
+  let e = 0; while (e < A.length - s && e < B.length - s && A[A.length - 1 - e] === B[B.length - 1 - e]) e += 1;
+  const a2 = A.slice(s, A.length - e); const b2 = B.slice(s, B.length - e);
+  const n = a2.length; const m = b2.length;
+  if (!n && !m) return '<p class="subtle" style="padding:10px 14px">Same as the file now.</p>';
+  if (n * m > 3000000) return `<p class="subtle" style="padding:10px 14px">Too many changes to compare line by line. This is the version:</p><pre class="preview-text">${esc(a)}</pre>`;
+  const W = m + 1; const L = new Uint32Array((n + 1) * W);
+  for (let i = n - 1; i >= 0; i -= 1) for (let j = m - 1; j >= 0; j -= 1) L[i * W + j] = a2[i] === b2[j] ? L[(i + 1) * W + j + 1] + 1 : Math.max(L[(i + 1) * W + j], L[i * W + j + 1]);
+  const ops = A.slice(0, s).map((l) => ['ctx', l]);
+  let i = 0; let j = 0;
+  while (i < n && j < m) {
+    if (a2[i] === b2[j]) { ops.push(['ctx', a2[i]]); i += 1; j += 1; } else if (L[(i + 1) * W + j] >= L[i * W + j + 1]) { ops.push(['del', a2[i]]); i += 1; } else { ops.push(['add', b2[j]]); j += 1; }
+  }
+  while (i < n) { ops.push(['del', a2[i]]); i += 1; }
+  while (j < m) { ops.push(['add', b2[j]]); j += 1; }
+  A.slice(A.length - e).forEach((l) => ops.push(['ctx', l]));
+  // Unchanged runs are folded to three lines on each side of a change.
+  const out = []; let run = [];
+  const line = ([t, l]) => `<div class="${t}">${esc(l) || ' '}</div>`;
+  const flush = (atStart, atEnd) => {
+    const head = atStart ? 0 : 3; const tail = atEnd ? 0 : 3;
+    if (run.length > head + tail + 1) out.push(...run.slice(0, head).map(line), `<div class="diff-gap">${run.length - head - tail} unchanged lines</div>`, ...run.slice(run.length - tail).map(line));
+    else out.push(...run.map(line));
+    run = [];
+  };
+  ops.forEach((op, k) => { if (op[0] === 'ctx') run.push(op); else { if (run.length) flush(k === run.length, false); out.push(line(op)); } });
+  if (run.length) flush(false, true);
+  return `<div class="diff">${out.join('')}</div>`;
 }
 
 async function buildPreview() {
@@ -2804,8 +2999,15 @@ const ACTIONS = {
   },
   save: () => saveSource(),
   revert: async () => {
-    if (await confirmDialog({ title: 'Revert your changes?', body: '<p>Go back to the last saved version of this file.</p>', ok: 'Revert', danger: true, icon: 'undo' })) setEditorText(S.source.text);
+    if (await confirmDialog({ title: 'Revert your changes?', body: '<p>Go back to the last saved version of this file.</p>', ok: 'Revert', danger: true, icon: 'undo' })) { setEditorText(S.source.text); clearDraft(); }
   },
+  history: () => { if (S.source.name) openHistory(S.source.name); },
+  'hist-pick': (el) => pickVersion(el.dataset.id),
+  'hist-restore': (el) => restoreVersion(el.dataset.id),
+  'draft-use': () => { const d = S.source.draft; if (!d || !editor) return; S.source.draft = null; setEditorText(d.text); S.source.dirty = true; renderEditorBar(); toast('The unsaved text is back in the editor. Save it to keep it.', 'floppy-disk'); },
+  'draft-discard': () => { S.source.draft = null; clearDraft(); renderEditorBar(); },
+  'delete-file': () => deleteCurrentFile(),
+  'dialog-result': (el) => closeDialog(el.dataset.v),
   build: () => buildPreview(),
   'dialog-ok': () => closeDialog(true),
   reload: () => location.reload(),
@@ -2841,8 +3043,9 @@ document.addEventListener('change', async (e) => {
   const t = e.target;
   if (t.id === 'file-select' && t.value !== S.source.name) {
     if (S.source.dirty && !(await confirmLeave())) { t.value = S.source.name; return; }
-    S.source.loaded = false; S.source.dirty = false; loadSource(t.value);
+    saveDraft(); S.source.loaded = false; S.source.dirty = false; loadSource(t.value);
   }
+  if (t.id === 'hist-file' && S.history && t.value !== S.history.file) openHistory(t.value);
   if (t.id === 'other-file' && t.value) { S.previewFile = { name: t.value }; S.previewOpen = true; t.value = ''; renderTop(); renderPreview(); }
   if (t.id === 'add-file' && t.files[0]) {
     const f = t.files[0];

@@ -303,3 +303,34 @@ input[type="color"] { width: 44px; height: 34px; padding: 2px; border: 1px solid
 .look-accent { font-weight: 650; color: color-mix(in oklab, var(--brand) 72%, currentColor); }
 .look-chip { padding: 2px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
   background: color-mix(in oklab, var(--brand) 14%, transparent); border: 1px solid color-mix(in oklab, var(--brand) 35%, transparent); }
+
+/* ---------- Source history (preview panel) and editor drafts ---------- */
+.preview-body.hist { display: flex; flex-direction: column; overflow: hidden; }
+.hist-list { flex: none; max-height: 42%; overflow: auto; border-bottom: 1px solid var(--border); }
+.hist-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 1px 10px; align-items: center;
+  width: 100%; text-align: left; padding: 8px 14px; border: 0; border-top: 1px solid var(--border);
+  background: none; color: var(--text); font: inherit; font-size: 13px; cursor: pointer;
+}
+.hist-row:first-child { border-top: 0; }
+.hist-row:hover { background: var(--accent-softer); }
+.hist-row.is-selected { background: var(--accent-soft); }
+.hist-row.is-current { cursor: default; background: var(--surface-2); }
+.hist-row.is-current:hover { background: var(--surface-2); }
+.hist-when { grid-column: 1; grid-row: 1; font-weight: 600; }
+.hist-what { grid-column: 1; grid-row: 2; color: var(--text-2); font-size: 12.5px; }
+.hist-tags { grid-column: 2; grid-row: 1 / span 2; justify-self: end; display: flex; align-items: center; gap: 6px; }
+.hist-detail { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.hist-detail-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex: none; flex-wrap: wrap; }
+.hist-detail .preview-text, .hist-detail .diff { flex: 1; min-height: 0; overflow: auto; margin: 0; }
+.diff { font-family: var(--mono); font-size: 12px; line-height: 1.5; padding: 6px 0 12px; }
+.diff > div { padding: 0 14px 0 10px; white-space: pre-wrap; word-break: break-word; }
+.diff .del { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.diff .add { background: color-mix(in srgb, var(--success) 16%, transparent); }
+.diff .del::before { content: "− "; color: var(--danger); }
+.diff .add::before { content: "+ "; color: var(--success); }
+.diff .ctx::before { content: "  "; }
+.diff .ctx { color: var(--text-2); }
+.diff-gap { color: var(--text-3); text-align: center; font-size: 11.5px; padding: 3px 0; margin: 4px 0; border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border); }
+.diff-note { padding: 8px 14px; color: var(--text-2); font-size: 12.5px; border-bottom: 1px solid var(--border); flex: none; }
+#draft-bar .banner { margin-bottom: 10px; }
