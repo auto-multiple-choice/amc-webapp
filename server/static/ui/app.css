@@ -263,3 +263,43 @@
 .summary dt { color: var(--text-3); }
 .summary dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 1100px) { .wizard-gallery { grid-template-columns: 1fr; } .tpl-preview { position: static; } }
+
+/* ---------- Guide ---------- */
+
+.guide-more { margin-top: 6px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+.guide-page { padding: 4px 6px 16px; color: var(--text); line-height: 1.6; max-width: 70ch; }
+.guide-page h2 { font-size: 20px; margin: 0 0 10px; }
+.guide-page h3 { font-size: 15px; margin: 20px 0 6px; }
+.guide-page h4 { font-size: 14px; margin: 16px 0 4px; }
+.guide-page p, .guide-page ul, .guide-page ol { margin: 0 0 10px; }
+.guide-page ul, .guide-page ol { padding-left: 20px; }
+.guide-page li + li { margin-top: 4px; }
+.guide-code { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border);
+  font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.preview-body:has(.guide-page) { background: var(--surface); }
+@media (max-width: 1100px) { .hide-narrow { display: none; } }
+
+/* ---------- Tour ---------- */
+
+.tour { position: fixed; inset: 0; z-index: 70; }
+.tour-spot { position: fixed; border-radius: 10px; box-shadow: 0 0 0 9999px rgb(var(--shadow-rgb) / .5); transition: all .2s ease; pointer-events: none; }
+.tour-card { position: fixed; width: min(340px, calc(100vw - 24px)); padding: 16px 18px; border-radius: 14px; background: var(--surface);
+  border: 1px solid var(--border); box-shadow: var(--shadow-3); }
+.tour-card h2 { font-size: 16px; margin: 2px 0 6px; }
+.tour-card p { margin: 0 0 12px; color: var(--text-2); }
+
+/* ---------- Appearance ---------- */
+
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.swatch { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--border-strong); cursor: pointer; padding: 0; }
+.swatch.is-on { box-shadow: 0 0 0 2px var(--text); }
+input[type="color"] { width: 44px; height: 34px; padding: 2px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); cursor: pointer; }
+.look-logo { width: 64px; height: 64px; border-radius: 12px; border: 1px solid var(--border); background: #fff; display: grid; place-items: center; overflow: hidden; flex: none; }
+.look-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.look-logo [class*="iconoir-"] { font-size: 24px; color: #8b929e; }
+.look-sample { border: 1px solid var(--border); border-radius: var(--radius-l); padding: 14px; display: grid; gap: 12px; }
+.look-bar { display: flex; align-items: center; gap: 10px; }
+.look-body { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.look-accent { font-weight: 650; color: color-mix(in oklab, var(--brand) 72%, currentColor); }
+.look-chip { padding: 2px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  background: color-mix(in oklab, var(--brand) 14%, transparent); border: 1px solid color-mix(in oklab, var(--brand) 35%, transparent); }

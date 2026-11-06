@@ -95,13 +95,20 @@ def amc_command(*args,
 
     if args[0] == "prepare":
         command += ["--log", project_dir() + "/_latex.log"]
-        po = get_options(["global:force_textpos", "moteur_latex_b"])
+        po = get_options(["global:force_textpos", "moteur_latex_b", "filter"])
         package_options = []
         if po["global:force_textpos"]:
             package_options.append("textpos")
             
         engines = os.environ.get('AMC_LATEX_ENGINES')
         if engines:
+            # AMC-TXT needs XeLaTeX. Here AMC may not change the engine
+            # itself (--no-allow-engine-change), so an AMC-TXT exam on
+            # pdflatex could never build: use XeLaTeX for it.
+            if (po["filter"] == "plain" and po["moteur_latex_b"] not in ("xelatex", "lualatex")
+                    and "xelatex" in engines.split(",")):
+                change_option("moteur_latex_b", "xelatex")
+                po["moteur_latex_b"] = "xelatex"
             if po["moteur_latex_b"] not in engines.split(","):
                 messages['ERR'].append(
                     f":LaTeX engine not available: {po['moteur_latex_b']}")

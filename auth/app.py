@@ -336,6 +336,8 @@ def verify():
     if user is not None and not user["must_change"]:
         resp = make_response("", 200)
         resp.headers[USER_HEADER] = user["username"]
+        # The app lets admins change the school's appearance.
+        resp.headers["X-AMC-Admin"] = "1" if user["is_admin"] else "0"
         return resp
     original = request.headers.get("X-Forwarded-Uri", "/")
     wants_page = (request.headers.get("X-Forwarded-Method", "GET") == "GET"

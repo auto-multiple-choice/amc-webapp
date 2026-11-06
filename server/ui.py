@@ -11,6 +11,7 @@ Kept in its own file so merging AMC team updates stays easy.
 """
 
 import base64
+import colorsys
 import hashlib
 import html
 import json
@@ -56,14 +57,20 @@ def init_app(app, server_module):
 @bp.route("/")
 @bp.route("/exams")
 @bp.route("/new")
+@bp.route("/appearance")
 @bp.route("/exam/<name>")
 @bp.route("/exam/<name>/<step>")
 def page(name=None, step=None):
     core.headers_info()
+    b = branding()
     resp = make_response(render_template(
         "ui_app.html",
         username=core.username(ifnone=""),
         app_version=core.AMCWEB_VERSION or "",
+        school=b.get("name", ""),
+        logo=_logo_url(b) or "",
+        brand_css=brand_css(b) if b.get("color") else "",
+        can_brand="1" if can_brand() else "",
     ))
     # The session id names the browser's temporary folder (uploads,
     # print files); same rule as upstream's page.
@@ -310,8 +317,12 @@ def read_record(pdir):
         return {}
 
 
+def _is_exam(pdir):
+    return os.path.isfile(os.path.join(pdir, "options.xml"))
+
+
 def _update_record(pdir, change):
-    if not os.path.isdir(pdir):
+    if not _is_exam(pdir):
         return {}  # the exam was deleted meanwhile: don't bring its folder back
     path = _record_file(pdir)
     with core.FileLock(path + ".lock"):
@@ -1560,14 +1571,19 @@ def refresh_scale(pdir, report_errors=False):
         return
     _scale_jobs[pdir] = {"pending": False}
     try:
-        while True:
+        while _is_exam(pdir):
             inputs = source_digest(pdir)
             core.emit_msg("ui-scale", "updating")
             messages, variables = {}, {}
             core.amc_command("prepare", "--mode", "b", "--progression-id", "MAJ", "--progression", "1",
                              messages=messages, variables=variables)
-            if not os.path.isdir(pdir):
-                break  # deleted meanwhile
+            if not _is_exam(pdir):
+                # The exam was deleted while AMC ran, and AMC made its
+                # folders again: without options.xml it is no exam, remove it.
+                if os.path.isdir(pdir):
+                    core.app.logger.info(f"Removing {pdir}, recreated by AMC after the exam was deleted")
+                    shutil.rmtree(pdir, ignore_errors=True)
+                break
             errors = [m.lstrip(":>") for m in messages.get("ERR", [])]
             entry = {"inputs": inputs, "at": int(time.time()),
                      "error": ("The questions can't be read: the source doesn't compile. "
@@ -1663,9 +1679,215 @@ STARTER_VARIANTS = {("blank", "separate"): "blank-separate"}
 META_FIELDS = ("class", "subject", "date")
 
 
+# ---------------------------------------------------------------- branding
+#
+# School name, logo and colours (Appearance), kept with the app's data in
+# MC-Projects/_branding/, so ./amc backup includes them. Upstream skips
+# "_" folders there, and account names can't start with "_".
+
+BRANDING_DIR = "_branding"
+LOGO_TYPES = {"png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml"}
+LOGO_MAX = 1024 * 1024
+NEUTRAL = "#3b5bdb"           # ui.css --brand
+SURFACES = {"light": "#ffffff", "dark": "#15181e"}  # ui.css --surface
+DARK_TEXT = "#111418"
+COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+# Presets keep white button text readable in both themes.
+PRESETS = [("Blue", "#3b5bdb"), ("Teal", "#0b7285"), ("Green", "#2b7a3a"), ("Purple", "#7048e8"),
+           ("Crimson", "#c92a2a"), ("Orange", "#c2410c"), ("Slate", "#495057")]
+
+
+def _brand_dir():
+    return os.path.join(core.projects_dir(root=True), BRANDING_DIR)
+
+
 def branding():
-    """School name and logo (Appearance); empty until set."""
-    return {}
+    """The school's branding: name, colour, palette, logo file."""
+    d = _brand_dir()
+    try:
+        with open(os.path.join(d, "branding.json"), encoding="utf-8") as f:
+            b = json.load(f)
+    except (OSError, ValueError):
+        b = {}
+    b = b if isinstance(b, dict) else {}
+    logo = b.get("logo")
+    if logo and logo in {f"logo.{e}" for e in LOGO_TYPES} and os.path.isfile(os.path.join(d, logo)):
+        b["logo_path"] = os.path.join(d, logo)
+    else:
+        b.pop("logo", None)
+    if not COLOR_RE.match(b.get("color") or ""):
+        b.pop("color", None)
+    b["palette"] = palette(b.get("color") or NEUTRAL)
+    return b
+
+
+def _rgb(c):
+    return tuple(int(c[i:i + 2], 16) / 255 for i in (1, 3, 5))
+
+
+def _hex(rgb):
+    return "#%02x%02x%02x" % tuple(round(max(0.0, min(1.0, x)) * 255) for x in rgb)
+
+
+def _luminance(c):
+    lin = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in _rgb(c)]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def contrast(a, b):
+    la, lb = _luminance(a), _luminance(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def theme_palette(color, theme):
+    """The brand colour for one theme: changed in lightness only as much as
+    needed for it to stand out on the theme's surface (3:1, as for
+    controls) and for button text on it to be readable (4.5:1, white or
+    near-black)."""
+    h, l, s = colorsys.rgb_to_hls(*_rgb(color))
+    step = -0.02 if theme == "light" else 0.02
+    for _ in range(60):
+        c = _hex(colorsys.hls_to_rgb(h, l, s))
+        if contrast(c, SURFACES[theme]) >= 3:
+            for on in ("#ffffff", DARK_TEXT):
+                if contrast(on, c) >= 4.5:
+                    return {"brand": c, "on_brand": on, "text_contrast": round(contrast(on, c), 1),
+                            "adjusted": c.lower() != color.lower()}
+        l = min(1.0, max(0.0, l + step))
+    return {"brand": NEUTRAL, "on_brand": "#ffffff", "text_contrast": round(contrast("#ffffff", NEUTRAL), 1),
+            "adjusted": True}
+
+
+def palette(color):
+    return {t: theme_palette(color, t) for t in ("light", "dark")}
+
+
+def brand_css(b):
+    """CSS overriding the two brand tokens in each theme (ui.css derives the rest)."""
+    p = b["palette"]
+    light = f"--brand:{p['light']['brand']};--on-brand:{p['light']['on_brand']};"
+    dark = f"--brand:{p['dark']['brand']};--on-brand:{p['dark']['on_brand']};"
+    return (f":root{{{light}}}:root[data-theme=\"dark\"]{{{dark}}}"
+            f"@media (prefers-color-scheme: dark){{:root:not([data-theme=\"light\"]){{{dark}}}}}")
+
+
+def can_brand():
+    """Admins of the sign-in service in shared-machine mode (the proxy
+    sets X-AMC-Admin and strips any copy a browser sends); the local
+    user in single-user mode."""
+    if not os.environ.get("AMC_USERHEADER"):
+        return True
+    return request.headers.get("X-AMC-Admin") == "1"
+
+
+def _logo_url(b):
+    return f"/public/branding/logo?v={b.get('updated', 0)}" if b.get("logo") else None
+
+
+@bp.route("/ui/api/branding")
+def api_branding():
+    core.headers_info()
+    b = branding()
+    return jsonify(name=b.get("name", ""), color=b.get("color"), neutral=NEUTRAL, logo=_logo_url(b),
+                   palette=b["palette"], can_edit=can_brand(), presets=PRESETS)
+
+
+@bp.route("/ui/api/branding/palette")
+def api_branding_palette():
+    color = request.args.get("color", "")
+    if not COLOR_RE.match(color):
+        return jsonify(error="A colour looks like #1c7ed6."), 400
+    return jsonify(palette=palette(color))
+
+
+def _logo_kind(data):
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    head = data[:2048].lstrip().lower()
+    if (head.startswith(b"<?xml") or head.startswith(b"<svg") or head.startswith(b"<!--")) and b"<svg" in head:
+        return "svg"
+    return None
+
+
+@bp.route("/ui/branding", methods=["POST"])
+def save_branding():
+    """Save the school name, colour and logo; "reset" goes back to neutral.
+    Needs the AMC-sid header, which a page on another site can't send."""
+    core.headers_info()
+    if not can_brand() or not request.headers.get("AMC-sid"):
+        return jsonify(error="Only administrators can change the appearance."), 403
+    d = _brand_dir()
+    os.makedirs(d, exist_ok=True)
+    b = branding()
+    keep = {k: b[k] for k in ("name", "color", "logo") if k in b}
+    if request.form.get("reset") == "1":
+        keep = {}
+    else:
+        if "name" in request.form:
+            keep["name"] = request.form["name"].strip()[:80]
+        if "color" in request.form:
+            color = request.form["color"].strip()
+            if color and not COLOR_RE.match(color):
+                return jsonify(error="A colour looks like #1c7ed6."), 400
+            keep["color"] = color.lower() if color else None
+        if request.form.get("remove_logo") == "1":
+            keep.pop("logo", None)
+        upload = request.files.get("logo")
+        if upload and upload.filename:
+            data = upload.read(LOGO_MAX + 1)
+            if len(data) > LOGO_MAX:
+                return jsonify(error="The logo is larger than 1 MB."), 400
+            kind = _logo_kind(data)
+            if not kind:
+                return jsonify(error="The logo must be a PNG, JPEG or SVG image."), 400
+            tmp = os.path.join(d, f"logo.{kind}.tmp")
+            with open(tmp, "wb") as f:
+                f.write(data)
+            os.replace(tmp, os.path.join(d, f"logo.{kind}"))
+            keep["logo"] = f"logo.{kind}"
+    for f in os.listdir(d):  # logos no longer used
+        if f.startswith("logo.") and f != keep.get("logo"):
+            os.unlink(os.path.join(d, f))
+    keep = {k: v for k, v in keep.items() if v}
+    keep["updated"] = int(time.time())
+    keep["by"] = _who()
+    tmp = os.path.join(d, "branding.json.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(keep, f, indent=1)
+    os.replace(tmp, os.path.join(d, "branding.json"))
+    core.app.logger.info(f"Branding changed by {_who()}: {keep}")
+    return jsonify(ok=True)
+
+
+# Public, read-only: the sign-in page (a separate service) uses these.
+
+@bp.route("/public/branding.json")
+def public_branding():
+    b = branding()
+    resp = jsonify(name=b.get("name", ""), logo=_logo_url(b), palette=b["palette"])
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@bp.route("/public/branding/logo")
+def public_logo():
+    b = branding()
+    if not b.get("logo_path"):
+        abort(404)
+    resp = send_file(b["logo_path"], mimetype=LOGO_TYPES[b["logo"].rsplit(".", 1)[1]], max_age=3600)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
+    return resp
+
+
+@bp.route("/public/branding.js")
+def public_branding_js():
+    resp = make_response(render_template("ui_branding.js"))
+    resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 def _gallery_index():
@@ -1902,6 +2124,31 @@ def marking_inputs_for(pdir, name):
         return marking_inputs(pdir)
     finally:
         flask_g.project_name = saved
+
+
+# ---------------------------------------------------------------- guide
+#
+# The guide is Markdown in server/guide/en/, one page per step plus an
+# overview, so teachers can improve it without touching code. Each step's
+# "What to do here" list also feeds the box at the top of that step.
+
+GUIDE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "guide", "en")
+GUIDE_PAGES = ("index",) + tuple(s for s in STEPS if s != "settings")
+
+
+@bp.route("/ui/api/guide")
+def api_guide():
+    core.headers_info()
+    pages = []
+    for pid in GUIDE_PAGES:
+        try:
+            with open(os.path.join(GUIDE_DIR, pid + ".md"), encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            continue
+        m = re.match(r"#\s+(.+)", text)
+        pages.append({"id": pid, "title": m.group(1).strip() if m else pid, "markdown": text})
+    return jsonify(pages=pages)
 
 
 SOCKET_EVENTS = {

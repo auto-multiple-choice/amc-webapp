@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}AMC{% endblock %} · AMC</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {# The school's name, logo and colours, from the app (served at /public/ without sign-in). #}
+  <script src="/public/branding.js" defer></script>
 </head>
 <body>
   <header class="bar">

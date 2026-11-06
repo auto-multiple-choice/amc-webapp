@@ -27,6 +27,10 @@ const store = {
 const APP = document.getElementById('app');
 const USER = APP.dataset.user || '';
 const VERSION = APP.dataset.version || '';
+const SCHOOL = APP.dataset.school || '';      // Appearance: the school's name
+const LOGO = APP.dataset.logo || '';          // ...and logo
+const CAN_BRAND = APP.dataset.canBrand === '1';
+const BRAND = SCHOOL || 'AMC';
 
 /* ---------- Steps ---------- */
 
@@ -120,6 +124,9 @@ const S = {
   dash: store.get('dash', { query: '', klass: '', state: '', sort: 'recent', archived: false }),
   wizard: null,           // the new-exam wizard's answers
   gallery: null,          // templates for the wizard (/ui/api/gallery)
+  guidePages: null,       // the guide's Markdown pages (/ui/api/guide)
+  guideId: 'index',       // the guide page shown in the preview panel
+  look: null,             // the Appearance page's choices (/ui/api/branding)
 };
 let editor = null;
 
@@ -292,6 +299,7 @@ resetIdle();
 function parsePath(path) {
   const parts = path.split('/').filter(Boolean).map((p) => { try { return decodeURIComponent(p); } catch { return p; } });
   if (parts[0] === 'new' && parts.length === 1) return { kind: 'new' };
+  if (parts[0] === 'appearance' && parts.length === 1) return { kind: 'appearance' };
   if (parts[0] === 'exam' && parts[1]) {
     const step = STEPS.some((s) => s.id === parts[2]) || parts[2] === 'settings' ? parts[2] : null;
     return { kind: 'exam', name: parts[1], step };
@@ -321,12 +329,16 @@ window.addEventListener('beforeunload', (e) => { if (S.source.dirty) { e.prevent
 function onRoute() {
   const r = parsePath(location.pathname);
   const leavingQuestions = S.route.step === 'questions' && r.step !== 'questions';
-  S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false; S.previewMode = null;
+  // The guide stays open while moving between the steps of an exam.
+  const keepGuide = S.previewMode === 'guide' && r.kind === 'exam' && S.route.kind === 'exam' && r.name === S.route.name;
+  S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false;
+  S.previewMode = keepGuide ? 'guide' : null;
   S.review = null; S.previewImage = null; S.previewList = null;
   if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) dropEditor();
-  if (r.kind === 'exams' || r.kind === 'new') {
+  if (r.kind === 'exams' || r.kind === 'new' || r.kind === 'appearance') {
     S.project = null; S.status = null; S.files = null;
-    document.title = r.kind === 'new' ? 'New exam · AMC' : 'Exams · AMC';
+    document.title = `${{ new: 'New exam', appearance: 'Appearance' }[r.kind] || 'Exams'} · ${BRAND}`;
+    if (r.kind === 'appearance') loadLook();
     if (r.kind === 'new' && !S.wizard) S.wizard = newWizard();
     render();
     loadProjects();
@@ -373,7 +385,7 @@ async function onProjectOpen(name) {
     S.route = parsePath(location.pathname);
   }
   S.project = name; S.opening = null;
-  document.title = `${name} · AMC`;
+  document.title = `${name} · ${BRAND}`;
   await refreshStatus();
   if (S.route.kind === 'exam' && !S.route.step) { navigate(examPath(name, suggestStep()), { replace: true }); return; }
   render();
@@ -514,6 +526,9 @@ function render() {
   renderSide();
   renderMain();
   renderPreview();
+  if (S.route.kind === 'exam' && S.route.step && S.project && !tour && !store.get('tour-done', false)) {
+    setTimeout(() => { if (!tour && !store.get('tour-done', false) && !$('#layer').innerHTML && S.route.kind === 'exam') startTour(); }, 800);
+  }
 }
 
 function stateChip(state) {
@@ -530,21 +545,28 @@ function renderTop() {
   const crumbs = ['<a href="/exams" data-nav>Exams</a>'];
   if (r.kind === 'exam') crumbs.push(`<span class="current">${esc(r.name)}</span>`);
   if (r.kind === 'new') crumbs.push('<span class="current">New exam</span>');
+  if (r.kind === 'appearance') crumbs.push('<span class="current">Appearance</span>');
   const hasPreview = r.kind === 'exam';
   $('#topbar').innerHTML = `
-    <a class="brandmark" href="/exams" data-nav><span class="brandmark-logo">AMC</span><span class="brandmark-name">AMC</span></a>
+    <a class="brandmark" href="/exams" data-nav><span class="brandmark-logo">${LOGO ? `<img src="${esc(LOGO)}" alt="">` : 'AMC'}</span><span class="brandmark-name">${esc(BRAND)}</span></a>
     <nav class="crumbs" aria-label="Breadcrumb"><span class="sep">/</span>${crumbs.join('<span class="sep">/</span>')}</nav>
     ${r.kind === 'exam' ? stateChip(projectState()) : ''}
     ${S.online ? '' : `<span class="chip chip-danger" title="The connection to the server was lost. It reconnects by itself.">${ic('cloud-xmark')} Offline</span>`}
     <span class="topbar-spacer"></span>
     <div class="topbar-actions">
       ${hasPreview ? `<button class="btn btn-ghost btn-icon" data-act="toggle-preview" aria-pressed="${S.previewOpen}" title="Show or hide the preview panel" aria-label="Preview panel">${ic(S.previewOpen ? 'sidebar-collapse' : 'sidebar-expand')}</button>` : ''}
+      <div style="position:relative"><button class="btn btn-ghost" data-act="menu" data-menu="guide" aria-haspopup="menu" aria-expanded="${S.menu === 'guide'}">${ic('help-circle')}<span class="hide-narrow">Guide</span></button>
+        ${S.menu === 'guide' ? `<div class="menu" role="menu" style="right:0;left:auto">
+          ${r.kind === 'exam' && r.step && guidePage(r.step) ? `<button class="menu-item" role="menuitem" data-act="guide-open" data-page="${r.step}">${ic('light-bulb')} About this step</button>` : ''}
+          <button class="menu-item" role="menuitem" data-act="guide-open" data-page="index">${ic('open-book')} The full guide</button>
+          <button class="menu-item" role="menuitem" data-act="tour-start">${ic('compass')} Take the tour</button></div>` : ''}</div>
       <button class="btn btn-ghost btn-icon" data-act="theme" title="Theme: ${S.theme === 'auto' ? 'same as the computer' : S.theme}" aria-label="Change theme">${ic(themeIcon)}</button>
       ${USER ? `<div style="position:relative">
         <button class="btn btn-ghost" data-act="menu" data-menu="account" aria-haspopup="menu" aria-expanded="${S.menu === 'account'}" style="padding:0 6px 0 4px">
           <span class="avatar">${esc(USER[0].toUpperCase())}</span><span>${esc(USER)}</span>${ic('nav-arrow-down')}</button>
         ${S.menu === 'account' ? `<div class="menu" role="menu">
           <div class="menu-label">Signed in as ${esc(USER)}</div>
+          ${CAN_BRAND ? `<a class="menu-item" role="menuitem" href="/appearance" data-nav>${ic('color-filter')} Appearance</a>` : ''}
           <a class="menu-item" role="menuitem" href="/auth/account">${ic('user-circle')} Account, password and sign out</a></div>` : ''}
       </div>` : ''}
     </div>`;
@@ -574,6 +596,7 @@ function renderMain(keepScroll = false) {
   let html;
   if (r.kind === 'exams') html = viewExams();
   else if (r.kind === 'new') html = viewNew();
+  else if (r.kind === 'appearance') html = viewAppearance();
   else if (!S.project || !r.step) html = `<div class="page"><div class="skeleton" style="height:40px;width:40%;margin-bottom:16px"></div><div class="skeleton"></div></div>`;
   else if (r.step === 'questions') html = viewQuestions();
   else if (r.step === 'marking-scheme') html = viewMarking();
@@ -594,11 +617,19 @@ function renderMain(keepScroll = false) {
     resizeEditor();
     return;
   }
-  // Keep what's being typed in the focused field across the redraw.
+  // Keep what's being typed in the focused field across the redraw, and
+  // text typed but not saved yet in other fields (a background refresh
+  // mustn't undo it), when the page itself stays the same.
   const active = document.activeElement;
   const typing = active && active.id && main.contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName)
     ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
+  const routeKey = `${r.kind}/${r.name || ''}/${r.step || ''}`;
+  const edited = main.dataset.route === routeKey
+    ? [...main.querySelectorAll('input[id], textarea[id]')].filter((el) => !/^(checkbox|radio|file)$/.test(el.type) && el.value !== el.defaultValue).map((el) => [el.id, el.value])
+    : [];
   main.innerHTML = html;
+  main.dataset.route = routeKey;
+  edited.forEach(([id, value]) => { const el = document.getElementById(id); if (el && el.value === el.defaultValue) el.value = value; });
   if (typing) {
     const el = document.getElementById(typing.id);
     if (el) { el.value = typing.value; el.focus(); try { el.setSelectionRange(typing.start, typing.end); } catch { /* not a text field */ } }
@@ -618,7 +649,7 @@ const fsUrl = (path, attach = false) => `/fs/${enc(S.project)}/${path.split('/')
 
 function renderPreview() {
   const exam = S.route.kind === 'exam';
-  const open = exam && S.previewOpen;
+  const open = exam ? S.previewOpen : S.previewMode === 'guide';
   APP.classList.toggle('preview-closed', !open);
   APP.classList.toggle('preview-max', open && S.previewMax);
   APP.style.setProperty('--preview-w', S.previewW + 'px');
@@ -626,7 +657,9 @@ function renderPreview() {
   if (!open) { p.innerHTML = ''; return; }
   const docs = previewDocs();
   let title; let body; let bodyClass = 'preview-body'; let url = null; let tabs = '';
-  if (S.previewMode === 'image' && S.previewImage) {
+  if (S.previewMode === 'guide') {
+    ({ title, body, tabs } = guidePreview());
+  } else if (S.previewMode === 'image' && S.previewImage) {
     title = S.previewImage.title;
     url = S.previewImage.url;
     body = `<img class="preview-img" src="${esc(url)}" alt="${esc(title)}">`;
@@ -732,7 +765,8 @@ function guideBox(step) {
   const collapsed = !!S.guide[step];
   return `<section class="guide ${collapsed ? 'is-collapsed' : ''}">
     <button class="guide-head" data-act="guide-toggle" data-step="${step}" aria-expanded="${!collapsed}">${ic('light-bulb')} What to do here ${ic('nav-arrow-down', 'chev')}</button>
-    <div class="guide-body"><ul>${(GUIDES[step] || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div></section>`;
+    <div class="guide-body"><ul>${guideBullets(step).map((x) => `<li>${x}</li>`).join('')}</ul>
+      <button class="link-btn guide-more" data-act="guide-open" data-page="${step}">More in the guide ${ic('arrow-right')}</button></div></section>`;
 }
 function banner(kind, iconName, title, text, buttons = '') {
   return `<div class="banner banner-${kind}" role="note">${ic(iconName)}<div class="banner-body">
@@ -818,7 +852,7 @@ function viewExams() {
       <div class="card ${shown.length ? 'hidden' : ''}" id="dash-none"><div class="empty"><p>${d.archived ? 'No archived exams match.' : 'No exams match.'}</p></div></div>`;
   }
   return `<div class="page">
-    ${header('', 'Exams', 'Your exams, where each one stands and what comes next.', list && list.length ? `<a class="btn btn-primary" href="/new" data-nav>${ic('plus')} New exam</a>` : '')}
+    ${header('', 'Exams', 'Your exams, where each one stands and what comes next.', `${CAN_BRAND && !USER ? `<a class="btn btn-ghost" href="/appearance" data-nav>${ic('color-filter')} Appearance</a>` : ''}${list && list.length ? `<a class="btn btn-primary" href="/new" data-nav>${ic('plus')} New exam</a>` : ''}`)}
     ${body}</div>`;
 }
 
@@ -877,7 +911,7 @@ function viewNew() {
       <label class="field"><span class="field-label">Class</span><input class="input" data-wiz="class" value="${esc(w.class)}" placeholder="10B"></label>
       <label class="field"><span class="field-label">Subject</span><input class="input" data-wiz="subject" value="${esc(w.subject)}" placeholder="Physics"></label>
       <label class="field"><span class="field-label">Date of the exam</span><input class="input" type="date" data-wiz="date" value="${esc(w.date)}"></label>
-      </div><p class="field-hint" id="wiz-error" style="color:var(--danger);margin-top:10px"></p></div>
+      </div><p class="field-hint" id="wiz-error" style="color:var(--danger);margin-top:10px">${esc(w.error || '')}</p></div>
       <div class="card-foot"><a class="btn" href="/exams" data-nav>Cancel</a><button class="btn btn-primary" data-act="wiz-next">Next: choose a template ${ic('arrow-right')}</button></div></section>`;
   } else if (w.step === 2) body = wizardGallery();
   else body = wizardOptions();
@@ -2161,6 +2195,270 @@ function previewListGo(i) {
   renderPreview();
 }
 
+/* ---------- View: appearance (branding) ---------- */
+
+async function loadLook() {
+  try {
+    const b = await getJSON('/ui/api/branding');
+    S.look = { name: b.name || '', color: b.color || null, neutral: b.neutral, logoUrl: b.logo, file: null, fileUrl: null,
+      removeLogo: false, swatches: [], presets: b.presets, palette: b.palette, canEdit: b.can_edit };
+    if (b.logo) logoSwatches(b.logo);
+  } catch (e) { console.error(e); S.look = null; }
+  if (S.route.kind === 'appearance') renderMain(true);
+}
+
+/* Main colours of a logo: saturated, not too light or dark, by hue. */
+function logoSwatches(url) {
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const n = 64; const c = document.createElement('canvas'); c.width = n; c.height = n;
+      const g = c.getContext('2d'); g.drawImage(img, 0, 0, n, n);
+      const d = g.getImageData(0, 0, n, n).data;
+      const buckets = new Map();
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) continue;
+        const [r, gg, b] = [d[i] / 255, d[i + 1] / 255, d[i + 2] / 255];
+        const max = Math.max(r, gg, b); const min = Math.min(r, gg, b); const l = (max + min) / 2;
+        const s = max === min ? 0 : (l > 0.5 ? (max - min) / (2 - max - min) : (max - min) / (max + min));
+        if (s < 0.25 || l < 0.12 || l > 0.9) continue;
+        let h = 0;
+        if (max === r) h = ((gg - b) / (max - min)) % 6; else if (max === gg) h = (b - r) / (max - min) + 2; else h = (r - gg) / (max - min) + 4;
+        const key = Math.round(((h * 60 + 360) % 360) / 20) % 18;
+        const v = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+        v.n += 1; v.r += d[i]; v.g += d[i + 1]; v.b += d[i + 2];
+        buckets.set(key, v);
+      }
+      const hex = (v) => '#' + [v.r, v.g, v.b].map((x) => Math.round(x / v.n).toString(16).padStart(2, '0')).join('');
+      S.look.swatches = [...buckets.values()].filter((v) => v.n >= 12).sort((a, b) => b.n - a.n).slice(0, 5).map(hex);
+    } catch (e) { S.look.swatches = []; }
+    if (S.route.kind === 'appearance') renderMain(true);
+  };
+  img.src = url;
+}
+
+let lookTimer = null;
+function setLookColor(color) {
+  S.look.color = color;
+  clearTimeout(lookTimer);
+  lookTimer = setTimeout(async () => {
+    try { S.look.palette = (await getJSON(`/ui/api/branding/palette?color=${enc(color || S.look.neutral)}`)).palette; } catch { /* keep the last one */ }
+    if (S.route.kind === 'appearance') renderMain(true);
+  }, 120);
+  renderMain(true);
+}
+
+function lookPreview(theme) {
+  const p = S.look.palette[theme];
+  const L = S.look;
+  const logo = L.removeLogo ? null : (L.fileUrl || L.logoUrl);
+  const bg = theme === 'light' ? '#ffffff' : '#15181e';
+  const text = theme === 'light' ? '#1d2330' : '#e6e9ef';
+  return `<div class="look-sample" style="--brand:${p.brand};--on-brand:${p.on_brand};background:${bg};color:${text}">
+    <div class="look-bar"><span class="brandmark-logo">${logo ? `<img src="${esc(logo)}" alt="">` : 'AMC'}</span><b>${esc(L.name || 'AMC')}</b></div>
+    <div class="look-body"><button class="btn btn-primary btn-sm" tabindex="-1">Save PDFs for printing</button>
+      <span class="look-accent">Step 3 of 10</span><span class="look-chip">Ready to print</span></div>
+    <div class="subtle" style="color:inherit;opacity:.75">${theme === 'light' ? 'Light' : 'Dark'} theme · button text ${p.on_brand === '#ffffff' ? 'white' : 'dark'}, contrast ${p.text_contrast}:1${p.adjusted ? ' · shade adjusted to stay readable' : ''}</div>
+  </div>`;
+}
+
+function viewAppearance() {
+  const L = S.look;
+  if (!L) return `<div class="page">${header('', 'Appearance')}<div class="skeleton"></div></div>`;
+  if (!L.canEdit) {
+    return `<div class="page">${header('', 'Appearance', 'The school\'s name, logo and colours.')}
+      ${banner('info', 'lock', 'Only administrators can change the appearance.', 'Ask an administrator of this shared machine.')}</div>`;
+  }
+  const logo = L.removeLogo ? null : (L.fileUrl || L.logoUrl);
+  const swatch = (c, label) => `<button class="swatch ${L.color === c ? 'is-on' : ''}" data-act="look-color" data-color="${c}" title="${esc(label || c)}" aria-label="${esc(label || c)}" style="background:${c}"></button>`;
+  return `<div class="page">
+    ${header('', 'Appearance', 'The school\'s name, logo and colours, for everyone using this app.')}
+    <div class="grid grid-2" style="align-items:start">
+      <section class="card"><div class="card-header"><h2>School</h2></div><div class="card-body">
+        <label class="field"><span class="field-label">School name</span><input class="input" id="look-name" value="${esc(L.name)}" placeholder="Riverside High School" maxlength="80"></label>
+        <div class="field" style="margin-top:14px"><span class="field-label">Logo</span>
+          <div class="row" style="gap:12px;align-items:center">
+            <span class="look-logo">${logo ? `<img src="${esc(logo)}" alt="Logo">` : ic('media-image')}</span>
+            <label class="btn btn-sm">${ic('upload')} ${logo ? 'Replace' : 'Choose a logo'}<input type="file" id="look-logo" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" hidden></label>
+            ${logo ? `<button class="btn btn-ghost btn-sm" data-act="look-remove-logo">${ic('trash')} Remove</button>` : ''}
+          </div>
+          <span class="field-hint">PNG, JPEG or SVG, up to 1 MB. Shown in the top bar and on the sign-in page; new exams from the starters print it (PNG or JPEG).</span></div>
+      </div></section>
+      <section class="card"><div class="card-header"><h2>Colour</h2></div><div class="card-body">
+        ${L.swatches.length ? `<div class="field-label">From the logo</div><div class="swatches">${L.swatches.map((c) => swatch(c)).join('')}</div>` : ''}
+        <div class="field-label" style="margin-top:${L.swatches.length ? 12 : 0}px">Presets</div>
+        <div class="swatches">${L.presets.map(([label, c]) => swatch(c, label)).join('')}</div>
+        <div class="field-label" style="margin-top:12px">Any colour</div>
+        <div class="row" style="gap:8px"><input type="color" id="look-color" value="${esc(L.color || L.neutral)}" aria-label="Pick a colour">
+          <input class="input mono" id="look-hex" style="max-width:120px" value="${esc(L.color || '')}" placeholder="${esc(L.neutral)}" aria-label="Colour as #rrggbb"></div>
+        <p class="field-hint" style="margin-top:10px">The app keeps text readable: if a colour is too pale or too dark for a theme, it uses a lighter or darker shade of it there.</p>
+      </div></section>
+    </div>
+    <section class="card" style="margin-top:16px"><div class="card-header"><h2>Preview</h2></div>
+      <div class="card-body"><div class="grid grid-2">${lookPreview('light')}${lookPreview('dark')}</div></div>
+      <div class="card-foot"><button class="btn btn-ghost" data-act="look-reset">${ic('undo')} Reset to neutral</button><span class="spacer"></span>
+        <button class="btn btn-primary" data-act="look-save">${ic('floppy-disk')} Save</button></div></section>
+  </div>`;
+}
+
+async function saveLook(reset = false) {
+  const L = S.look;
+  const form = new FormData();
+  if (reset) form.append('reset', '1');
+  else {
+    form.append('name', ($('#look-name') || {}).value ?? L.name);
+    form.append('color', L.color || '');
+    if (L.removeLogo) form.append('remove_logo', '1');
+    if (L.file) form.append('logo', L.file, L.file.name);
+  }
+  try {
+    const r = await fetch('/ui/branding', { method: 'POST', headers: headers(), body: form });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || `Not saved (${r.status})`);
+    toast(reset ? 'Back to the neutral look.' : 'Appearance saved.');
+    setTimeout(() => location.reload(), 400);
+  } catch (e) { toast(e.message, 'warning-triangle'); }
+}
+
+/* ---------- Guide and tour ---------- */
+
+async function loadGuide() {
+  if (S.guidePages) return;
+  try { S.guidePages = (await getJSON('/ui/api/guide')).pages; } catch { S.guidePages = []; }
+  if (S.route.kind === 'exam') renderMain(true);
+  if (S.previewMode === 'guide') renderPreview();
+}
+
+const guidePage = (id) => (S.guidePages || []).find((p) => p.id === id);
+
+/* Inline Markdown: `code`, **bold**, *italic*, [text](link). Input is escaped first. */
+function mdInline(text) {
+  let t = esc(text);
+  t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+  t = t.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  t = t.replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>');
+  t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, href) => {
+    const g = /^guide:([a-z-]+)$/.exec(href);
+    if (g) return `<a href="#" data-act="guide-open" data-page="${g[1]}">${label}</a>`;
+    if (/^https?:\/\//.test(href)) return `<a href="${href}" target="_blank" rel="noopener">${label}</a>`;
+    return label;
+  });
+  return t;
+}
+
+/* A small Markdown renderer for the guide: headings, paragraphs, lists, code blocks. */
+function md(text) {
+  const out = [];
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  let para = []; let list = null;
+  const flush = () => {
+    if (para.length) { out.push(`<p>${mdInline(para.join(' '))}</p>`); para = []; }
+    if (list) { out.push(`<${list.tag}>${list.items.map((x) => `<li>${mdInline(x)}</li>`).join('')}</${list.tag}>`); list = null; }
+  };
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^```/.test(line)) {
+      flush();
+      const code = [];
+      for (i += 1; i < lines.length && !/^```/.test(lines[i]); i += 1) code.push(lines[i]);
+      out.push(`<pre class="guide-code">${esc(code.join('\n'))}</pre>`);
+      continue;
+    }
+    const h = /^(#{1,3})\s+(.*)$/.exec(line);
+    const li = /^\s*(?:[-*]|(\d+)\.)\s+(.*)$/.exec(line);
+    if (h) { flush(); out.push(`<h${h[1].length + 1}>${mdInline(h[2])}</h${h[1].length + 1}>`); }
+    else if (li) {
+      if (para.length) { out.push(`<p>${mdInline(para.join(' '))}</p>`); para = []; }
+      const tag = li[1] ? 'ol' : 'ul';
+      if (!list || list.tag !== tag) { if (list) flush(); list = { tag, items: [] }; }
+      list.items.push(li[2]);
+    } else if (!line.trim()) flush();
+    else if (list && /^\s{2,}\S/.test(line)) list.items[list.items.length - 1] += ' ' + line.trim();
+    else { if (list) flush(); para.push(line.trim()); }
+  }
+  flush();
+  return out.join('\n');
+}
+
+/* The "What to do here" list of a step, from its guide page. */
+function guideBullets(step) {
+  const p = guidePage(step);
+  if (p) {
+    const m = /##\s+What to do here\s*\n([\s\S]*?)(\n##\s|$)/.exec(p.markdown);
+    const items = m ? m[1].split('\n').map((l) => /^\s*-\s+(.*)$/.exec(l)).filter(Boolean).map((x) => mdInline(x[1])) : [];
+    if (items.length) return items;
+  }
+  return (GUIDES[step] || []).map(esc);
+}
+
+function openGuide(page) {
+  S.guideId = guidePage(page) || !S.guidePages ? page : 'index';
+  S.previewMode = 'guide'; S.previewFile = null; S.previewList = null;
+  S.guideOpen = true;
+  if (S.route.kind === 'exam' && !S.previewOpen) { S.previewOpen = true; store.set('previewOpen', true); }
+  renderTop(); renderPreview();
+  const body = $('#preview-body'); if (body) body.scrollTop = 0;
+  loadGuide();
+}
+
+function guidePreview() {
+  const pages = S.guidePages;
+  if (!pages) return { title: 'Guide', body: '<div class="preview-empty">Loading the guide…</div>', tabs: '' };
+  const i = Math.max(0, pages.findIndex((p) => p.id === S.guideId));
+  const p = pages[i];
+  const tabs = `<div class="preview-tabs"><button data-act="guide-open" data-page="${pages[i - 1] ? pages[i - 1].id : ''}" ${i ? '' : 'disabled'}>${ic('nav-arrow-left')} Previous</button>
+    <label class="sr-only" for="guide-select">Guide page</label><select class="select input-sm" id="guide-select">${pages.map((x) => `<option value="${x.id}" ${x.id === p.id ? 'selected' : ''}>${esc(x.title)}</option>`).join('')}</select>
+    <button data-act="guide-open" data-page="${pages[i + 1] ? pages[i + 1].id : ''}" ${pages[i + 1] ? '' : 'disabled'}>Next ${ic('nav-arrow-right')}</button></div>`;
+  const toStep = S.route.kind === 'exam' && p.id !== 'index' && STEPS.some((s) => s.id === p.id) && S.route.step !== p.id
+    ? `<p><a class="btn btn-sm" href="${examPath(S.project, p.id)}" data-nav>Go to this step ${ic('arrow-right')}</a></p>` : '';
+  return { title: `Guide · ${p.title}`, body: `<article class="guide-page">${md(p.markdown)}${toStep}</article>`, tabs };
+}
+
+/* First-run tour: a few spotlights, skippable, replayable from the Guide menu. */
+const TOUR = [
+  { sel: '#sidebar', title: 'The ten steps', text: 'Every exam goes through these steps, before and after the exam. A tick means done, a number means something needs you. Open any step at any time.' },
+  { sel: '#main .guide', title: 'What to do here', text: 'Each step starts with a short list of what to do. Fold it away once you know it.' },
+  { sel: '#main a.btn-primary[href="/new"]', title: 'New exam', text: 'Start an exam from a template or a blank start.' },
+  { sel: '.exam-card', title: 'Your exams', text: 'Each card shows where an exam stands, and the next thing to do.' },
+  { sel: '#topbar [data-act="toggle-preview"]', title: 'The preview panel', text: 'Question papers, scanned pages, exported marks and annotated sheets open on the right. This button shows or hides it.' },
+  { sel: '#topbar [data-menu="guide"]', title: 'The guide', text: 'The full guide, with common problems and fixes for each step. Take this tour again from here.' },
+];
+let tour = null;
+
+function startTour() {
+  S.menu = null; renderTop();
+  const steps = TOUR.filter((t) => { const el = $(t.sel); return el && el.getClientRects().length; });
+  if (!steps.length) return;
+  tour = { steps, i: 0 };
+  renderTour();
+}
+function endTour() { tour = null; store.set('tour-done', true); renderTour(); }
+function renderTour() {
+  let el = $('#tour');
+  if (!tour) { if (el) el.remove(); return; }
+  const st = tour.steps[tour.i];
+  const target = $(st.sel);
+  if (!target) { endTour(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'tour'; el.className = 'tour'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-labelledby', 'tour-title'); document.body.appendChild(el); }
+  const r = target.getBoundingClientRect();
+  const pad = 6;
+  const last = tour.i === tour.steps.length - 1;
+  el.innerHTML = `<div class="tour-spot" style="left:${r.left - pad}px;top:${r.top - pad}px;width:${r.width + 2 * pad}px;height:${r.height + 2 * pad}px"></div>
+    <div class="tour-card" id="tour-card"><div class="subtle">${tour.i + 1} of ${tour.steps.length}</div><h2 id="tour-title">${st.title}</h2><p>${st.text}</p>
+      <div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-act="tour-end">Skip the tour</button><span class="spacer"></span>
+      ${tour.i ? '<button class="btn btn-sm" data-act="tour-step" data-delta="-1">Back</button>' : ''}
+      <button class="btn btn-primary btn-sm" data-act="${last ? 'tour-end' : 'tour-step'}" data-delta="1">${last ? 'Done' : 'Next'}</button></div></div>`;
+  const card = $('#tour-card');
+  const cw = card.offsetWidth; const ch = card.offsetHeight;
+  let left = r.right + 16; let top = r.top;
+  if (left + cw > window.innerWidth - 12) { left = Math.max(12, r.left - cw - 16); }
+  if (left < 12 || (r.left - cw - 16 < 12 && r.right + 16 + cw > window.innerWidth - 12)) { left = Math.min(Math.max(12, r.left), window.innerWidth - cw - 12); top = r.bottom + 16; }
+  if (top + ch > window.innerHeight - 12) top = Math.max(12, Math.min(r.top - ch - 16, window.innerHeight - ch - 12));
+  card.style.left = `${left}px`; card.style.top = `${Math.max(12, top)}px`;
+  card.querySelector('.btn-primary').focus();
+}
+window.addEventListener('resize', () => { if (tour) renderTour(); });
+
 /* ---------- Dialogs, toasts, progress ---------- */
 
 let dialogResolve = null;
@@ -2262,7 +2560,9 @@ function applyTheme() {
 const ACTIONS = {
   theme: () => { S.theme = { auto: 'light', light: 'dark', dark: 'auto' }[S.theme]; store.set('theme', S.theme); applyTheme(); renderTop(); },
   menu: (el) => { const m = el.dataset.menu; S.menu = S.menu === m ? null : m; renderTop(); if (S.route.kind === 'exams') renderMain(true); },
-  'toggle-preview': () => { S.previewOpen = !S.previewOpen; S.previewMax = false; store.set('previewOpen', S.previewOpen); renderTop(); renderPreview(); resizeEditor(); },
+  'toggle-preview': () => {
+    if (S.route.kind !== 'exam') { S.previewMode = null; renderPreview(); return; }
+    S.previewOpen = !S.previewOpen; S.previewMax = false; store.set('previewOpen', S.previewOpen); renderTop(); renderPreview(); resizeEditor(); },
   'preview-max': () => { S.previewMax = !S.previewMax; renderPreview(); resizeEditor(); },
   'preview-docs': () => { S.previewFile = null; S.previewMode = null; S.previewList = null; renderPreview(); },
   'show-doc': (el) => { S.previewDoc = el.dataset.doc; S.previewFile = null; S.previewMode = null; if (!S.previewOpen) { S.previewOpen = true; store.set('previewOpen', true); renderTop(); } renderPreview(); },
@@ -2374,6 +2674,17 @@ const ACTIONS = {
   'guide-toggle': (el) => { const k = el.dataset.step; S.guide[k] = !S.guide[k]; store.set('guide', S.guide); const g = el.closest('.guide'); g.classList.toggle('is-collapsed', S.guide[k]); el.setAttribute('aria-expanded', !S.guide[k]); resizeEditor(); },
   'new-exam': () => navigate('/new'),
   'exam-details': (el) => { S.menu = null; editExamDetails(el.dataset.name); },
+  'look-color': (el) => { setLookColor(el.dataset.color); },
+  'look-remove-logo': () => { S.look.removeLogo = true; S.look.file = null; S.look.fileUrl = null; S.look.swatches = []; renderMain(true); },
+  'look-save': () => saveLook(),
+  'look-reset': async () => {
+    const ok = await confirmDialog({ title: 'Reset to the neutral look?', body: '<p>The school name, logo and colour are removed, for everyone.</p>', ok: 'Reset', danger: true, icon: 'undo' });
+    if (ok) saveLook(true);
+  },
+  'guide-open': (el) => { S.menu = null; if (el.dataset.page) openGuide(el.dataset.page); },
+  'tour-start': () => startTour(),
+  'tour-end': () => endTour(),
+  'tour-step': (el) => { tour.i = Math.max(0, Math.min(tour.steps.length - 1, tour.i + parseInt(el.dataset.delta, 10))); renderTour(); },
   'save-meta': () => { socket_emit('ui-exam-meta', { exam: S.project, class: $('#meta-class').value, subject: $('#meta-subject').value, date: $('#meta-date').value }); toast('Details saved.'); },
   'archive-exam': (el) => { S.menu = null; socket_emit('ui-exam-archive', { exam: el.dataset.name, archived: el.dataset.v === '1' }); toast(el.dataset.v === '1' ? 'Archived. Find it with the "Archived" filter.' : 'Taken out of the archive.'); },
   'wiz-go': (el) => { S.wizard.step = +el.dataset.step; renderMain(); },
@@ -2381,6 +2692,7 @@ const ACTIONS = {
     const w = S.wizard;
     if (w.step === 1) {
       const err = wizardNameError();
+      w.error = err;
       if (err) { const e = $('#wiz-error'); if (e) e.textContent = err; const f = $('#wiz-name'); if (f) f.focus(); return; }
     }
     if (w.step === 2 && !wizardTemplate()) return;
@@ -2465,6 +2777,21 @@ document.addEventListener('change', async (e) => {
   if (t.id === 'list-key' && t.value) changeListKey(t);
   if (t.id === 'assoc-code' && t.value) { socket_emit('change-acode', t.value); if (S.students) S.students.code = t.value; renderMain(true); toast('Saved.'); }
   if (t.id === 'plist-select') previewListGo(+t.value);
+  if (t.id === 'guide-select') openGuide(t.value);
+  if (t.id === 'look-logo' && t.files[0] && S.look) {
+    const f = t.files[0];
+    if (f.size > 1024 * 1024) { toast('The logo is larger than 1 MB.', 'warning-triangle'); t.value = ''; return; }
+    S.look.file = f; S.look.removeLogo = false;
+    S.look.fileUrl = URL.createObjectURL(f);
+    logoSwatches(S.look.fileUrl);
+    renderMain(true);
+  }
+  if (t.id === 'look-hex' && S.look) {
+    const v = t.value.trim();
+    if (!v) setLookColor(null);
+    else if (/^#[0-9a-fA-F]{6}$/.test(v)) setLookColor(v.toLowerCase());
+    else toast('A colour looks like #1c7ed6.', 'warning-triangle');
+  }
   if (t.id === 'wiz-code' && S.wizard) { S.wizard.code = t.checked; renderMain(true); }
   if (['dash-class', 'dash-state', 'dash-sort', 'dash-archived'].includes(t.id)) {
     const key = { 'dash-class': 'klass', 'dash-state': 'state', 'dash-sort': 'sort', 'dash-archived': 'archived' }[t.id];
@@ -2493,12 +2820,14 @@ document.addEventListener('change', async (e) => {
 
 document.addEventListener('input', (e) => {
   const t = e.target;
-  if (t.dataset && t.dataset.wiz && S.wizard) { S.wizard[t.dataset.wiz] = t.value; if (t.dataset.wiz === 'name') { const er = $('#wiz-error'); if (er) er.textContent = ''; } }
+  if (t.dataset && t.dataset.wiz && S.wizard) { S.wizard[t.dataset.wiz] = t.value; if (t.dataset.wiz === 'name') { S.wizard.error = ''; const er = $('#wiz-error'); if (er) er.textContent = ''; } }
   if (t.id === 'wiz-search' && S.wizard) {
     S.wizard.query = t.value;
     renderMain(true);
     const f = $('#wiz-search'); if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
   }
+  if (t.id === 'look-color' && S.look) setLookColor(t.value);
+  if (t.id === 'look-name' && S.look) S.look.name = t.value;
   if (t.id === 'dash-search') { S.dash.query = t.value; store.set('dash', S.dash); renderDashCards(); }
   if (t.id === 'match-search') { S.matchQuery = t.value; S.matchCursor = 0; renderMatchResults(); }
   if (t.id === 'marks-search') { S.marksQuery = t.value; const host = $('#marks-table'); if (host && S.marks) host.innerHTML = marksTable(S.marks.rows); }
@@ -2518,6 +2847,7 @@ document.addEventListener('keydown', (e) => {
     }
     if (e.key === 'Escape' && e.target.value) { e.preventDefault(); e.target.value = ''; S.matchQuery = ''; S.matchCursor = 0; renderMatchResults(); return; }
   }
+  if (e.key === 'Escape' && tour) { endTour(); return; }
   if (e.key === 'Escape') {
     if ($('#layer').innerHTML && !$('#layer .server-dialog')) closeDialog(false);
     else if (S.menu) { S.menu = null; renderTop(); if (S.route.kind === 'exams') renderMain(true); }
@@ -2599,3 +2929,4 @@ window.addEventListener('resize', resizeEditor);
 
 applyTheme();
 onRoute();
+loadGuide();

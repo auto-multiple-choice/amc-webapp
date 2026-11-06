@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 export const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
-export async function startBrowser({ base, user = '', pass = '', shots = null, port = 9334 }) {
+export async function startBrowser({ base, user = '', pass = '', shots = null, port = 9334, tour = false }) {
   const chromePath = process.env.CHROME
     || (process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome');
   const profile = mkdtempSync(join(tmpdir(), 'amc-e2e-'));
@@ -39,6 +39,8 @@ export async function startBrowser({ base, user = '', pass = '', shots = null, p
   };
   const send = (method, params = {}) => new Promise((resolve) => { id += 1; pending.set(id, resolve); ws.send(JSON.stringify({ id, method, params })); });
   await send('Runtime.enable'); await send('Page.enable');
+  // The first-run tour would cover the page in every test: mark it as seen, unless a test is about it.
+  if (!tour) await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { localStorage.setItem('amc-ui:tour-done', 'true'); } catch (e) {}" });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
 
   const b = {

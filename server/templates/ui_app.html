@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AMC</title>
+  <title>{{ school or 'AMC' }}</title>
   <script>
     /* Apply the saved theme before the page paints. */
     try {
@@ -14,11 +14,12 @@
   <link rel="stylesheet" href="{{ static_url_for('static', filename='icons.css') }}">
   <link rel="stylesheet" href="{{ static_url_for('static', filename='ui/ui.css') }}">
   <link rel="stylesheet" href="{{ static_url_for('static', filename='ui/app.css') }}">
+  {% if brand_css %}<style>{{ brand_css | safe }}</style>{% endif %}
   <link rel="manifest" href="/manifest.json">
-  <link rel="icon" href="{{ url_for('static', filename='menu-amc.svg') }}">
+  <link rel="icon" href="{{ logo or url_for('static', filename='menu-amc.svg') }}">
 </head>
 <body>
-  <div id="app" class="app no-sidebar preview-closed" data-version="{{ app_version }}" data-user="{{ username }}">
+  <div id="app" class="app no-sidebar preview-closed" data-version="{{ app_version }}" data-user="{{ username }}" data-school="{{ school }}" data-logo="{{ logo }}" data-can-brand="{{ can_brand }}">
     <header class="topbar" id="topbar"></header>
     <nav class="sidebar" id="sidebar" aria-label="Exam steps"></nav>
     <main class="main" id="main" tabindex="-1"></main>

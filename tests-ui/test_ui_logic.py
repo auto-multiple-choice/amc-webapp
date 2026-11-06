@@ -8,6 +8,7 @@ Run with the app's image (it has Flask):
   docker run --rm -v "$PWD/server:/s:ro" -v "$PWD/tests-ui/test_ui_logic.py:/t.py:ro" \
     --entrypoint /venv/bin/python amc-web /t.py
 """
+import re
 import sys
 sys.path.insert(0, "/s")
 import ui
@@ -263,6 +264,36 @@ check("txt: adds a scoring group", "*{b=2} Who was" in u2 and same(txt, u2, "txt
 u3 = sc.set_scoring(txt, tq[1], "")
 check("txt: removes a scoring group", "**[id=pref] Which" in u3 and same(txt, u3, "txt"))
 check("txt: changing text is still refused", not same(txt, txt.replace("Poitiers", "Paris"), "txt"))
+
+# ---- branding and starters
+for colour in ("#3b5bdb", "#ffe066", "#0b1f3a", "#2f9e44", "#ff8787", "#ffffff", "#000000"):
+    pal = ui.palette(colour)
+    good = all(ui.contrast(pal[t]["brand"], ui.SURFACES[t]) >= 3 and ui.contrast(pal[t]["on_brand"], pal[t]["brand"]) >= 4.5
+               for t in ("light", "dark"))
+    check(f"palette {colour}: readable buttons and visible controls in both themes", good)
+check("presets: white button text, unchanged, in the light theme", all(
+    ui.palette(c)["light"]["on_brand"] == "#ffffff" and not ui.palette(c)["light"]["adjusted"] for _, c in ui.PRESETS))
+check("palette: the neutral blue is kept as it is in the light theme", ui.palette("#3b5bdb")["light"]["brand"] == "#3b5bdb"
+      and not ui.palette("#3b5bdb")["light"]["adjusted"])
+check("palette: a pale yellow gets a darker shade in the light theme", ui.palette("#ffe066")["light"]["adjusted"])
+check("palette: a dark navy gets a lighter shade in the dark theme", ui.palette("#0b1f3a")["dark"]["adjusted"])
+css = ui.brand_css({"palette": ui.palette("#0c8599")})
+check("brand CSS sets only the two brand tokens", set(re.findall(r"--([a-z-]+):", css)) == {"brand", "on-brand"})
+check("logo: PNG recognised", ui._logo_kind(b"\x89PNG\r\n\x1a\n...") == "png")
+check("logo: JPEG recognised", ui._logo_kind(b"\xff\xd8\xff\xe0...") == "jpg")
+check("logo: SVG recognised", ui._logo_kind(b'<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"/>') == "svg")
+check("logo: anything else refused", ui._logo_kind(b"GIF89a...") is None and ui._logo_kind(b"<html><script>") is None)
+
+import ui_gallery as g
+tpl = open("/s/school_templates/blank/exam.tex").read()
+out = g.starter_source(tpl, "latex", school_name="St. Mary's & Co_ 100%", logo_file="school-logo.png", code_digits=6)
+check("starter: school name escaped for LaTeX", r"St. Mary's \& Co\_ 100\%" in out)
+check("starter: logo and code boxes", "\\includegraphics[height=12mm]{school-logo.png}" in out and "\\AMCcodeGridInt{student}{6}" in out)
+check("starter: no markers left", "%%AMCUI" not in out)
+plain = g.starter_source(tpl, "latex")
+check("starter: without branding, no school line and a plain name field", "includegraphics[" not in plain and "AMCcodeGridInt" not in plain and "\\namefield" in plain)
+txt = g.starter_source(open("/s/school_templates/blank-txt/exam.txt").read(), "plain", code_digits=8, separate=True)
+check("starter: AMC-TXT options", "Code: 8\nSeparateAnswerSheet: 1\n" in txt and "%%AMCUI" not in txt)
 
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

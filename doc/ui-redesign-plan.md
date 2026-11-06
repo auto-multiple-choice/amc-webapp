@@ -197,6 +197,14 @@ The layout check happens only before the first print. Once locked, the layout ca
 - **Where questions come from:** the panel reads them from the source, understanding AMC's standard macros. A question written with unusual LaTeX is shown read-only with an "edit in LaTeX" link. Once the form editor (#4) exists, the panel reads its data directly.
 - **After printing:** the panel stays fully usable. This is the "only the marking scheme and answer key can change" rule from section 6.
 
+
+How it was built (phase 5):
+- **Questions** come from AMC's extracted scale (`prepare --mode b`), read again in the background after each change, so the panel shows what AMC will compute. A question is editable when the source has it in a form the panel understands (LaTeX environments, AMC-TXT lines) and it agrees with AMC's data: type, answers, and which are correct. Anything else is read-only with a link to Questions.
+- **Points** are computed from the rules the way AMC::Scoring does: a copy ticking exactly the correct answers, or `MAX`. Rules with formulas show "?". After marking, the panel shows AMC's own maximums.
+- **Edits** are `\scoring{…}` and `\correctchoice`/`\wrongchoice` switches (AMC-TXT: `{rule}` and `+`/`-`), so they pass the lock. In AMC a default `haut=` wins over a question's `mz=`, so "all or nothing" on a question is written `haut=0,mz=1`.
+- **Neutralising** writes `formula=X,MAX=X,v=X,e=X,…` (full marks) or `formula=0,MAX=0,…` (not counted). The earlier rule is kept in the exam's record for "count normally".
+- After printing, the LaTeX editor is read-only and points to this panel.
+
 ## 9. Exam dashboard, new-exam wizard and template gallery (#2)
 
 **Dashboard.** One card per exam showing its name, class and subject, date, a state chip ("Draft", "Printed", "Checking scans: 14 to review", "Marked", "Exported") and the next action. It has search and filters (class, state, date) and lets teachers archive old exams. Class, subject and date are kept in a small file of our own next to the AMC project, because AMC doesn't store them.
@@ -223,6 +231,14 @@ The layout check happens only before the first print. Once locked, the layout ca
 - **Contents:** AMC's English and French templates, plus our own school templates kept in this repo. School templates can use the school name and logo from branding (section 12). Later, teachers can "save an exam as a template", and admins can publish templates to all teachers.
 - **Security:** template ids keep going through the existing `template_path()` check.
 
+
+How it was built (phase 5):
+- **Dashboard:** each card shows a state and the next step, with steps done out of ten. Class, subject, date and "archived" are in the exam's record (`amcweb.json`).
+- **Wizard** at `/new`: details, the gallery, then options. The answer sheet style and student code boxes apply to our starters. AMC's templates keep their own layout.
+- **Starters** are in `server/school_templates/`: a blank LaTeX exam (with a separate-answer-sheet variant) and a blank AMC-TXT exam. The server fills in the school header, the name field and the code boxes.
+- **Previews** are compiled when the Docker image is built (`server/ui_gallery.py`, its own cached layer, about 20 seconds for 22 templates), so no compile runs in a teacher's session.
+- Still to come: "save an exam as a template" and admin-published templates.
+
 ## 10. Preview panel
 
 - **What it shows:**
@@ -243,6 +259,9 @@ The layout check happens only before the first print. Once locked, the layout ca
 - **Short first-run tour:** points out the sidebar, preview panel and guide. It can be skipped and replayed from the Guide menu.
 - **Editable content:** the guide is written in Markdown files in this repo (`server/guide/en/`), so teachers can improve it without touching code.
 
+
+How it was built (phase 5): the guide is `server/guide/en/*.md`, an overview plus one page per step. Each page's "What to do here" list feeds that step's box, so there is one text for both. The Guide menu in the top bar opens this step's page, the contents, or the tour. The tour starts the first time an exam is opened and is remembered per browser.
+
 ## 12. Branding
 
 ### Branding
@@ -254,6 +273,13 @@ The layout check happens only before the first print. Once locked, the layout ca
 - **Where it's stored:** with the app's data, outside any exam, and included in `./amc backup`.
 - **Sign-in page:** it belongs to the separate sign-in service, so it fetches the logo and colours from a public, read-only address.
 - **Admin rights:** in shared-machine mode, admins are the sign-in service's admins. Their admin flag reaches the app the same way the username does, and the proxy strips any copy sent by a browser. In single-user mode, the local user can edit branding.
+
+
+How it was built (phase 5):
+- **Storage:** `MC-Projects/_branding/` (`branding.json` and the logo), included in `./amc backup`. Upstream skips `_` folders there, and account names can't start with `_`.
+- **Palette:** branding sets only `--brand` and `--on-brand`; the design system derives the rest. For each theme the chosen colour changes in lightness only as much as needed: 3:1 against the surface, as for controls, and 4.5:1 for button text (white, else near-black). The presets keep white text.
+- **Sign-in page:** it loads `/public/branding.js`, which reads `/public/branding.json`. Both are public and read-only, routed past sign-in like the shareable marks link.
+- **Admin rights:** `/auth/verify` returns `X-AMC-Admin`, Caddy copies it and strips any copy a browser sends. Saving also needs the page's own `AMC-sid` header, so another site can't post changes.
 
 ## 13. Further recommendations
 

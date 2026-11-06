@@ -18,9 +18,11 @@
 {$AMC_SITES:https://localhost:8090} {
 	tls internal
 
-	# AMC trusts this header as the signed-in user, so it must only ever
-	# come from amc-auth, never from a browser.
+	# AMC trusts these headers as the signed-in user and whether they are
+	# an admin, so they must only ever come from amc-auth, never from a
+	# browser.
 	request_header -X-AMC-User
+	request_header -X-AMC-Admin
 
 	# Colleagues download the certificate authority here, to make their
 	# browsers trust this server's certificate.
@@ -45,7 +47,7 @@
 	handle {
 		forward_auth amc-auth:8000 {
 			uri /auth/verify
-			copy_headers X-AMC-User
+			copy_headers X-AMC-User X-AMC-Admin
 			# The sign-in check is a plain request even when the browser
 			# opens a websocket; the auth service rejects upgrade requests.
 			header_up -Connection

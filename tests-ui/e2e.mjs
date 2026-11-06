@@ -93,6 +93,8 @@ async function main() {
   if (SHOTS) mkdirSync(SHOTS, { recursive: true });
   await connect();
   await send('Runtime.enable'); await send('Page.enable');
+  // The first-run tour is tested in e2e-guide.mjs; here it would cover the page.
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { localStorage.setItem('amc-ui:tour-done', 'true'); } catch (e) {}" });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   listeners.push((m) => {
     if (m.method === 'Runtime.exceptionThrown') pageErrors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
