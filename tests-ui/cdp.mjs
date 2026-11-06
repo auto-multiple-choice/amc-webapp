@@ -129,8 +129,9 @@ export async function startBrowser({ base, user = '', pass = '', shots = null, p
       b.check('No errors in the page', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
       console.log(`\n${failures.length ? 'FAILED' : 'ALL PASSED'}: ${passed} passed, ${failures.length} failed`);
       try { ws.close(); } catch { /* closed */ }
-      chrome.kill();
-      rmSync(profile, { recursive: true, force: true });
+      // Chrome keeps writing its profile until it has exited: wait for it before removing the folder.
+      await new Promise((done) => { chrome.once('exit', done); setTimeout(done, 5000); chrome.kill(); });
+      try { rmSync(profile, { recursive: true, force: true }); } catch { /* still in use: left in the temp folder */ }
       process.exit(failures.length ? 1 : 0);
     },
   };
