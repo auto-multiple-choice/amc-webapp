@@ -3013,7 +3013,7 @@ document.addEventListener('pointerdown', (e) => {
   handle.addEventListener('pointerup', up);
 });
 
-function resizeEditor() { if (editor) requestAnimationFrame(() => editor.resize()); }
+function resizeEditor() { requestAnimationFrame(() => { if (editor) editor.resize(); }); } // the editor may be gone by the next frame
 window.addEventListener('resize', resizeEditor);
 
 /* ---------- Start ---------- */
