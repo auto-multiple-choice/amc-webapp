@@ -19,11 +19,11 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startBrowser, sleep } from './cdp.mjs';
-import { makeScans, printedExam } from './fixtures.mjs';
+import { appContainer, makeScans, printedExam } from './fixtures.mjs';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8095';
 const USER = process.env.AMC_E2E_USER || '';
-const CONTAINER = process.env.AMC_E2E_CONTAINER || 'amc-uitest';
+const CONTAINER = appContainer(BASE);
 const EXAM = 'Results test exam';
 const COPIES = 4;
 const b = await startBrowser({ base: BASE, user: USER, pass: process.env.AMC_E2E_PASS || '', shots: process.argv[3] || null });
@@ -45,6 +45,7 @@ async function main() {
   await b.signIn();
   await b.goto('/');
   b.check('The app opens', await b.waitFor('S.online === true'));
+  await b.preflight({ exams: [EXAM] });
 
   // A printed exam with code boxes, and its scans
   await printedExam(b, { name: EXAM, copies: COPIES, codeGrid: true });
@@ -89,6 +90,23 @@ async function main() {
   b.check('Recomputing brings them up to date', await b.waitFor(`S.status.marks_info.stale === false && !document.querySelector('#work')`, 180000));
   b.check('...with the new final mark', await b.waitFor(`S.marks && S.marks.rows.length && S.marks.rows.every(r => r.mark <= 10)`, 10000), J(await b.js('S.marks.rows.map(r => r.mark)')));
   await dismissServerDialog();
+
+  // The marking scheme panel agrees with AMC
+  await b.click('.step[href$="/marking-scheme"]');
+  const panelReady = `!!S.questions && S.questions.fresh && !S.scaleUpdating && S.questions.questions.length === 3`;
+  b.check('After marking, the panel shows AMC\'s own maximum for each question', await b.waitFor(`${panelReady} && S.questions.questions.every(q => q.max_from === 'amc')`, 90000), J(await b.js('S.questions && S.questions.questions.map(q => [q.title, q.max, q.max_from])')));
+  b.check('...and the panel\'s reading of the rules gives the same', await b.js(`S.questions.questions.every(q => q.rules_max === q.max)`), J(await b.js('S.questions.questions.map(q => [q.title, q.max, q.rules_max])')));
+  const maxBefore = await b.js('S.marks.rows[0].max');
+  await b.click('[data-act="q-edit"][data-title="extra"]');
+  await b.waitFor(`!!document.querySelector('#dlg-form')`);
+  await b.js(`document.querySelector('#dlg-form [name="choice"][value="none"]').checked = true; true`);
+  await b.click('#dlg-form button[type="submit"]');
+  b.check('A question marked "not counted" makes the marks out of date', await b.waitFor(`S.status.marks_info.stale === true && ${panelReady} && S.questions.questions.find(q => q.title === 'extra').kind === 'none'`, 90000));
+  await b.click('.step[href$="/mark"]');
+  await b.click('.banner [data-act="mark"]');
+  b.check('AMC marks with it, without complaint', await b.waitFor(`S.status.marks_info.stale === false && !document.querySelector('#work')`, 180000) && !(await b.js(`!!document.querySelector('.server-dialog .msg-err')`)));
+  await dismissServerDialog();
+  b.check('...and the question no longer counts in the total', await b.waitFor(`S.marks && S.marks.rows.every(r => r.max === ${maxBefore} - 1)`, 10000), J(await b.js('S.marks.rows.map(r => r.max)')));
 
   // ---- Match students
   const dir = mkdtempSync(join(tmpdir(), 'amc-list-'));
@@ -186,10 +204,8 @@ async function main() {
   const activity = (await b.js('S.status.activity.map(a => a.what)')).join(' | ');
   b.check('The history records each step', ['Marks computed', 'Class list loaded', 'Automatic matching', 'Marks exported (CSV)', 'Annotated sheets made'].every((w) => activity.includes(w)), activity);
 
-  if (!process.env.AMC_E2E_KEEP) {
-    await b.js(`socket_emit('project-delete', ${J(EXAM)}); true`);
-    await sleep(500);
-  }
+  if (process.env.AMC_E2E_KEEP) b.created.delete(EXAM);
+  else b.check('The test exam is deleted', await b.deleteExam(EXAM));
 }
 
 main().then(() => b.finish(), (e) => b.finish(e));

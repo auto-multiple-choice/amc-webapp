@@ -3,13 +3,13 @@
  * packages): the Chrome DevTools Protocol over Node's built-in WebSocket.
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 export const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
-export async function startBrowser({ base, user = '', pass = '', shots = null, port = 9334 }) {
+export async function startBrowser({ base, user = '', pass = '', shots = null, port = 9334, tour = false }) {
   const chromePath = process.env.CHROME
     || (process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome');
   const profile = mkdtempSync(join(tmpdir(), 'amc-e2e-'));
@@ -30,19 +30,58 @@ export async function startBrowser({ base, user = '', pass = '', shots = null, p
     } catch { ws = null; }
     if (!ws) await sleep(200);
   }
-  if (!ws) throw new Error('Chrome did not start');
+  if (!ws) { chrome.kill(); rmSync(profile, { recursive: true, force: true }); throw new Error('Chrome did not start'); }
   ws.onmessage = (ev) => {
     const m = JSON.parse(ev.data);
     if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); return; }
     if (m.method === 'Runtime.exceptionThrown') pageErrors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
     if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') pageErrors.push(m.params.args.map((a) => a.value || a.description).join(' '));
   };
-  const send = (method, params = {}) => new Promise((resolve) => { id += 1; pending.set(id, resolve); ws.send(JSON.stringify({ id, method, params })); });
+  // A call that never answers (Chrome gone) fails after a while instead of hanging the run.
+  const send = (method, params = {}) => new Promise((resolve, reject) => {
+    id += 1; const myId = id;
+    const timer = setTimeout(() => { if (pending.delete(myId)) reject(new Error(`Chrome did not answer ${method}`)); }, 60000);
+    pending.set(myId, (m) => { clearTimeout(timer); resolve(m); });
+    ws.send(JSON.stringify({ id: myId, method, params }));
+  });
   await send('Runtime.enable'); await send('Page.enable');
+  // The first-run tour would cover the page in every test: mark it as seen, unless a test is about it.
+  if (!tour) await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { localStorage.setItem('amc-ui:tour-done', 'true'); } catch (e) {}" });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
 
   const b = {
     send, pageErrors,
+    created: new Set(), // exams this test made and must delete
+    /* Makes an exam from one of AMC's templates and waits for it to open. */
+    async createFromTemplate(name, template = 'en/simple') {
+      b.created.add(name);
+      await b.js(`S.creating = ${JSON.stringify(name)}; socket_emit('create-project-template', [${JSON.stringify(name)}, ${JSON.stringify(template)}]); true`);
+      return b.waitFor(`S.project === ${JSON.stringify(name)} && !!S.status`, 30000);
+    },
+    /* Deletes an exam and waits until the server no longer lists it. */
+    async deleteExam(name) {
+      b.created.delete(name);
+      const listed = await b.js(`fetch('/ui/api/projects', {cache: 'no-store'}).then(r => r.json()).then(r => r.projects.some(p => p.name === ${JSON.stringify(name)}))`);
+      if (!listed) return true; // never made, or gone already
+      await b.js(`socket_emit('project-delete', ${JSON.stringify(name)}); true`);
+      return b.waitFor(`fetch('/ui/api/projects', {cache: 'no-store'}).then(r => r.json()).then(r => !r.projects.some(p => p.name === ${JSON.stringify(name)}))`, 20000);
+    },
+    /* Refuses to run against a copy of the app that holds real work, unless AMC_E2E_FORCE=1. */
+    async preflight({ exams = [], emptyOnly = false, neutralBranding = false } = {}) {
+      if (process.env.AMC_E2E_FORCE === '1') return;
+      const problems = [];
+      const list = await b.js(`fetch('/ui/api/projects', {cache: 'no-store'}).then(r => r.json()).then(r => r.projects.map(p => p.name))`);
+      if (emptyOnly && list.length) problems.push(`the app already has ${list.length} exam(s)`);
+      exams.filter((n) => list.includes(n)).forEach((n) => problems.push(`an exam named "${n}" already exists`));
+      if (neutralBranding) {
+        const br = await b.js(`fetch('/ui/api/branding', {cache: 'no-store'}).then(r => r.json())`);
+        if (br.name || br.logo || br.color) problems.push('a school name, logo or colour is set (the test resets them)');
+      }
+      if (problems.length) {
+        console.log(`NOT RUN: ${problems.join('; ')}. Use a test copy of the app, or set AMC_E2E_FORCE=1 to run anyway.`);
+        await b.finish(new Error('pre-flight check failed'));
+      }
+    },
     async js(expression) {
       const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
       if (r.result && r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || 'evaluation failed');
@@ -82,12 +121,17 @@ export async function startBrowser({ base, user = '', pass = '', shots = null, p
       await b.js(`document.querySelector('form').submit(); true`);
       b.check('Signing in opens the app', await b.waitFor(`location.pathname === '/' || location.pathname === '/exams'`, 15000));
     },
-    finish(error) {
+    async finish(error) {
       if (error) { failures.push('crash: ' + error.message); console.log('CRASH ' + error.stack); }
+      for (const name of [...b.created]) { // left behind by a crash or a failed check
+        try { b.check(`Leftover test exam "${name}" is deleted`, await b.deleteExam(name)); } catch (e) { b.check(`Leftover test exam "${name}" is deleted`, false, e.message); }
+      }
       b.check('No errors in the page', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
       console.log(`\n${failures.length ? 'FAILED' : 'ALL PASSED'}: ${passed} passed, ${failures.length} failed`);
       try { ws.close(); } catch { /* closed */ }
-      chrome.kill();
+      // Chrome keeps writing its profile until it has exited: wait for it before removing the folder.
+      await new Promise((done) => { chrome.once('exit', done); setTimeout(done, 5000); chrome.kill(); });
+      try { rmSync(profile, { recursive: true, force: true }); } catch { /* still in use: left in the temp folder */ }
       process.exit(failures.length ? 1 : 0);
     },
   };

@@ -93,6 +93,8 @@ async function main() {
   if (SHOTS) mkdirSync(SHOTS, { recursive: true });
   await connect();
   await send('Runtime.enable'); await send('Page.enable');
+  // The first-run tour is tested in e2e-guide.mjs; here it would cover the page.
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { localStorage.setItem('amc-ui:tour-done', 'true'); } catch (e) {}" });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   listeners.push((m) => {
     if (m.method === 'Runtime.exceptionThrown') pageErrors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
@@ -114,15 +116,17 @@ async function main() {
   check('The connection to the server comes up', await waitFor('S.online === true'));
   await shot('01-exams-empty');
 
-  // Create an exam from AMC's "simple" template
-  await click('[data-act="new-exam"]');
-  check('New exam opens a dialog', await waitFor(`!!document.querySelector('#dlg-form')`));
-  await setValue('#dlg-form [name="name"]', EXAM);
-  const hasSimple = await js(`[...document.querySelectorAll('#dlg-form option')].some(o => o.value === 'en/simple')`);
-  check('AMC templates are offered', hasSimple);
-  await setValue('#dlg-form [name="from"]', 'en/simple');
+  // Create an exam from AMC's "simple" template, through the new-exam wizard
+  await click('#main a[href="/new"]');
+  check('New exam opens the wizard', await waitFor(`location.pathname === '/new' && !!document.querySelector('#wiz-name')`));
+  await setValue('#wiz-name', EXAM);
+  await click('[data-act="wiz-next"]');
+  check('AMC templates are offered', await waitFor(`!!S.gallery && S.gallery.templates.some(t => t.gid === 'en' && t.id === 'simple')`, 10000));
+  await click('[data-act="wiz-group"][data-v="en"]');
+  await click('[data-act="wiz-pick"][data-gid="en"][data-id="simple"]');
   await shot('02-new-exam');
-  await js(`document.querySelector('#dlg-form').requestSubmit()`);
+  await click('[data-act="wiz-next"]');
+  await click('[data-act="wiz-create"]');
   check('Creating opens the new exam at Questions', await waitFor(`decodeURIComponent(location.pathname) === '/exam/${EXAM}/questions'`, 30000), await path());
   check('The source file loads into the editor', await waitFor(`typeof editor !== 'undefined' && editor && editor.getValue().includes('documentclass')`, 20000));
   check('The main source file is selected', (await js(`document.querySelector('#file-select').value`)) !== '');
@@ -219,19 +223,14 @@ async function main() {
   check('...and the copies are unchanged', (await js(`fetch('/ui/api/config', {headers: {'AMC-project': S.project}}).then(r => r.json()).then(c => c.options.nombre_copies)`)) === '6');
 
   await click('.step[href$="/questions"]');
-  check('Questions explains what can still change', await waitFor(`typeof editor !== 'undefined' && editor && editor.getValue().length > 0 && document.querySelector('#main').textContent.includes('only answer key and scoring')`, 20000));
+  check('Questions are read-only once printed, pointing to the marking scheme', await waitFor(`typeof editor !== 'undefined' && editor && editor.getValue().length > 0 && editor.getReadOnly() && !document.querySelector('[data-act="save"]') && !!document.querySelector('#main a.btn-primary[href$="/marking-scheme"]')`, 20000));
   check('Building the preview is not offered', await js(`!document.querySelector('[data-act="build"]')`));
-  await js(`editor.session.insert({row: 0, column: 0}, 'Changed text\\n'); true`);
-  await click('[data-act="save"]');
-  check('Saving a text change is refused', await waitFor(`document.querySelector('#layer').textContent.includes('Not saved')`, 10000));
-  await click('[data-act="dialog-ok"]');
-  await js(`setEditorText(S.source.text); true`);
-  const swapped = await js(`(() => { const t = editor.getValue(); const i = t.indexOf('\\\\correctchoice'); const j = t.indexOf('\\\\wrongchoice'); if (i < 0 || j < 0) return null; return t.replace('\\\\correctchoice', '\\\\TMPCHOICE').replace('\\\\wrongchoice', '\\\\correctchoice').replace('\\\\TMPCHOICE', '\\\\wrongchoice'); })()`);
-  if (swapped) {
-    await js(`editor.setValue(${JSON.stringify(swapped)}, -1); true`);
-    await click('[data-act="save"]');
-    check('Saving an answer key correction is allowed', await waitFor(`!S.source.dirty && !document.querySelector('#layer').innerHTML`, 10000));
-  } else check('Saving an answer key correction is allowed', false, 'no \\correctchoice in the template');
+  // The server itself still refuses changes that move things, whatever sends them
+  const uploadSource = (t) => js(`(async (t) => { const f = new FormData(); f.append('file', new Blob([t], {type: 'text/plain'}), S.source.name); const r = await fetch('/upload/source', {method: 'POST', headers: {'AMC-project': S.project, 'AMC-sid': socket.id}, body: f}); return r.json(); })(${JSON.stringify(t)})`);
+  const original = await js('S.source.text');
+  check('The server refuses a text change', !!(await uploadSource('Changed text\n' + original)).error);
+  const swapped = original.replace('\\correctchoice', '\\TMPCHOICE').replace('\\wrongchoice', '\\correctchoice').replace('\\TMPCHOICE', '\\wrongchoice');
+  check('The server accepts an answer key correction', swapped !== original && (await uploadSource(swapped)).ok === true);
 
   // Unlock
   await click('[data-act="unlock"]');

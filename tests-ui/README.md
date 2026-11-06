@@ -16,7 +16,9 @@ The app's icon file only keeps icons named in `server/templates/*.html`, so icon
 `test_ui_logic.py` checks the parts of `server/ui.py` that don't need a running app:
 - the lock's "does this change move anything on the printed paper?" comparison;
 - writing the default scoring into LaTeX and AMC-TXT sources;
-- the results helpers: match states, student names from the class list, which files can be uploaded as a class list, and the fingerprint that tells when marks are out of date.
+- the results helpers: match states, student names from the class list, which files can be uploaded as a class list, and the fingerprint that tells when marks are out of date;
+- the marking scheme panel (`server/ui_scale.py`): question maximums the way AMC computes them, reading questions from LaTeX and AMC-TXT, and answer key and scoring edits;
+- branding: the contrast-checked palette, logo file types, and the starters' school header.
 
 It runs with the app's image:
 
@@ -39,7 +41,7 @@ docker run --rm -v "$PWD/server:/s:ro" -v "$PWD/tests-ui/test_ui_logic.py:/t.py:
 
 It needs Node 22 or later and Google Chrome (set `CHROME=/path/to/chrome` if it isn't in the usual place).
 
-**Use a test copy of the app with an empty data folder, never your real exams.** The test creates and deletes exams.
+**Use a test copy of the app with an empty data folder, never your real exams.** The tests create and delete exams, and the branding test resets the appearance. Each test first checks that nothing of yours is in the way (an exam with a test name, real branding, or any exam at all for the dashboard test) and refuses to run otherwise; `AMC_E2E_FORCE=1` overrides that. An exam a test made is deleted even when the test fails midway.
 
 ### Single computer
 
@@ -90,8 +92,24 @@ node tests-ui/e2e-results.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 
 With `AMC_E2E_KEEP=1`, the test exam is kept afterwards, to look at it.
 
-### Notes for both
+### Marking scheme panel
 
-The scans and results tests run `make_scans.py` in the app's container with `docker exec`. Set `AMC_E2E_CONTAINER` if the container isn't `amc-uitest`; `AMC_E2E_USER`/`AMC_E2E_PASS` sign in first, as above.
+`e2e-marking.mjs` tests the per-question panel: the answer key, preset and own rules, "all or nothing", neutralising (full marks, not counted) and back, totals, the read-only editor and allowed corrections after printing, and an AMC-TXT exam. `e2e-results.mjs` also checks that the panel's points equal AMC's after marking, and that a "not counted" question drops out of the total.
+
+### Dashboard and new-exam wizard
+
+`e2e-dashboard.mjs` needs a copy of the app with **no exams**. It creates exams through the wizard (a starter with a separate answer sheet and code boxes, which it builds, and one of AMC's AMC-TXT templates), then checks the dashboard: state, next step, progress, search, filters, sort, archive, and editing the class, subject and date.
+
+### Guide and tour
+
+`e2e-guide.mjs` opens the guide from the dashboard and inside an exam, follows its links, checks that the step boxes come from it, and walks through the first-run tour (start, replay, Escape). The other tests mark the tour as seen, so it doesn't cover their pages.
+
+### Branding
+
+`e2e-branding.mjs` sets a school name, a logo (it makes a PNG) and colours on the Appearance page, checks the top bar, browser tab and colours, the public branding addresses, an exam from a starter that prints the name and logo, and "Reset to neutral". In shared-machine mode, run it with an admin account to also check the sign-in page, and with `AMC_E2E_NOT_ADMIN=1` and a teacher's account to check that changes are refused.
+
+### Notes for all
+
+The scans and results tests run `make_scans.py` in the app's container with `docker exec`. They find the container from the address they test (the compose project publishing that port; in shared-machine mode that is caddy's, and they take its `amc-web` service); `AMC_E2E_CONTAINER` names it directly. `AMC_E2E_USER`/`AMC_E2E_PASS` sign in first, as above.
 
 `make_scans.py` takes options as JSON (faint marks, blank page, missing page, student codes, double ticks); see the top of the file. `fixtures.mjs` has the shared setup (a printed exam, test scans) and `cdp.mjs` the small Chrome driver.

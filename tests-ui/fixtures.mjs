@@ -16,8 +16,7 @@ const SECOND_PAGE = '\\clearpage\n\\begin{question}{extra}\n  Is this the second
  * and marks it as printed. Checks are recorded on `b`.
  */
 export async function printedExam(b, { name, copies = null, codeGrid = false }) {
-  await b.js(`S.creating = ${JSON.stringify(name)}; socket_emit('create-project-template', [${JSON.stringify(name)}, 'en/simple']); true`);
-  b.check('The exam is created', await b.waitFor(`S.project === ${JSON.stringify(name)} && !!S.status`, 30000));
+  b.check('The exam is created', await b.createFromTemplate(name));
   // Markers are lines of AMC's simple template.
   const edits = [['% \\AMCaddpagesto{3}', SECOND_PAGE]];
   if (codeGrid) edits.push(['%%% end of the header', '%%% end of the header\n\\AMCcodeGridInt{student}{3}\n']);
@@ -41,6 +40,23 @@ export async function printedExam(b, { name, copies = null, codeGrid = false }) 
   await b.waitFor(`S.status && !!S.status.layout_ok`, 10000);
   await b.js(`socket_emit('ui-mark-printed'); true`);
   b.check('The exam is locked as printed', await b.waitFor(`S.status && !!S.status.lock`, 10000));
+}
+
+/*
+ * The app's container, from the address the test runs against: the
+ * container publishing that port (caddy in shared-machine mode) belongs
+ * to a compose project, whose amc-web service is the one.
+ * AMC_E2E_CONTAINER names it directly instead.
+ */
+export function appContainer(base) {
+  if (process.env.AMC_E2E_CONTAINER) return process.env.AMC_E2E_CONTAINER;
+  const run = (args) => execFileSync('docker', args, { encoding: 'utf8' }).trim();
+  const port = new URL(base).port || (base.startsWith('https') ? '443' : '80');
+  const front = run(['ps', '--filter', `publish=${port}`, '--format', '{{.Names}}']).split('\n')[0];
+  if (!front) throw new Error(`No container publishes port ${port}; set AMC_E2E_CONTAINER`);
+  const project = run(['inspect', front, '--format', '{{index .Config.Labels "com.docker.compose.project"}}']);
+  if (!project) return front;
+  return run(['ps', '--filter', `label=com.docker.compose.project=${project}`, '--filter', 'label=com.docker.compose.service=amc-web', '--format', '{{.Names}}']).split('\n')[0] || front;
 }
 
 /*

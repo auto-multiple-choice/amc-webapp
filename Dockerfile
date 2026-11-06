@@ -91,6 +91,16 @@ RUN cp landrun /usr/local/bin/
 RUN mkdir -p /amc-web/files
 RUN chown -R 1000:1000 /amc-web
 
+# The new interface's template gallery: each template compiled once
+# (server/ui_gallery.py). A layer of its own, redone only when the
+# templates or the script change.
+COPY --chown=1000:1000 server/ui_gallery.py /amc-web/gallery-build/ui_gallery.py
+COPY --chown=1000:1000 server/school_templates /amc-web/gallery-build/school_templates
+RUN HOME=/tmp/gallery-home AMC_TXT_DEFAULTFONT="Linux Libertine" \
+    python3 /amc-web/gallery-build/ui_gallery.py /usr/share/auto-multiple-choice/models \
+      /amc-web/gallery-build/school_templates /amc-web/gallery \
+ && chown -R 1000:1000 /amc-web/gallery && rm -rf /tmp/gallery-home /amc-web/gallery-build
+
 COPY --chown=1000:1000 server /amc-web/server
 COPY --chown=1000:1000 src-icons /amc-web/src-icons
 COPY --chown=1000:1000 Makefile /amc-web

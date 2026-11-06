@@ -27,6 +27,10 @@ const store = {
 const APP = document.getElementById('app');
 const USER = APP.dataset.user || '';
 const VERSION = APP.dataset.version || '';
+const SCHOOL = APP.dataset.school || '';      // Appearance: the school's name
+const LOGO = APP.dataset.logo || '';          // ...and logo
+const CAN_BRAND = APP.dataset.canBrand === '1';
+const BRAND = SCHOOL || 'AMC';
 
 /* ---------- Steps ---------- */
 
@@ -65,6 +69,7 @@ const STATE_CHIPS = {
   scanned: ['chip-warning', 'upload', 'Scans uploaded'],
   marked: ['chip-success', 'clipboard-check', 'Marked'],
   exported: ['chip-success', 'check-circle', 'Exported'],
+  archived: ['', 'archive', 'Archived'],
 };
 
 /* ---------- State ---------- */
@@ -79,7 +84,7 @@ const S = {
   templates: null,
   files: null,
   config: null,
-  source: { name: null, mode: null, url: null, dirty: false, loaded: false },
+  source: { name: null, mode: null, url: null, dirty: false, loaded: false, failed: false },
   theme: store.get('theme', 'auto'),
   previewOpen: store.get('previewOpen', window.innerWidth >= 1280),
   previewMax: false,
@@ -115,6 +120,14 @@ const S = {
   matchCursor: 0,
   marksSort: { col: 'copy', dir: 1 },
   marksQuery: '',
+  questions: null,        // questions with answer key and scoring (/ui/api/questions)
+  scaleUpdating: false,   // AMC is reading the scale from the source
+  dash: store.get('dash', { query: '', klass: '', state: '', sort: 'recent', archived: false }),
+  wizard: null,           // the new-exam wizard's answers
+  gallery: null,          // templates for the wizard (/ui/api/gallery)
+  guidePages: null,       // the guide's Markdown pages (/ui/api/guide)
+  guideId: 'index',       // the guide page shown in the preview panel
+  look: null,             // the Appearance page's choices (/ui/api/branding)
 };
 let editor = null;
 
@@ -177,12 +190,18 @@ function upload(url, files, fields = {}, onProgress = null) {
 socket.on('connect', () => {
   S.online = true;
   socket_emit('is-online', VERSION);
+  // A job's "end" went to the old connection: don't stay behind "Working…".
+  if (S.work) { S.work = null; S.workText = ''; renderWork(); }
   renderTop();
   if (S.route.kind === 'exam' && S.project) openProject(S.project);
 });
 socket.on('disconnect', () => { S.online = false; renderTop(); });
 socket.on('reload', () => location.reload());
-socket.on('begin-command', () => { S.work = { text: S.workText || 'Working…', p: null }; renderWork(); });
+socket.on('begin-command', () => {
+  S.work = { text: S.workText || 'Working…', p: null, since: Date.now() };
+  renderWork();
+  setTimeout(() => { if (S.work && Date.now() - S.work.since >= WORK_HIDE_AFTER) renderWork(); }, WORK_HIDE_AFTER + 50);
+});
 socket.on('t', (text) => { S.workText = text; if (S.work) { S.work.text = text; renderWork(); } });
 socket.on('p', (p) => { if (S.work) { S.work.p = p; renderWork(); } });
 socket.on('end-command', () => {
@@ -199,13 +218,18 @@ socket.on('end-command', () => {
     }, 500);
   }
 });
-socket.on('dialog', (html) => { if (/msg-err/.test(html)) S.buildError = true; showServerDialog(html); });
-socket.on('dialog-disconnect', (html) => { showServerDialog(html); socket.disconnect(); });
+socket.on('dialog', (html) => {
+  if (/msg-err/.test(html)) S.buildError = true;
+  S.creating = null; // a message while an exam is being created means it was refused
+  showServerDialog(html);
+  if (S.route.step === 'marking-scheme') loadQuestions(); // a refused change: show what is really saved
+});
+socket.on('dialog-disconnect', (html) => { showServerDialog(html, { sticky: true }); socket.disconnect(); });
 socket.on('u-projects-list', () => { if (S.route.kind === 'exams') loadProjects(); });
 socket.on('menu', () => refreshStatus());
 socket.on('project-open', (data) => onProjectOpen(data[0]));
 socket.on('source-name', (data) => onSourceName(...data));
-socket.on('source-saved', () => { S.source.dirty = false; renderEditorBar(); });
+socket.on('source-saved', () => { if (!editor || editor.getValue() === S.source.text) S.source.dirty = false; renderEditorBar(); });
 socket.on('project-files-list', () => loadFiles());
 socket.on('ui-changed', (what) => {
   if (what === 'unlock') { toast('Exam unlocked. Rebuild the papers, then check the layout again.', 'lock-slash'); S.previewMode = null; }
@@ -213,9 +237,16 @@ socket.on('ui-changed', (what) => {
   if (what === 'lock') S.printing = null;
   if (what === 'review') { loadScans().then(() => { if (S.route.step === 'check-scans') openNextReview(); }); }
   if (['marks', 'students', 'matches', 'exports', 'annotated'].includes(what)) loadStepData();
+  if (what === 'questions' && S.route.step === 'marking-scheme') loadQuestions();
+  if (what === 'meta' && S.route.kind === 'exams') loadProjects();
   refreshStatus().then(() => { if (S.route.step === 'questions') renderMain(); });
 });
 socket.on('ui-toast', (text) => toast(text));
+socket.on('ui-scale', (state) => {
+  S.scaleUpdating = state === 'updating';
+  if (S.route.step !== 'marking-scheme') return;
+  if (state === 'done') loadQuestions(); else renderMain(true);
+});
 socket.on('ui-matched', (m) => {
   if (m.freed && m.freed.length) {
     const names = m.freed.map(([s, c]) => copyName(s, c)).join(', ');
@@ -239,7 +270,7 @@ socket.on('ui-annotate-preview', (r) => {
 socket.on('ui-scoring-saved', (v) => {
   if (S.scoring) { S.scoring.S = v.S || null; S.scoring.M = v.M || null; }
   toast('Default scoring saved in the source.');
-  if (S.route.step === 'marking-scheme') renderMain(true);
+  if (S.route.step === 'marking-scheme') { renderMain(true); socket_emit('ui-scale-refresh'); }
 });
 socket.on('scans-report', () => { loadScans(); refreshStatus(); });
 socket.on('failed-report', () => loadScans());
@@ -275,6 +306,8 @@ resetIdle();
 
 function parsePath(path) {
   const parts = path.split('/').filter(Boolean).map((p) => { try { return decodeURIComponent(p); } catch { return p; } });
+  if (parts[0] === 'new' && parts.length === 1) return { kind: 'new' };
+  if (parts[0] === 'appearance' && parts.length === 1) return { kind: 'appearance' };
   if (parts[0] === 'exam' && parts[1]) {
     const step = STEPS.some((s) => s.id === parts[2]) || parts[2] === 'settings' ? parts[2] : null;
     return { kind: 'exam', name: parts[1], step };
@@ -283,13 +316,16 @@ function parsePath(path) {
 }
 const examPath = (name, step) => `/exam/${enc(name)}/${step}`;
 
+/* Whether a route leaves the open exam's editor (unsaved changes would be lost). */
+const leavesEditor = (r) => S.source.dirty && !(r.kind === 'exam' && r.name === S.project && r.step === 'questions');
+
 async function navigate(path, { replace = false } = {}) {
-  if (S.source.dirty && !(await confirmLeave())) return;
+  if (leavesEditor(parsePath(path)) && !(await confirmLeave())) return;
   history[replace ? 'replaceState' : 'pushState']({}, '', path);
   onRoute();
 }
 window.addEventListener('popstate', async () => {
-  const leavingEditor = S.source.dirty && parsePath(location.pathname).step !== 'questions';
+  const leavingEditor = leavesEditor(parsePath(location.pathname));
   if (leavingEditor) {
     const target = location.pathname;
     history.pushState({}, '', examPath(S.project, 'questions'));
@@ -304,19 +340,25 @@ window.addEventListener('beforeunload', (e) => { if (S.source.dirty) { e.prevent
 function onRoute() {
   const r = parsePath(location.pathname);
   const leavingQuestions = S.route.step === 'questions' && r.step !== 'questions';
-  S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false; S.previewMode = null;
+  // The guide stays open while moving between the steps of an exam.
+  const keepGuide = S.previewMode === 'guide' && r.kind === 'exam' && S.route.kind === 'exam' && r.name === S.route.name;
+  S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false;
+  S.previewMode = keepGuide ? 'guide' : null;
   S.review = null; S.previewImage = null; S.previewList = null;
   if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) dropEditor();
-  if (r.kind === 'exams') {
+  if (r.kind === 'exams' || r.kind === 'new' || r.kind === 'appearance') {
     S.project = null; S.status = null; S.files = null;
-    document.title = 'Exams · AMC';
+    document.title = `${{ new: 'New exam', appearance: 'Appearance' }[r.kind] || 'Exams'} · ${BRAND}`;
+    if (r.kind === 'appearance') loadLook();
+    if (r.kind === 'new' && !S.wizard) S.wizard = newWizard();
     render();
     loadProjects();
+    if (r.kind === 'new') loadGallery();
     return;
   }
   if (r.name !== S.project) {
     S.status = null; S.files = null; S.config = null; S.scans = null;
-    S.marks = null; S.students = null; S.exportInfo = null; S.annotateInfo = null; S.matchSheet = null;
+    S.marks = null; S.students = null; S.exportInfo = null; S.annotateInfo = null; S.matchSheet = null; S.questions = null;
     render();
     openProject(r.name);
     return;
@@ -336,6 +378,7 @@ function openProject(name) {
 async function onProjectOpen(name) {
   if (S.creating && name === S.creating) {
     S.creating = null;
+    S.wizard = null;
     S.project = name; S.opening = null;
     toast(`Exam "${name}" created.`);
     await navigate(examPath(name, 'questions'));
@@ -353,7 +396,7 @@ async function onProjectOpen(name) {
     S.route = parsePath(location.pathname);
   }
   S.project = name; S.opening = null;
-  document.title = `${name} · AMC`;
+  document.title = `${name} · ${BRAND}`;
   await refreshStatus();
   if (S.route.kind === 'exam' && !S.route.step) { navigate(examPath(name, suggestStep()), { replace: true }); return; }
   render();
@@ -374,7 +417,7 @@ function suggestStep() {
 function enterStep() {
   if (S.route.step === 'questions') { loadFiles(); if (!S.source.loaded) loadSource(''); }
   if (S.route.step === 'settings' || S.route.step === 'marking-scheme') loadConfig();
-  if (S.route.step === 'marking-scheme') loadScoring();
+  if (S.route.step === 'marking-scheme') { loadScoring(); loadQuestions({ refresh: true }); }
   if (S.route.step === 'print') loadPrinters();
   if (S.route.step === 'upload-scans') loadScans();
   if (S.route.step === 'check-scans') {
@@ -388,20 +431,25 @@ function enterStep() {
 
 /* ---------- Data ---------- */
 
+/* Calls within 120 ms share one request; every caller's promise resolves. */
 let statusTimer = null;
+let statusWaiters = [];
 function refreshStatus() {
   if (!S.project) return Promise.resolve();
   clearTimeout(statusTimer);
   return new Promise((resolve) => {
+    statusWaiters.push(resolve);
     statusTimer = setTimeout(async () => {
-      if (!S.project) { resolve(); return; } // left the exam meanwhile
-      try {
-        const st = await getJSON('/ui/api/status');
-        if (st.project === S.project) S.status = st;
-      } catch (e) { console.error(e); }
-      renderTop(); renderSide(); renderPreview();
-      if (S.route.step && S.route.step !== 'questions') renderMain(true);
-      resolve();
+      const waiters = statusWaiters; statusWaiters = [];
+      if (S.project) { // not left meanwhile
+        try {
+          const st = await getJSON('/ui/api/status');
+          if (st.project === S.project) S.status = st;
+        } catch (e) { console.error(e); }
+        renderTop(); renderSide(); renderPreview();
+        if (S.route.step && S.route.step !== 'questions') renderMain(true);
+      }
+      waiters.forEach((r) => r());
     }, 120);
   });
 }
@@ -410,12 +458,7 @@ async function loadProjects() {
     const r = await getJSON('/ui/api/projects');
     S.projects = r.projects;
   } catch (e) { console.error(e); S.projects = S.projects || []; toast('Couldn\'t load the exams list.', 'warning-triangle'); }
-  if (S.route.kind === 'exams') renderMain(true);
-}
-async function loadTemplates() {
-  if (S.templates) return S.templates;
-  try { S.templates = await getJSON('/ui/api/templates'); } catch { S.templates = { groups: [], templates: [] }; }
-  return S.templates;
+  if (S.route.kind === 'exams' || S.route.kind === 'new') renderMain(true);
 }
 /* Answers for an exam the page has since left (renamed, closed) are dropped. */
 async function loadFiles() {
@@ -451,6 +494,12 @@ const loadMarks = () => loadInto('marks', '/ui/api/marks', ['mark', 'export-mark
 const loadStudents = () => loadInto('students', '/ui/api/students', ['match-students']);
 const loadExport = () => loadInto('exportInfo', '/ui/api/export', ['export-marks']);
 const loadAnnotate = () => loadInto('annotateInfo', '/ui/api/annotate', ['annotate']);
+async function loadQuestions({ refresh = false } = {}) {
+  await loadInto('questions', '/ui/api/questions', ['marking-scheme']);
+  // The source changed since AMC last read it: read it again.
+  const d = S.questions;
+  if (refresh && d && !d.fresh && !d.updating && !S.scaleUpdating) socket_emit('ui-scale-refresh');
+}
 function loadStepData() {
   const step = S.route.step;
   if (step === 'mark') loadMarks();
@@ -493,6 +542,9 @@ function render() {
   renderSide();
   renderMain();
   renderPreview();
+  if (S.route.kind === 'exam' && S.route.step && S.project && !tour && !store.get('tour-done', false)) {
+    setTimeout(() => { if (!tour && !store.get('tour-done', false) && !$('#layer').innerHTML && S.route.kind === 'exam') startTour(); }, 800);
+  }
 }
 
 function stateChip(state) {
@@ -508,21 +560,29 @@ function renderTop() {
   const themeIcon = { auto: 'half-moon', light: 'sun-light', dark: 'half-moon' }[S.theme];
   const crumbs = ['<a href="/exams" data-nav>Exams</a>'];
   if (r.kind === 'exam') crumbs.push(`<span class="current">${esc(r.name)}</span>`);
+  if (r.kind === 'new') crumbs.push('<span class="current">New exam</span>');
+  if (r.kind === 'appearance') crumbs.push('<span class="current">Appearance</span>');
   const hasPreview = r.kind === 'exam';
   $('#topbar').innerHTML = `
-    <a class="brandmark" href="/exams" data-nav><span class="brandmark-logo">AMC</span><span class="brandmark-name">AMC</span></a>
+    <a class="brandmark" href="/exams" data-nav><span class="brandmark-logo">${LOGO ? `<img src="${esc(LOGO)}" alt="">` : 'AMC'}</span><span class="brandmark-name">${esc(BRAND)}</span></a>
     <nav class="crumbs" aria-label="Breadcrumb"><span class="sep">/</span>${crumbs.join('<span class="sep">/</span>')}</nav>
     ${r.kind === 'exam' ? stateChip(projectState()) : ''}
     ${S.online ? '' : `<span class="chip chip-danger" title="The connection to the server was lost. It reconnects by itself.">${ic('cloud-xmark')} Offline</span>`}
     <span class="topbar-spacer"></span>
     <div class="topbar-actions">
       ${hasPreview ? `<button class="btn btn-ghost btn-icon" data-act="toggle-preview" aria-pressed="${S.previewOpen}" title="Show or hide the preview panel" aria-label="Preview panel">${ic(S.previewOpen ? 'sidebar-collapse' : 'sidebar-expand')}</button>` : ''}
+      <div style="position:relative"><button class="btn btn-ghost" data-act="menu" data-menu="guide" aria-haspopup="menu" aria-expanded="${S.menu === 'guide'}">${ic('help-circle')}<span class="hide-narrow">Guide</span></button>
+        ${S.menu === 'guide' ? `<div class="menu" role="menu" style="right:0;left:auto">
+          ${r.kind === 'exam' && r.step && guidePage(r.step) ? `<button class="menu-item" role="menuitem" data-act="guide-open" data-page="${r.step}">${ic('light-bulb')} About this step</button>` : ''}
+          <button class="menu-item" role="menuitem" data-act="guide-open" data-page="index">${ic('open-book')} The full guide</button>
+          <button class="menu-item" role="menuitem" data-act="tour-start">${ic('compass')} Take the tour</button></div>` : ''}</div>
       <button class="btn btn-ghost btn-icon" data-act="theme" title="Theme: ${S.theme === 'auto' ? 'same as the computer' : S.theme}" aria-label="Change theme">${ic(themeIcon)}</button>
       ${USER ? `<div style="position:relative">
         <button class="btn btn-ghost" data-act="menu" data-menu="account" aria-haspopup="menu" aria-expanded="${S.menu === 'account'}" style="padding:0 6px 0 4px">
           <span class="avatar">${esc(USER[0].toUpperCase())}</span><span>${esc(USER)}</span>${ic('nav-arrow-down')}</button>
         ${S.menu === 'account' ? `<div class="menu" role="menu">
           <div class="menu-label">Signed in as ${esc(USER)}</div>
+          ${CAN_BRAND ? `<a class="menu-item" role="menuitem" href="/appearance" data-nav>${ic('color-filter')} Appearance</a>` : ''}
           <a class="menu-item" role="menuitem" href="/auth/account">${ic('user-circle')} Account, password and sign out</a></div>` : ''}
       </div>` : ''}
     </div>`;
@@ -551,6 +611,8 @@ function renderMain(keepScroll = false) {
   const r = S.route;
   let html;
   if (r.kind === 'exams') html = viewExams();
+  else if (r.kind === 'new') html = viewNew();
+  else if (r.kind === 'appearance') html = viewAppearance();
   else if (!S.project || !r.step) html = `<div class="page"><div class="skeleton" style="height:40px;width:40%;margin-bottom:16px"></div><div class="skeleton"></div></div>`;
   else if (r.step === 'questions') html = viewQuestions();
   else if (r.step === 'marking-scheme') html = viewMarking();
@@ -565,23 +627,45 @@ function renderMain(keepScroll = false) {
   else html = viewSettings();
   main.classList.toggle('fill', r.kind === 'exam' && r.step === 'questions');
   if (r.step === 'questions' && editor && $('#ace-host')) { // keep the live editor
+    editor.setReadOnly(locked());
     $('#q-head').innerHTML = questionsHead();
     renderEditorBar();
     resizeEditor();
     return;
   }
-  // Keep what's being typed in the focused field across the redraw.
+  // Keep what's being typed in the focused field across the redraw, and
+  // text typed but not saved yet in other fields (a background refresh
+  // mustn't undo it), when the page itself stays the same.
   const active = document.activeElement;
-  const typing = active && active.id && main.contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName)
-    ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
+  const typing = active && main.contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName) && fieldKey(active)
+    ? { key: fieldKey(active), value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
+  const routeKey = `${r.kind}/${r.name || ''}/${r.step || ''}`;
+  const edited = main.dataset.route === routeKey
+    ? [...main.querySelectorAll('input, textarea')].filter((el) => fieldKey(el) && !/^(checkbox|radio|file)$/.test(el.type) && el.value !== el.defaultValue).map((el) => [fieldKey(el), el.value])
+    : [];
   main.innerHTML = html;
+  main.dataset.route = routeKey;
+  edited.forEach(([key, value]) => { const el = fieldByKey(main, key); if (el && el.value === el.defaultValue) el.value = value; });
   if (typing) {
-    const el = document.getElementById(typing.id);
+    const el = fieldByKey(main, typing.key);
     if (el) { el.value = typing.value; el.focus(); try { el.setSelectionRange(typing.start, typing.end); } catch { /* not a text field */ } }
   }
   if (keepScroll) main.scrollTop = top;
   if (r.step === 'questions' && S.project) mountEditor();
   if (r.step === 'match-students' && S.matchFocus) { S.matchFocus = false; const f = $('#match-search'); if (f) f.focus(); }
+}
+
+/* A field's identity across redraws: its id, or the setting or wizard answer it edits. */
+function fieldKey(el) {
+  if (el.id) return `#${el.id}`;
+  if (el.dataset.option) return `opt:${el.dataset.option}`;
+  if (el.dataset.wiz) return `wiz:${el.dataset.wiz}`;
+  return null;
+}
+function fieldByKey(root, key) {
+  if (key[0] === '#') return document.getElementById(key.slice(1));
+  const attr = key.startsWith('opt:') ? 'data-option' : 'data-wiz';
+  return root.querySelector(`[${attr}="${CSS.escape(key.slice(4))}"]`);
 }
 
 /* ---------- Rendering: preview panel ---------- */
@@ -594,15 +678,17 @@ const fsUrl = (path, attach = false) => `/fs/${enc(S.project)}/${path.split('/')
 
 function renderPreview() {
   const exam = S.route.kind === 'exam';
-  const open = exam && S.previewOpen;
+  const open = exam ? S.previewOpen : S.previewMode === 'guide';
   APP.classList.toggle('preview-closed', !open);
   APP.classList.toggle('preview-max', open && S.previewMax);
   APP.style.setProperty('--preview-w', S.previewW + 'px');
   const p = $('#preview');
-  if (!open) { p.innerHTML = ''; return; }
+  if (!open) { p.innerHTML = ''; previewHtml = ''; return; }
   const docs = previewDocs();
   let title; let body; let bodyClass = 'preview-body'; let url = null; let tabs = '';
-  if (S.previewMode === 'image' && S.previewImage) {
+  if (S.previewMode === 'guide') {
+    ({ title, body, tabs } = guidePreview());
+  } else if (S.previewMode === 'image' && S.previewImage) {
     title = S.previewImage.title;
     url = S.previewImage.url;
     body = `<img class="preview-img" src="${esc(url)}" alt="${esc(title)}">`;
@@ -640,7 +726,7 @@ function renderPreview() {
     title = 'Preview';
     body = `<div class="preview-empty"><div class="empty-icon" style="margin:0 auto 12px">${ic('page')}</div><p><b>Nothing to show yet.</b></p><p class="subtle">Build the preview in Questions to see the question paper here.</p></div>`;
   }
-  p.innerHTML = `<div class="preview-resizer" role="separator" aria-orientation="vertical" aria-label="Resize the preview panel"></div>
+  const html = `<div class="preview-resizer" role="separator" aria-orientation="vertical" aria-label="Resize the preview panel"></div>
     <div class="preview-header"><span class="preview-title" title="${esc(title)}">${esc(title)}</span>
       ${S.previewFile ? `<button class="btn btn-ghost btn-sm" data-act="preview-docs">${ic('nav-arrow-left')} Documents</button>` : ''}
       ${url ? `<a class="btn btn-ghost btn-icon btn-sm" href="${url}" target="_blank" rel="noopener" title="Open in a new tab" aria-label="Open in a new tab">${ic('open-new-window')}</a>
@@ -648,9 +734,14 @@ function renderPreview() {
       <button class="btn btn-ghost btn-icon btn-sm" data-act="preview-max" title="${S.previewMax ? 'Restore' : 'Maximise'}" aria-label="${S.previewMax ? 'Restore' : 'Maximise'}">${ic(S.previewMax ? 'collapse' : 'expand')}</button>
       <button class="btn btn-ghost btn-icon btn-sm" data-act="toggle-preview" title="Close" aria-label="Close the preview">${ic('xmark')}</button></div>
     ${tabs}<div class="${bodyClass}" id="preview-body">${body}</div>`;
-  if (S.previewFile && /\.(csv|txt|tex|log|yml|yaml)$/i.test(S.previewFile.name)) fillTextPreview(S.previewFile.name, url);
+  if (html !== previewHtml) { // same content: keep the panel (a redraw reloads the PDF and loses the scroll)
+    previewHtml = html;
+    p.innerHTML = html;
+    if (S.previewFile && /\.(csv|txt|tex|log|yml|yaml)$/i.test(S.previewFile.name)) fillTextPreview(S.previewFile.name, url);
+  }
   if (S.previewMode === 'page' && S.review && S.review.svg) paintPageBoxes();
 }
+let previewHtml = '';
 
 function fileBody(name, url) {
   if (/\.pdf$/i.test(name)) return { body: `<iframe class="pdf-frame" src="${url}#view=FitH" title="${esc(name)}"></iframe>`, bodyClass: 'preview-body frame' };
@@ -708,7 +799,8 @@ function guideBox(step) {
   const collapsed = !!S.guide[step];
   return `<section class="guide ${collapsed ? 'is-collapsed' : ''}">
     <button class="guide-head" data-act="guide-toggle" data-step="${step}" aria-expanded="${!collapsed}">${ic('light-bulb')} What to do here ${ic('nav-arrow-down', 'chev')}</button>
-    <div class="guide-body"><ul>${(GUIDES[step] || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div></section>`;
+    <div class="guide-body"><ul>${guideBullets(step).map((x) => `<li>${x}</li>`).join('')}</ul>
+      <button class="link-btn guide-more" data-act="guide-open" data-page="${step}">More in the guide ${ic('arrow-right')}</button></div></section>`;
 }
 function banner(kind, iconName, title, text, buttons = '') {
   return `<div class="banner banner-${kind}" role="note">${ic(iconName)}<div class="banner-body">
@@ -719,31 +811,194 @@ const fmtDate = (t) => (t ? new Date(t * 1000).toLocaleDateString(undefined, { d
 
 /* ---------- View: exams ---------- */
 
+const DASH_STATES = [['draft', 'Draft'], ['tocheck', 'Layout to check'], ['ready', 'Ready to print'], ['printed', 'Printed'], ['checking', 'Checking scans'], ['scanned', 'Scans uploaded'], ['marked', 'Marked'], ['exported', 'Exported'], ['archived', 'Archived']];
+const STEP_COUNT = 10;
+
+function examChip(p) {
+  if (p.state === 'checking') return `<span class="chip chip-warning">${ic('page-search')} Checking scans: ${p.problems} to review</span>`;
+  return stateChip(p.state);
+}
+
+function dashFiltered(list) {
+  const d = S.dash;
+  const q = fold(d.query).trim();
+  let out = list.filter((p) => (d.archived ? p.archived : !p.archived));
+  if (q) out = out.filter((p) => [p.name, p.meta.class, p.meta.subject].some((x) => fold(x).includes(q)));
+  if (d.klass) out = out.filter((p) => (p.meta.class || '') === d.klass);
+  if (d.state) out = out.filter((p) => p.state === d.state);
+  const by = {
+    recent: (a, b) => (b.modified || 0) - (a.modified || 0),
+    date: (a, b) => String(b.meta.date || '').localeCompare(String(a.meta.date || '')),
+    name: (a, b) => a.name.localeCompare(b.name),
+  }[d.sort] || (() => 0);
+  return out.sort(by);
+}
+
+const fmtIsoDate = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : String(iso || '');
+};
+
+function examCard(p) {
+  const meta = [p.meta.class, p.meta.subject, p.meta.date ? fmtIsoDate(p.meta.date) : ''].filter(Boolean).map(esc).join(' · ');
+  const nxt = p.next || {};
+  const target = nxt.step ? examPath(p.name, nxt.step) : `/exam/${enc(p.name)}`;
+  return `<article class="card exam-card">
+    <div class="row-between" style="gap:8px"><h3><a href="/exam/${enc(p.name)}" data-nav>${esc(p.name)}</a></h3>
+      <div class="card-menu"><button class="btn btn-ghost btn-icon btn-sm" data-act="menu" data-menu="${esc(p.name)}" aria-haspopup="menu" aria-expanded="${S.menu === p.name}" aria-label="More actions for ${esc(p.name)}">${ic('more-horiz')}</button>
+      ${S.menu === p.name ? `<div class="menu" role="menu">
+        <button class="menu-item" role="menuitem" data-act="exam-details" data-name="${esc(p.name)}">${ic('edit-pencil')} Class, subject and date…</button>
+        <button class="menu-item" role="menuitem" data-act="rename-exam" data-name="${esc(p.name)}">${ic('edit-pencil')} Rename</button>
+        <button class="menu-item" role="menuitem" data-act="clone-exam" data-name="${esc(p.name)}">${ic('copy')} Duplicate</button>
+        <a class="menu-item" role="menuitem" href="/fs/${enc(p.name)}">${ic('download')} Download as zip</a>
+        <button class="menu-item" role="menuitem" data-act="archive-exam" data-name="${esc(p.name)}" data-v="${p.archived ? 0 : 1}">${ic('archive')} ${p.archived ? 'Take out of the archive' : 'Archive'}</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" role="menuitem" data-act="delete-exam" data-name="${esc(p.name)}" style="color:var(--danger)">${ic('trash')} Delete</button></div>` : ''}</div></div>
+    <div class="subtle exam-meta">${meta || (p.modified ? 'Changed ' + fmtDate(p.modified) : '&nbsp;')}</div>
+    <div>${examChip(p)}</div>
+    <div class="steps-bar" role="img" aria-label="${p.done} of ${STEP_COUNT} steps done" title="${p.done} of ${STEP_COUNT} steps done">${Array.from({ length: STEP_COUNT }, (_, i) => `<span class="${i < p.done ? 'on' : ''}"></span>`).join('')}</div>
+    <div class="row-between" style="gap:8px"><span class="exam-next">${nxt.step ? `Next: <b>${esc(nxt.text)}</b>` : `${ic('check-circle')} ${esc(nxt.text || '')}`}</span>
+      <a class="btn btn-sm" href="${target}" data-nav>${nxt.step ? 'Continue' : 'Open'} ${ic('arrow-right')}</a></div>
+  </article>`;
+}
+
 function viewExams() {
   const list = S.projects;
+  const d = S.dash;
   let body;
   if (list === null) body = `<div class="grid grid-3">${'<div class="skeleton"></div>'.repeat(3)}</div>`;
   else if (!list.length) {
     body = `<div class="card"><div class="empty"><div class="empty-icon">${ic('multiple-pages')}</div><h2>No exams yet</h2>
-      <p>Create your first exam from a template, or start from an empty file.</p>
-      <div class="btn-row"><button class="btn btn-primary" data-act="new-exam">${ic('plus')} New exam</button></div></div></div>`;
+      <p>Create your first exam from a template or a blank start.</p>
+      <div class="btn-row"><a class="btn btn-primary" href="/new" data-nav>${ic('plus')} New exam</a></div></div></div>`;
   } else {
-    body = `<div class="grid grid-3">${list.map((p) => `<article class="card exam-card">
-      <div class="row-between"><h3><a href="/exam/${enc(p.name)}" data-nav>${esc(p.name)}</a></h3>${stateChip(p.state)}</div>
-      <div class="subtle">${p.modified ? 'Changed ' + fmtDate(p.modified) : ''}</div>
-      <div class="row-between"><a class="btn btn-sm" href="/exam/${enc(p.name)}" data-nav>Open ${ic('arrow-right')}</a>
-        <div class="card-menu"><button class="btn btn-ghost btn-icon btn-sm" data-act="menu" data-menu="${esc(p.name)}" aria-haspopup="menu" aria-expanded="${S.menu === p.name}" aria-label="More actions for ${esc(p.name)}">${ic('more-horiz')}</button>
-        ${S.menu === p.name ? `<div class="menu" role="menu">
-          <button class="menu-item" role="menuitem" data-act="rename-exam" data-name="${esc(p.name)}">${ic('edit-pencil')} Rename</button>
-          <button class="menu-item" role="menuitem" data-act="clone-exam" data-name="${esc(p.name)}">${ic('copy')} Duplicate</button>
-          <a class="menu-item" role="menuitem" href="/fs/${enc(p.name)}">${ic('download')} Download as zip</a>
-          <div class="menu-sep"></div>
-          <button class="menu-item" role="menuitem" data-act="delete-exam" data-name="${esc(p.name)}" style="color:var(--danger)">${ic('trash')} Delete</button></div>` : ''}</div>
-      </div></article>`).join('')}</div>`;
+    const classes = [...new Set(list.map((p) => p.meta.class).filter(Boolean))].sort();
+    const shown = dashFiltered(list);
+    const archived = list.filter((p) => p.archived).length;
+    body = `<div class="dash-tools">
+        <label class="sr-only" for="dash-search">Search exams</label><input class="input" id="dash-search" placeholder="Search name, class or subject…" value="${esc(d.query)}">
+        <select class="select" id="dash-class" aria-label="Class"><option value="">All classes</option>${classes.map((c) => `<option ${c === d.klass ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
+        <select class="select" id="dash-state" aria-label="State"><option value="">Any state</option>${DASH_STATES.map(([v, l]) => `<option value="${v}" ${v === d.state ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <select class="select" id="dash-sort" aria-label="Order">${[['recent', 'Recently changed'], ['date', 'Exam date'], ['name', 'Name']].map(([v, l]) => `<option value="${v}" ${v === d.sort ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${archived || d.archived ? `<label class="check" style="align-items:center"><input type="checkbox" id="dash-archived" ${d.archived ? 'checked' : ''}><span>Archived (${archived})</span></label>` : ''}
+      </div>
+      <div class="grid grid-3" id="dash-cards">${shown.map(examCard).join('')}</div>
+      <div class="card ${shown.length ? 'hidden' : ''}" id="dash-none"><div class="empty"><p>${d.archived ? 'No archived exams match.' : 'No exams match.'}</p></div></div>`;
   }
   return `<div class="page">
-    ${header('', 'Exams', 'Your exams and where each one stands.', list && list.length ? `<button class="btn btn-primary" data-act="new-exam">${ic('plus')} New exam</button>` : '')}
+    ${header('', 'Exams', 'Your exams, where each one stands and what comes next.', `${CAN_BRAND && !USER ? `<a class="btn btn-ghost" href="/appearance" data-nav>${ic('color-filter')} Appearance</a>` : ''}${list && list.length ? `<a class="btn btn-primary" href="/new" data-nav>${ic('plus')} New exam</a>` : ''}`)}
     ${body}</div>`;
+}
+
+/* While typing in the search box: only the cards change, so the box keeps focus. */
+function renderDashCards() {
+  const host = $('#dash-cards');
+  if (!host || !S.projects) { renderMain(true); return; }
+  const shown = dashFiltered(S.projects);
+  host.innerHTML = shown.map(examCard).join('');
+  const none = $('#dash-none'); if (none) none.classList.toggle('hidden', shown.length > 0);
+}
+
+async function editExamDetails(name) {
+  const p = (S.projects || []).find((x) => x.name === name) || { meta: (S.status && S.status.meta) || {} };
+  const m = p.meta || {};
+  const data = await formDialog({
+    title: `${esc(name)}: class, subject and date`, ok: 'Save', icon: 'edit-pencil',
+    body: `<div class="form-grid"><label class="field"><span class="field-label">Class</span><input class="input" name="class" value="${esc(m.class)}" placeholder="10B"></label>
+      <label class="field"><span class="field-label">Subject</span><input class="input" name="subject" value="${esc(m.subject)}" placeholder="Physics"></label>
+      <label class="field"><span class="field-label">Date of the exam</span><input class="input" type="date" name="date" value="${esc(m.date)}"></label></div>`,
+  });
+  if (data) socket_emit('ui-exam-meta', { exam: name, class: data.class, subject: data.subject, date: data.date });
+}
+
+/* ---------- View: new exam ---------- */
+
+const todayIso = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
+const newWizard = () => ({ step: 1, name: '', class: '', subject: '', date: todayIso(), gid: 'school', id: 'blank', group: 'school', query: '', style: 'paper', code: false, digits: 8, copies: '' });
+const thumbUrl = (gid, id) => `/ui/gallery/${enc(gid)}/${enc(id)}/thumb`;
+
+async function loadGallery() {
+  if (S.gallery) return;
+  try { S.gallery = await getJSON('/ui/api/gallery'); } catch { S.gallery = { groups: [], templates: [] }; }
+  if (S.route.kind === 'new') renderMain(true);
+}
+
+function wizardTemplate() {
+  const g = S.gallery;
+  const w = S.wizard;
+  return g && w && g.templates.find((t) => t.gid === w.gid && t.id === w.id);
+}
+
+function wizardNameError() {
+  return validName((S.projects || []).map((p) => p.name))({ name: S.wizard.name.trim() });
+}
+
+function viewNew() {
+  const w = S.wizard;
+  const steps = [['Details', 1], ['Template', 2], ['Options', 3]];
+  const bar = `<ol class="wizard-steps">${steps.map(([l, n]) => `<li class="${w.step === n ? 'is-current' : w.step > n ? 'is-done' : ''}">
+    ${w.step > n ? `<button class="link-btn" data-act="wiz-go" data-step="${n}">` : '<span>'}<span class="ws-dot">${w.step > n ? ic('check') : n}</span>${l}${w.step > n ? '</button>' : '</span>'}</li>`).join('')}</ol>`;
+  let body;
+  if (w.step === 1) {
+    body = `<section class="card wizard-details"><div class="card-body"><div class="form-grid">
+      <label class="field" style="grid-column:1/-1"><span class="field-label">Name</span><input class="input" id="wiz-name" data-wiz="name" value="${esc(w.name)}" placeholder="Physics mid-term 10B" autocomplete="off"></label>
+      <label class="field"><span class="field-label">Class</span><input class="input" data-wiz="class" value="${esc(w.class)}" placeholder="10B"></label>
+      <label class="field"><span class="field-label">Subject</span><input class="input" data-wiz="subject" value="${esc(w.subject)}" placeholder="Physics"></label>
+      <label class="field"><span class="field-label">Date of the exam</span><input class="input" type="date" data-wiz="date" value="${esc(w.date)}"></label>
+      </div><p class="field-hint" id="wiz-error" style="color:var(--danger);margin-top:10px">${esc(w.error || '')}</p></div>
+      <div class="card-foot"><a class="btn" href="/exams" data-nav>Cancel</a><button class="btn btn-primary" data-act="wiz-next">Next: choose a template ${ic('arrow-right')}</button></div></section>`;
+  } else if (w.step === 2) body = wizardGallery();
+  else body = wizardOptions();
+  return `<div class="page wide">${header('', 'New exam', 'Name it, choose where to start from, then a few options.')}${bar}${body}</div>`;
+}
+
+function wizardGallery() {
+  const g = S.gallery;
+  const w = S.wizard;
+  if (!g) return '<div class="skeleton" style="height:320px"></div>';
+  const q = fold(w.query).trim();
+  const list = g.templates.filter((t) => (q ? fold(`${t.title} ${t.text}`).includes(q) : t.gid === w.group));
+  const cur = wizardTemplate();
+  const isCur = (t) => !!(cur && t.gid === cur.gid && t.id === cur.id);
+  return `<div class="wizard-gallery">
+    <section class="card"><div class="card-header" style="flex-wrap:wrap;gap:8px">
+      <div class="segmented" role="tablist" aria-label="Template groups">${g.groups.map((x) => `<button role="tab" aria-pressed="${!q && x.id === w.group}" data-act="wiz-group" data-v="${esc(x.id)}">${esc(x.title)}</button>`).join('')}</div>
+      <span class="spacer"></span><label class="sr-only" for="wiz-search">Search templates</label><input class="input input-sm" id="wiz-search" style="max-width:220px" placeholder="Search templates…" value="${esc(w.query)}"></div>
+      <div class="card-body"><div class="tpl-grid" id="tpl-grid">${list.map((t) => `<button class="tpl-card ${isCur(t) ? 'is-selected' : ''}" data-act="wiz-pick" data-gid="${esc(t.gid)}" data-id="${esc(t.id)}" aria-pressed="${isCur(t)}">
+        <span class="tpl-thumb">${t.preview ? `<img src="${thumbUrl(t.gid, t.id)}" alt="" loading="lazy">` : ic('page')}</span>
+        <span class="tpl-title">${esc(t.title || t.id)}</span>
+        <span class="subtle">${t.format === 'plain' ? 'Plain text' : 'LaTeX'}${t.pages ? ` · ${t.pages} page${t.pages > 1 ? 's' : ''}` : ''}</span></button>`).join('') || '<p class="subtle">No template matches.</p>'}</div></div></section>
+    <section class="card tpl-preview">${cur ? `<div class="card-header"><h2>${esc(cur.title || cur.id)}</h2></div>
+      <div class="card-body"><p class="muted" style="margin:0 0 10px">${esc(cur.text || '')}</p>
+        ${cur.preview ? `<iframe class="tpl-pdf" src="/ui/gallery/${enc(cur.gid)}/${enc(cur.id)}/paper#view=FitH" title="${esc(cur.title || cur.id)}"></iframe><p class="field-hint">One copy of the question paper, as this template builds it.</p>` : '<p class="subtle">No preview for this template.</p>'}</div>` : '<div class="card-body"><p class="subtle">Choose a template.</p></div>'}
+      <div class="card-foot"><button class="btn" data-act="wiz-go" data-step="1">${ic('arrow-left')} Back</button><button class="btn btn-primary" data-act="wiz-next" ${cur ? '' : 'disabled'}>Next: options ${ic('arrow-right')}</button></div></section>
+  </div>`;
+}
+
+function wizardOptions() {
+  const w = S.wizard;
+  const t = wizardTemplate();
+  if (!t) return '';
+  const styleCard = (v, title, hint, thumb) => `<button class="choice style-choice" role="radio" aria-checked="${w.style === v}" data-act="wiz-style" data-v="${v}">
+    ${thumb ? `<img class="style-thumb" src="${thumb}" alt="">` : `<span class="choice-icon">${ic(v === 'paper' ? 'page' : 'multiple-pages')}</span>`}
+    <span><span class="choice-title">${title}</span><br><span class="subtle">${hint}</span></span></button>`;
+  const style = t.starter
+    ? `<div class="style-choices" role="radiogroup" aria-label="Answer sheet">
+        ${styleCard('paper', 'On the question paper', 'Students tick the boxes next to each question.', t.id === 'blank' ? thumbUrl('school', 'blank') : '')}
+        ${styleCard('separate', 'On a separate answer sheet', 'All the boxes on one sheet at the end of each copy.', t.id === 'blank' && t.variants ? thumbUrl('school', 'blank-separate') : '')}</div>`
+    : '<p class="muted">The answer sheet is laid out as in this template.</p>';
+  return `<div class="grid grid-2" style="align-items:start">
+    <section class="card"><div class="card-header"><h2>Answer sheet</h2></div><div class="card-body">${style}
+      ${t.starter ? `<label class="check" style="margin-top:14px"><input type="checkbox" id="wiz-code" ${w.code ? 'checked' : ''}><span>Students write their student number in boxes<br><span class="subtle">AMC reads it, so sheets are matched to the class list automatically.</span></span></label>
+        ${w.code ? `<label class="field" style="margin:10px 0 0 24px;max-width:220px"><span class="field-label">Digits in a student number</span><input class="input" type="number" min="1" max="12" data-wiz="digits" value="${esc(w.digits)}"></label>` : ''}` : ''}
+    </div></section>
+    <section class="card"><div class="card-header"><h2>Copies and summary</h2></div><div class="card-body">
+      <label class="field"><span class="field-label">Number of copies</span><input class="input input-num" type="number" min="1" max="9999" data-wiz="copies" value="${esc(w.copies)}" placeholder="As in the template">
+        <span class="field-hint">Print a few spares beyond the class size. You can change it until the papers are printed.</span></label>
+      <dl class="summary"><dt>Name</dt><dd>${esc(w.name)}</dd>${w.class ? `<dt>Class</dt><dd>${esc(w.class)}</dd>` : ''}${w.subject ? `<dt>Subject</dt><dd>${esc(w.subject)}</dd>` : ''}<dt>Date</dt><dd>${esc(fmtIsoDate(w.date))}</dd><dt>Template</dt><dd>${esc(t.title || t.id)}</dd></dl>
+    </div>
+    <div class="card-foot"><button class="btn" data-act="wiz-go" data-step="2">${ic('arrow-left')} Back</button><button class="btn btn-primary" data-act="wiz-create" ${S.creating ? 'disabled' : ''}>${ic('plus')} ${S.creating ? 'Creating…' : 'Create exam'}</button></div></section>
+  </div>`;
 }
 
 /* ---------- View: questions ---------- */
@@ -760,11 +1015,12 @@ function viewQuestions() {
 function questionsHead() {
   const L = locked();
   return `
-    ${header('questions', 'Questions', L ? 'The exam is printed: only answer key and scoring changes can be saved.' : 'Write the questions and answers. Save, then build the preview to see the question paper.',
-    `${L ? '' : `<button class="btn" data-act="build" ${S.source.loaded ? '' : 'disabled'}>${ic('refresh')} Build preview</button>`}
+    ${header('questions', 'Questions', L ? 'The exam is printed, so the questions are read-only.' : 'Write the questions and answers. Save, then build the preview to see the question paper.',
+    L ? `<a class="btn btn-primary" href="${examPath(S.project, 'marking-scheme')}" data-nav>${ic('percentage-circle')} Correct the answer key</a>`
+      : `<button class="btn" data-act="build" ${S.source.loaded ? '' : 'disabled'}>${ic('refresh')} Build preview</button>
      <button class="btn btn-primary" data-act="save" id="save-btn" disabled>${ic('floppy-disk')} Save</button>`)}
     ${guideBox('questions')}
-    ${L ? lockBanner('You can still correct the answer key (switch <code>\\correctchoice</code> and <code>\\wrongchoice</code>) and change scoring (<code>\\scoring{…}</code>). The server refuses any other change, because it would move things on the printed papers.') : ''}`;
+    ${L ? lockBanner('Correct the answer key and change scoring in <b>Marking scheme</b>: those changes are still allowed, because nothing moves on the printed papers.') : ''}`;
 }
 
 function renderEditorBar() {
@@ -796,6 +1052,7 @@ function mountEditor() {
   editor.setTheme('ace/theme/textmate');
   editor.setShowPrintMargin(false);
   editor.session.setUseWrapMode(true);
+  editor.setReadOnly(locked());
   editor.commands.addCommand({ name: 'save', bindKey: { win: 'Ctrl-S', mac: 'Command-S' }, exec: () => saveSource() });
   editor.session.on('change', () => {
     if (S.source.loading) return;
@@ -805,7 +1062,7 @@ function mountEditor() {
 }
 function dropEditor() {
   if (editor) { editor.destroy(); editor = null; }
-  S.source = { name: null, mode: null, url: null, dirty: false, loaded: false };
+  S.source = { name: null, mode: null, url: null, dirty: false, loaded: false, failed: false };
 }
 function setEditorText(text) {
   if (!editor) return;
@@ -820,26 +1077,39 @@ function setEditorText(text) {
 
 function loadSource(filename) { socket_emit('source-code', filename); }
 async function onSourceName(name, mode, url) {
+  const project = S.project;
   S.source.name = name; S.source.mode = mode; S.source.url = url;
+  S.source.loaded = false; S.source.failed = false;
+  let text = null;
   try {
-    const r = await fetch(url, { headers: headers(), cache: 'no-store' });
+    // Our own address for the file: the server's has the exam name as is,
+    // and a "#" or "?" in it would cut the address short.
+    const r = await fetch(fsUrl(name), { headers: headers(), cache: 'no-store' });
     if (!r.ok) throw new Error(r.status);
-    S.source.text = await r.text();
-  } catch { S.source.text = ''; toast(`Couldn't open ${name}.`, 'warning-triangle'); }
+    if (/^application\/json/.test(r.headers.get('content-type') || '')) throw new Error((await r.json()).error || 'not a file');
+    text = await r.text();
+  } catch (e) { console.error(e); }
+  if (S.project !== project || S.source.name !== name) return; // another exam or file was chosen meanwhile
+  if (text === null) { S.source.failed = true; toast(`Couldn't open ${name}. Reload the page to try again.`, 'warning-triangle'); }
+  S.source.text = text === null ? '' : text;
   S.source.loaded = true;
   if (S.route.step === 'questions') {
     if (!editor) renderMain();
     setEditorText(S.source.text);
-    const b = $('[data-act="build"]'); if (b) b.disabled = false;
+    if (editor) editor.setReadOnly(locked() || S.source.failed);
+    const b = $('[data-act="build"]'); if (b) b.disabled = S.source.failed;
   }
 }
 
 async function saveSource() {
-  if (!editor || !S.source.name) return false;
+  if (!editor || !S.source.name || !S.source.loaded) return false;
+  if (S.source.failed) { toast(`${S.source.name} couldn't be opened, so it isn't saved over. Reload the page.`, 'warning-triangle'); return false; }
+  if (locked()) { toast('The exam is printed: correct the answer key in Marking scheme.', 'lock'); return false; }
+  const text = editor.getValue();
   try {
-    await upload('/upload/source', [[new Blob([editor.getValue()], { type: 'text/plain' }), S.source.name]]);
-    S.source.text = editor.getValue();
-    S.source.dirty = false;
+    await upload('/upload/source', [[new Blob([text], { type: 'text/plain' }), S.source.name]]);
+    S.source.text = text;
+    if (editor && editor.getValue() === text) S.source.dirty = false; // typed meanwhile: still unsaved
     renderEditorBar();
     toast(`${S.source.name} saved.`);
     return true;
@@ -870,6 +1140,7 @@ async function buildPreview() {
 
 function viewSettings() {
   const c = S.config;
+  const meta = (S.status && S.status.meta) || {};
   const o = c ? c.options : {};
   const engine = o.moteur_latex_b || '';
   const engineField = c && c.engines
@@ -883,6 +1154,13 @@ function viewSettings() {
         <label class="field"><span class="field-label">LaTeX engine</span>${c ? engineField : '<input class="input" disabled>'}
           <span class="field-hint">Used to build the papers. pdflatex suits most exams.</span></label>
       </div></div></section>
+    <section class="card"><div class="card-header"><h2>Details</h2></div><div class="card-body">
+      <div class="form-grid">
+        <label class="field"><span class="field-label">Class</span><input class="input" id="meta-class" value="${esc(meta.class)}" placeholder="10B"></label>
+        <label class="field"><span class="field-label">Subject</span><input class="input" id="meta-subject" value="${esc(meta.subject)}" placeholder="Physics"></label>
+        <label class="field"><span class="field-label">Date of the exam</span><input class="input" type="date" id="meta-date" value="${esc(meta.date)}"></label>
+      </div><p class="field-hint" style="margin-top:10px">Shown on the exams list, where you can search and filter by them.</p></div>
+      <div class="card-foot"><button class="btn btn-primary" data-act="save-meta">${ic('floppy-disk')} Save details</button></div></section>
     <section class="card"><div class="card-header"><h2>Copy or remove</h2></div><div class="list">
       <div class="list-row"><span class="list-icon">${ic('copy')}</span><div class="list-row-main"><div class="list-row-title">Duplicate</div><div class="subtle">A full copy of this exam, including any scans and marks.</div></div><button class="btn btn-sm" data-act="clone-exam" data-name="${esc(S.project)}">Duplicate</button></div>
       <div class="list-row"><span class="list-icon">${ic('download')}</span><div class="list-row-main"><div class="list-row-title">Download</div><div class="subtle">Everything in this exam as a zip file.</div></div><a class="btn btn-sm" href="/fs/${enc(S.project)}">Download</a></div>
@@ -918,6 +1196,7 @@ async function unlockExam() {
   if (st.scans) lost.push(`<li><b>${st.scans} scanned pages</b> and any corrections to them</li>`);
   if (st.matched) lost.push(`<li><b>${st.matched} matches</b> between sheets and students</li>`);
   if (st.marked) lost.push(`<li><b>Marks</b> for ${st.marked} copies</li>`);
+  if ((st.exports || []).length || st.annotated || st.annotated_single) lost.push('<li>The <b>exported marks</b> and <b>annotated sheets</b> made from them</li>');
   lost.push('<li>The <b>layout</b>: you rebuild the papers and check the layout again</li>');
   const data = await formDialog({
     title: 'Unlock to edit questions?', ok: 'Unlock and remove', icon: 'lock-slash',
@@ -974,8 +1253,106 @@ function viewMarking() {
         </div><p class="field-hint" style="margin-top:12px">Each change is saved as you make it.</p>`}</div>
       </section>
     </div>
-    <p class="subtle" style="margin-top:14px">${ic('info-circle')} Scoring and correct answers for individual questions can be changed in the source (Questions) for now; a per-question panel comes in phase 5.</p>
+    ${questionsCard()}
   </div>`;
+}
+
+/* ---------- Marking scheme: questions, answer key and per-question scoring ---------- */
+
+const KIND_LABELS = { default: 'Default', custom: 'Own rule', full: 'Full marks for everyone', none: 'Not counted' };
+const fmtPts = (x) => (x === null || x === undefined ? '?' : `${fmtNum(x)} ${x === 1 ? 'point' : 'points'}`);
+const trunc = (t, n) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
+
+function questionsCard() {
+  const d = S.questions;
+  const updating = S.scaleUpdating || (d && d.updating);
+  const head = (extra = '') => `<div class="card-header">${ic('list')}<h2>Questions</h2>${extra}<span class="spacer"></span>
+    ${updating ? `<span class="row subtle" style="gap:6px"><span class="spinner" style="width:14px;height:14px"></span>Reading the questions…</span>` : ''}</div>`;
+  if (!d) return `<section class="card" style="margin-top:16px">${head()}<div class="card-body"><div class="skeleton" style="height:120px"></div></div></section>`;
+  if (d.error) {
+    return `<section class="card" style="margin-top:16px">${head()}<div class="card-body">${banner('warning', 'warning-triangle', d.error, '', `<a class="btn btn-sm" href="${examPath(S.project, 'questions')}" data-nav>Go to Questions</a><button class="btn btn-sm btn-ghost" data-act="scale-refresh">Try again</button>`)}</div></section>`;
+  }
+  if (!d.questions.length) {
+    return `<section class="card" style="margin-top:16px">${head()}<div class="card-body"><p class="muted">${updating ? 'AMC is reading the questions from the source…' : 'No questions found yet. Write them in Questions.'}</p></div></section>`;
+  }
+  const t = d.totals;
+  const full = S.config && parseFloat(S.config.options.note_max);
+  const total = !t ? '' : `<span class="q-total">Total: <b>${t.unknown ? 'at least ' : ''}${t.min === t.max ? fmtPts(t.max) : `${fmtNum(t.min)}–${fmtPts(t.max)}`}</b>${full > 0 ? ` → final mark out of <b>${fmtNum(full)}</b>` : ''}</span>`;
+  const L = locked();
+  return `<section class="card" style="margin-top:16px">${head(`<span class="chip">${d.questions.length}</span>`)}
+    <div class="card-body" style="padding-bottom:6px"><div class="row" style="flex-wrap:wrap;gap:8px 16px">
+      <span class="muted">Click an answer to mark it correct or not. ${L ? 'The exam is printed: these changes are still allowed, because nothing moves on the paper.' : 'Changes are saved in the source.'}</span><span class="spacer"></span>${total}</div></div>
+    <div class="table-wrap" style="border:0;border-top:1px solid var(--border);border-radius:0"><table class="table q-table"><thead><tr><th>Question</th><th>Correct answers</th><th>Points</th></tr></thead>
+    <tbody>${d.questions.map(questionRow).join('')}</tbody></table></div>
+    ${t && t.min !== t.max ? '<p class="field-hint" style="padding:8px 16px">Copies get different questions, so their totals differ.</p>' : ''}
+  </section>`;
+}
+
+function questionRow(q) {
+  const chips = q.answers.map((a) => {
+    const can = q.editable && a.answer !== 0 && !q.indicative;
+    return `<button class="ans ${a.correct ? 'is-correct' : ''}" data-act="q-answer" data-title="${esc(q.title)}" data-answer="${a.answer}" aria-pressed="${a.correct}" ${can ? '' : 'disabled'} title="${esc(a.text)}${a.answer === 0 ? ' (AMC adds this box; it is correct when no other answer is)' : ''}">${a.correct ? ic('check') : ''}<span>${esc(trunc(a.text, 30))}</span></button>`;
+  }).join('');
+  const kind = q.indicative ? 'Indicative: not counted' : KIND_LABELS[q.kind];
+  const actions = q.editable && !q.indicative
+    ? `<button class="btn btn-ghost btn-sm" data-act="q-edit" data-title="${esc(q.title)}">${ic('edit-pencil')} Scoring…</button>${q.kind === 'full' || q.kind === 'none' ? `<button class="btn btn-ghost btn-sm" data-act="q-restore" data-title="${esc(q.title)}">Count normally</button>` : ''}`
+    : `<a class="btn btn-ghost btn-sm" href="${examPath(S.project, 'questions')}" data-nav>Edit in Questions</a>`;
+  return `<tr class="${q.kind === 'none' ? 'is-muted' : ''}">
+    <td class="q-cell"><div class="row" style="gap:8px;flex-wrap:wrap"><b>${esc(q.title)}</b><span class="chip">${q.multiple ? 'Multiple' : 'Single'}</span></div>
+      ${q.text ? `<div class="subtle q-text">${esc(q.text)}</div>` : ''}
+      ${q.problem ? `<div class="subtle q-text q-problem">${ic('info-circle')} ${esc(q.problem)}</div>` : ''}
+      <div class="q-actions">${actions}</div></td>
+    <td class="q-cell"><div class="ans-row">${chips}</div></td>
+    <td class="q-cell q-points"><b title="${q.max_from === 'amc' ? 'As computed by AMC when marking' : 'From the scoring rules'}">${q.max === null ? '?' : fmtPts(q.max)}</b>
+      <div class="subtle">${kind}</div>${q.kind === 'custom' ? `<div class="mono q-rule">${esc(q.rule)}</div>` : ''}
+      ${q.answer_rules ? '<div class="subtle">Some answers have their own points</div>' : ''}
+      ${q.max === null ? '<div class="subtle">AMC works it out when marking</div>' : ''}</td></tr>`;
+}
+
+function questionByTitle(title) { return S.questions && S.questions.questions.find((x) => x.title === title); }
+
+function toggleAnswer(title, answer) {
+  const q = questionByTitle(title);
+  if (!q || !q.editable) return;
+  const a = q.answers.find((x) => x.answer === answer);
+  if (!q.multiple && a.correct) { toast('A single-answer question needs one correct answer: click the answer that should be correct instead.', 'info-circle'); return; }
+  const correct = !a.correct;
+  q.answers.forEach((x) => { if (x.answer === answer) x.correct = correct; else if (!q.multiple && correct) x.correct = false; });
+  S.questions.fresh = false; // until the server has written it and AMC has read it again
+  renderMain(true);
+  socket_emit('ui-question-edit', { title, action: 'correct', answer, correct });
+  if (S.status && S.status.marked) toast('Answer key changed. Compute the marks again to apply it.', 'info-circle');
+}
+
+async function editQuestion(title) {
+  const q = questionByTitle(title);
+  if (!q) return;
+  // In AMC a default haut= wins over a question's mz=, so "all or nothing" on a question also says haut=0.
+  const presets = (q.multiple ? PRESETS_M : PRESETS_S).filter(([v]) => v).map(([v, l]) => [q.multiple && /^mz=/.test(v) ? 'haut=0,' + v : v, l]);
+  const current = q.kind === 'full' || q.kind === 'none' ? q.kind : q.kind === 'default' ? 'default'
+    : presets.some(([v]) => v === q.rule) ? 'preset:' + q.rule : 'custom';
+  const radio = (value, title2, hint = '') => `<label class="check"><input type="radio" name="choice" value="${esc(value)}" ${current === value ? 'checked' : ''}><span>${title2}${hint ? `<br><span class="subtle">${hint}</span>` : ''}</span></label>`;
+  const def = S.scoring && (q.multiple ? S.scoring.M : S.scoring.S);
+  const data = await formDialog({
+    title: `Scoring of ${esc(q.title)}`, ok: 'Save', icon: 'percentage-circle',
+    body: `<div class="q-choices">
+      ${radio('default', 'The default scoring', def ? `<code>${esc(def)}</code>, as set above` : `AMC's default for ${q.multiple ? 'multiple' : 'single'}-answer questions`)}
+      ${presets.map(([v, l]) => radio('preset:' + v, esc(l), `<code>${esc(v)}</code>`)).join('')}
+      ${radio('custom', 'Own AMC rule')}
+      <input class="input mono" name="custom" style="margin:-2px 0 6px 24px;width:calc(100% - 24px)" value="${esc(current === 'custom' ? q.rule : '')}" placeholder="b=2,m=-1" autocomplete="off">
+      <div class="menu-sep" style="margin:10px 0"></div><div class="field-label" style="margin-bottom:6px">Neutralise the question</div>
+      ${radio('full', 'Full marks for everyone', `Every copy gets the question's ${q.max ? fmtPts(q.max) : 'points'}, whatever was ticked.`)}
+      ${radio('none', 'Not counted', 'The question gives no points and isn\'t part of the total.')}
+    </div>`,
+    validate: (v) => {
+      if (!v.choice) return 'Choose how the question is scored.';
+      if (v.choice === 'custom' && !/^[A-Za-z0-9=.,+\-*/() ]{1,200}$/.test((v.custom || '').trim())) return 'Write an AMC rule, for example b=2,m=-1.';
+      return '';
+    },
+  });
+  if (!data) return;
+  if (data.choice === 'full' || data.choice === 'none') socket_emit('ui-question-edit', { title, action: 'neutral', how: data.choice });
+  else socket_emit('ui-question-edit', { title, action: 'rule', rule: data.choice === 'default' ? '' : data.choice === 'custom' ? data.custom.trim() : data.choice.slice(7) });
 }
 
 /* ---------- View: papers ---------- */
@@ -1315,11 +1692,7 @@ async function openReview(key) {
     const res = await fetch('/scans_page_select.html', { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' }, body: JSON.stringify({ student, page, copy }) });
     const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
     const svg = doc.querySelector('svg');
-    if (svg) {
-      // Clicks are handled here; drop the old page's inline handlers and any script.
-      svg.querySelectorAll('script').forEach((el) => el.remove());
-      [svg, ...svg.querySelectorAll('*')].forEach((el) => [...el.attributes].forEach((a) => { if (/^on/i.test(a.name)) el.removeAttribute(a.name); }));
-    }
+    if (svg) sanitizeNode(svg); // clicks are handled here; drop the old page's inline handlers and any script
     if (S.review && S.review.key === key) { S.review.svg = svg ? svg.outerHTML : ''; renderPreview(); }
   } catch (e) { console.error(e); if (S.review) { S.review.loading = false; renderMain(true); } }
 }
@@ -1865,21 +2238,306 @@ function previewListGo(i) {
   renderPreview();
 }
 
+/* ---------- View: appearance (branding) ---------- */
+
+async function loadLook() {
+  try {
+    const b = await getJSON('/ui/api/branding');
+    S.look = { name: b.name || '', color: b.color || null, neutral: b.neutral, logoUrl: b.logo, file: null, fileUrl: null,
+      removeLogo: false, swatches: [], presets: b.presets, palette: b.palette, canEdit: b.can_edit };
+    if (b.logo) logoSwatches(b.logo);
+  } catch (e) { console.error(e); S.look = null; }
+  if (S.route.kind === 'appearance') renderMain(true);
+}
+
+/* Main colours of a logo: saturated, not too light or dark, by hue. */
+function logoSwatches(url) {
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const n = 64; const c = document.createElement('canvas'); c.width = n; c.height = n;
+      const g = c.getContext('2d'); g.drawImage(img, 0, 0, n, n);
+      const d = g.getImageData(0, 0, n, n).data;
+      const buckets = new Map();
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) continue;
+        const [r, gg, b] = [d[i] / 255, d[i + 1] / 255, d[i + 2] / 255];
+        const max = Math.max(r, gg, b); const min = Math.min(r, gg, b); const l = (max + min) / 2;
+        const s = max === min ? 0 : (l > 0.5 ? (max - min) / (2 - max - min) : (max - min) / (max + min));
+        if (s < 0.25 || l < 0.12 || l > 0.9) continue;
+        let h = 0;
+        if (max === r) h = ((gg - b) / (max - min)) % 6; else if (max === gg) h = (b - r) / (max - min) + 2; else h = (r - gg) / (max - min) + 4;
+        const key = Math.round(((h * 60 + 360) % 360) / 20) % 18;
+        const v = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+        v.n += 1; v.r += d[i]; v.g += d[i + 1]; v.b += d[i + 2];
+        buckets.set(key, v);
+      }
+      const hex = (v) => '#' + [v.r, v.g, v.b].map((x) => Math.round(x / v.n).toString(16).padStart(2, '0')).join('');
+      S.look.swatches = [...buckets.values()].filter((v) => v.n >= 12).sort((a, b) => b.n - a.n).slice(0, 5).map(hex);
+    } catch (e) { S.look.swatches = []; }
+    if (S.route.kind === 'appearance') renderMain(true);
+  };
+  img.src = url;
+}
+
+let lookTimer = null;
+function setLookColor(color) {
+  S.look.color = color;
+  clearTimeout(lookTimer);
+  lookTimer = setTimeout(async () => {
+    try { S.look.palette = (await getJSON(`/ui/api/branding/palette?color=${enc(color || S.look.neutral)}`)).palette; } catch { /* keep the last one */ }
+    if (S.route.kind === 'appearance') renderMain(true);
+  }, 120);
+  renderMain(true);
+}
+
+function lookPreview(theme) {
+  const p = S.look.palette[theme];
+  const L = S.look;
+  const logo = L.removeLogo ? null : (L.fileUrl || L.logoUrl);
+  const bg = theme === 'light' ? '#ffffff' : '#15181e';
+  const text = theme === 'light' ? '#1d2330' : '#e6e9ef';
+  return `<div class="look-sample" style="--brand:${p.brand};--on-brand:${p.on_brand};background:${bg};color:${text}">
+    <div class="look-bar"><span class="brandmark-logo">${logo ? `<img src="${esc(logo)}" alt="">` : 'AMC'}</span><b>${esc(L.name || 'AMC')}</b></div>
+    <div class="look-body"><button class="btn btn-primary btn-sm" tabindex="-1">Save PDFs for printing</button>
+      <span class="look-accent">Step 3 of 10</span><span class="look-chip">Ready to print</span></div>
+    <div class="subtle" style="color:inherit;opacity:.75">${theme === 'light' ? 'Light' : 'Dark'} theme · button text ${p.on_brand === '#ffffff' ? 'white' : 'dark'}, contrast ${p.text_contrast}:1${p.adjusted ? ' · shade adjusted to stay readable' : ''}</div>
+  </div>`;
+}
+
+function viewAppearance() {
+  const L = S.look;
+  if (!L) return `<div class="page">${header('', 'Appearance')}<div class="skeleton"></div></div>`;
+  if (!L.canEdit) {
+    return `<div class="page">${header('', 'Appearance', 'The school\'s name, logo and colours.')}
+      ${banner('info', 'lock', 'Only administrators can change the appearance.', 'Ask an administrator of this shared machine.')}</div>`;
+  }
+  const logo = L.removeLogo ? null : (L.fileUrl || L.logoUrl);
+  const swatch = (c, label) => `<button class="swatch ${L.color === c ? 'is-on' : ''}" data-act="look-color" data-color="${c}" title="${esc(label || c)}" aria-label="${esc(label || c)}" style="background:${c}"></button>`;
+  return `<div class="page">
+    ${header('', 'Appearance', 'The school\'s name, logo and colours, for everyone using this app.')}
+    <div class="grid grid-2" style="align-items:start">
+      <section class="card"><div class="card-header"><h2>School</h2></div><div class="card-body">
+        <label class="field"><span class="field-label">School name</span><input class="input" id="look-name" value="${esc(L.name)}" placeholder="Riverside High School" maxlength="80"></label>
+        <div class="field" style="margin-top:14px"><span class="field-label">Logo</span>
+          <div class="row" style="gap:12px;align-items:center">
+            <span class="look-logo">${logo ? `<img src="${esc(logo)}" alt="Logo">` : ic('media-image')}</span>
+            <label class="btn btn-sm">${ic('upload')} ${logo ? 'Replace' : 'Choose a logo'}<input type="file" id="look-logo" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" hidden></label>
+            ${logo ? `<button class="btn btn-ghost btn-sm" data-act="look-remove-logo">${ic('trash')} Remove</button>` : ''}
+          </div>
+          <span class="field-hint">PNG, JPEG or SVG, up to 1 MB. Shown in the top bar and on the sign-in page; new exams from the starters print it (PNG or JPEG).</span></div>
+      </div></section>
+      <section class="card"><div class="card-header"><h2>Colour</h2></div><div class="card-body">
+        ${L.swatches.length ? `<div class="field-label">From the logo</div><div class="swatches">${L.swatches.map((c) => swatch(c)).join('')}</div>` : ''}
+        <div class="field-label" style="margin-top:${L.swatches.length ? 12 : 0}px">Presets</div>
+        <div class="swatches">${L.presets.map(([label, c]) => swatch(c, label)).join('')}</div>
+        <div class="field-label" style="margin-top:12px">Any colour</div>
+        <div class="row" style="gap:8px"><input type="color" id="look-color" value="${esc(L.color || L.neutral)}" aria-label="Pick a colour">
+          <input class="input mono" id="look-hex" style="max-width:120px" value="${esc(L.color || '')}" placeholder="${esc(L.neutral)}" aria-label="Colour as #rrggbb"></div>
+        <p class="field-hint" style="margin-top:10px">The app keeps text readable: if a colour is too pale or too dark for a theme, it uses a lighter or darker shade of it there.</p>
+      </div></section>
+    </div>
+    <section class="card" style="margin-top:16px"><div class="card-header"><h2>Preview</h2></div>
+      <div class="card-body"><div class="grid grid-2">${lookPreview('light')}${lookPreview('dark')}</div></div>
+      <div class="card-foot"><button class="btn btn-ghost" data-act="look-reset">${ic('undo')} Reset to neutral</button><span class="spacer"></span>
+        <button class="btn btn-primary" data-act="look-save">${ic('floppy-disk')} Save</button></div></section>
+  </div>`;
+}
+
+async function saveLook(reset = false) {
+  const L = S.look;
+  const form = new FormData();
+  if (reset) form.append('reset', '1');
+  else {
+    form.append('name', ($('#look-name') || {}).value ?? L.name);
+    form.append('color', L.color || '');
+    if (L.removeLogo) form.append('remove_logo', '1');
+    if (L.file) form.append('logo', L.file, L.file.name);
+  }
+  try {
+    const r = await fetch('/ui/branding', { method: 'POST', headers: headers(), body: form });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || `Not saved (${r.status})`);
+    toast(reset ? 'Back to the neutral look.' : 'Appearance saved.');
+    setTimeout(() => location.reload(), 400);
+  } catch (e) { toast(e.message, 'warning-triangle'); }
+}
+
+/* ---------- Guide and tour ---------- */
+
+async function loadGuide() {
+  if (S.guidePages) return;
+  try { S.guidePages = (await getJSON('/ui/api/guide')).pages; } catch { S.guidePages = []; }
+  if (S.route.kind === 'exam') renderMain(true);
+  if (S.previewMode === 'guide') renderPreview();
+}
+
+const guidePage = (id) => (S.guidePages || []).find((p) => p.id === id);
+
+/* Inline Markdown: `code`, **bold**, *italic*, [text](link). Input is escaped first. */
+function mdInline(text) {
+  const code = [];
+  let t = esc(text).replace(/`([^`]+)`/g, (m, c) => { code.push(c); return `\u0000${code.length - 1}\u0000`; });
+  t = t.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  t = t.replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>');
+  t = t.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${code[+i]}</code>`);
+  t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, href) => {
+    const g = /^guide:([a-z-]+)$/.exec(href);
+    if (g) return `<a href="#" data-act="guide-open" data-page="${g[1]}">${label}</a>`;
+    if (/^https?:\/\//.test(href)) return `<a href="${href}" target="_blank" rel="noopener">${label}</a>`;
+    return label;
+  });
+  return t;
+}
+
+/* A small Markdown renderer for the guide: headings, paragraphs, lists, code blocks. */
+function md(text) {
+  const out = [];
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  let para = []; let list = null;
+  const flush = () => {
+    if (para.length) { out.push(`<p>${mdInline(para.join(' '))}</p>`); para = []; }
+    if (list) { out.push(`<${list.tag}>${list.items.map((x) => `<li>${mdInline(x)}</li>`).join('')}</${list.tag}>`); list = null; }
+  };
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^```/.test(line)) {
+      flush();
+      const code = [];
+      for (i += 1; i < lines.length && !/^```/.test(lines[i]); i += 1) code.push(lines[i]);
+      out.push(`<pre class="guide-code">${esc(code.join('\n'))}</pre>`);
+      continue;
+    }
+    const h = /^(#{1,3})\s+(.*)$/.exec(line);
+    const li = /^\s*(?:[-*]|(\d+)\.)\s+(.*)$/.exec(line);
+    if (h) { flush(); out.push(`<h${h[1].length + 1}>${mdInline(h[2])}</h${h[1].length + 1}>`); }
+    else if (li) {
+      if (para.length) { out.push(`<p>${mdInline(para.join(' '))}</p>`); para = []; }
+      const tag = li[1] ? 'ol' : 'ul';
+      if (!list || list.tag !== tag) { if (list) flush(); list = { tag, items: [] }; }
+      list.items.push(li[2]);
+    } else if (!line.trim()) flush();
+    else if (list && /^\s{2,}\S/.test(line)) list.items[list.items.length - 1] += ' ' + line.trim();
+    else { if (list) flush(); para.push(line.trim()); }
+  }
+  flush();
+  return out.join('\n');
+}
+
+/* The "What to do here" list of a step, from its guide page. */
+function guideBullets(step) {
+  const p = guidePage(step);
+  if (p) {
+    const m = /##\s+What to do here\s*\n([\s\S]*?)(\n##\s|$)/.exec(p.markdown);
+    const items = m ? m[1].split('\n').map((l) => /^\s*-\s+(.*)$/.exec(l)).filter(Boolean).map((x) => mdInline(x[1])) : [];
+    if (items.length) return items;
+  }
+  return (GUIDES[step] || []).map(esc);
+}
+
+function openGuide(page) {
+  S.guideId = guidePage(page) || !S.guidePages ? page : 'index';
+  S.previewMode = 'guide'; S.previewFile = null; S.previewList = null;
+  S.guideOpen = true;
+  if (S.route.kind === 'exam' && !S.previewOpen) { S.previewOpen = true; store.set('previewOpen', true); }
+  renderTop(); renderPreview();
+  const body = $('#preview-body'); if (body) body.scrollTop = 0;
+  loadGuide();
+}
+
+function guidePreview() {
+  const pages = S.guidePages;
+  if (!pages) return { title: 'Guide', body: '<div class="preview-empty">Loading the guide…</div>', tabs: '' };
+  const i = Math.max(0, pages.findIndex((p) => p.id === S.guideId));
+  const p = pages[i];
+  const tabs = `<div class="preview-tabs"><button data-act="guide-open" data-page="${pages[i - 1] ? pages[i - 1].id : ''}" ${i ? '' : 'disabled'}>${ic('nav-arrow-left')} Previous</button>
+    <label class="sr-only" for="guide-select">Guide page</label><select class="select input-sm" id="guide-select">${pages.map((x) => `<option value="${x.id}" ${x.id === p.id ? 'selected' : ''}>${esc(x.title)}</option>`).join('')}</select>
+    <button data-act="guide-open" data-page="${pages[i + 1] ? pages[i + 1].id : ''}" ${pages[i + 1] ? '' : 'disabled'}>Next ${ic('nav-arrow-right')}</button></div>`;
+  const toStep = S.route.kind === 'exam' && p.id !== 'index' && STEPS.some((s) => s.id === p.id) && S.route.step !== p.id
+    ? `<p><a class="btn btn-sm" href="${examPath(S.project, p.id)}" data-nav>Go to this step ${ic('arrow-right')}</a></p>` : '';
+  return { title: `Guide · ${p.title}`, body: `<article class="guide-page">${md(p.markdown)}${toStep}</article>`, tabs };
+}
+
+/* First-run tour: a few spotlights, skippable, replayable from the Guide menu. */
+const TOUR = [
+  { sel: '#sidebar', title: 'The ten steps', text: 'Every exam goes through these steps, before and after the exam. A tick means done, a number means something needs you. Open any step at any time.' },
+  { sel: '#main .guide', title: 'What to do here', text: 'Each step starts with a short list of what to do. Fold it away once you know it.' },
+  { sel: '#main a.btn-primary[href="/new"]', title: 'New exam', text: 'Start an exam from a template or a blank start.' },
+  { sel: '.exam-card', title: 'Your exams', text: 'Each card shows where an exam stands, and the next thing to do.' },
+  { sel: '#topbar [data-act="toggle-preview"]', title: 'The preview panel', text: 'Question papers, scanned pages, exported marks and annotated sheets open on the right. This button shows or hides it.' },
+  { sel: '#topbar [data-menu="guide"]', title: 'The guide', text: 'The full guide, with common problems and fixes for each step. Take this tour again from here.' },
+];
+let tour = null;
+
+function startTour() {
+  S.menu = null; renderTop();
+  const steps = TOUR.filter((t) => { const el = $(t.sel); return el && el.getClientRects().length; });
+  if (!steps.length) return;
+  tour = { steps, i: 0 };
+  renderTour();
+}
+function endTour() { tour = null; store.set('tour-done', true); renderTour(); }
+function renderTour() {
+  let el = $('#tour');
+  if (!tour) { if (el) el.remove(); return; }
+  const st = tour.steps[tour.i];
+  const target = $(st.sel);
+  if (!target) { endTour(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'tour'; el.className = 'tour'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-labelledby', 'tour-title'); document.body.appendChild(el); }
+  const r = target.getBoundingClientRect();
+  const pad = 6;
+  const last = tour.i === tour.steps.length - 1;
+  el.innerHTML = `<div class="tour-spot" style="left:${r.left - pad}px;top:${r.top - pad}px;width:${r.width + 2 * pad}px;height:${r.height + 2 * pad}px"></div>
+    <div class="tour-card" id="tour-card"><div class="subtle">${tour.i + 1} of ${tour.steps.length}</div><h2 id="tour-title">${st.title}</h2><p>${st.text}</p>
+      <div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-act="tour-end">Skip the tour</button><span class="spacer"></span>
+      ${tour.i ? '<button class="btn btn-sm" data-act="tour-step" data-delta="-1">Back</button>' : ''}
+      <button class="btn btn-primary btn-sm" data-act="${last ? 'tour-end' : 'tour-step'}" data-delta="1">${last ? 'Done' : 'Next'}</button></div></div>`;
+  const card = $('#tour-card');
+  const cw = card.offsetWidth; const ch = card.offsetHeight;
+  let left = r.right + 16; let top = r.top;
+  if (left + cw > window.innerWidth - 12) { left = Math.max(12, r.left - cw - 16); }
+  if (left < 12 || (r.left - cw - 16 < 12 && r.right + 16 + cw > window.innerWidth - 12)) { left = Math.min(Math.max(12, r.left), window.innerWidth - cw - 12); top = r.bottom + 16; }
+  if (top + ch > window.innerHeight - 12) top = Math.max(12, Math.min(r.top - ch - 16, window.innerHeight - ch - 12));
+  card.style.left = `${left}px`; card.style.top = `${Math.max(12, top)}px`;
+  card.querySelector('.btn-primary').focus();
+}
+window.addEventListener('resize', () => { if (tour) renderTour(); });
+
 /* ---------- Dialogs, toasts, progress ---------- */
 
 let dialogResolve = null;
-function openDialog(html, { server = false } = {}) {
+function openDialog(html, { server = false, sticky = false } = {}) {
   $('#layer').innerHTML = `<div class="backdrop" data-act="dialog-backdrop">
-    <div class="dialog ${server ? 'server-dialog' : ''}" role="dialog" aria-modal="true" aria-labelledby="dlg-title">${html}</div></div>`;
-  const first = $('#layer').querySelector('input, select, .dialog-foot .btn-primary, .dialog-foot .btn-danger, .btn');
+    <div class="dialog ${server ? 'server-dialog' : ''} ${sticky ? 'sticky' : ''}" role="dialog" aria-modal="true" aria-labelledby="dlg-title">${html}</div></div>`;
+  const first = $('#layer').querySelector('input, select, .dialog-foot .btn-primary, .dialog-foot .btn-danger, .btn, [role="button"]');
   if (first) first.focus();
 }
 function closeDialog(result = false) {
   $('#layer').innerHTML = '';
   if (dialogResolve) { const r = dialogResolve; dialogResolve = null; r(result); }
 }
-function showServerDialog(html) {
-  openDialog(`<h2 id="dlg-title" class="sr-only">Message</h2><div class="dialog-body">${html}</div>`, { server: true });
+/* AMC's messages echo the LaTeX source, so they can't go into the page as they are. */
+function sanitizeNode(root) {
+  root.querySelectorAll('script, style, iframe, object, embed, link, meta, base, foreignObject, use').forEach((el) => el.remove());
+  [root, ...root.querySelectorAll('*')].forEach((el) => [...el.attributes].forEach((a) => {
+    const n = a.name.toLowerCase();
+    const v = a.value.trim().toLowerCase().replace(/[\s\0]/g, '');
+    if (/^on/.test(n) || n === 'srcdoc' || (['href', 'src', 'xlink:href', 'action', 'formaction', 'data'].includes(n) && /^(javascript|data|vbscript):/.test(v))) el.removeAttribute(a.name);
+  }));
+}
+function sanitizeHtml(html) {
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  sanitizeNode(doc.body);
+  return doc.body.innerHTML;
+}
+function showServerDialog(html, { sticky = false } = {}) {
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  sanitizeNode(doc.body);
+  // Upstream's buttons ran inline code; wire them to our dialog instead.
+  const ok = doc.getElementById('warn-dialog-ok'); const cancel = doc.getElementById('warn-dialog-cancel');
+  if (ok) { ok.setAttribute('data-act', sticky ? 'reload' : 'dialog-ok'); ok.setAttribute('tabindex', '0'); ok.setAttribute('role', 'button'); }
+  if (cancel) { cancel.setAttribute('data-act', 'dialog-cancel'); cancel.setAttribute('tabindex', '0'); cancel.setAttribute('role', 'button'); }
+  openDialog(`<h2 id="dlg-title" class="sr-only">Message</h2><div class="dialog-body">${doc.body.innerHTML}</div>`, { server: true, sticky });
 }
 function confirmDialog({ title, body, ok = 'OK', cancel = 'Cancel', danger = false, icon = 'info-circle' }) {
   return new Promise((resolve) => {
@@ -1919,40 +2577,24 @@ function renderWork() {
   if (!S.work) { if (w) w.remove(); return; }
   if (!w) { w = document.createElement('div'); w.id = 'work'; w.className = 'work'; w.setAttribute('role', 'alertdialog'); w.setAttribute('aria-live', 'polite'); document.body.appendChild(w); }
   const p = S.work.p;
+  const long = S.work.since && Date.now() - S.work.since >= WORK_HIDE_AFTER;
   w.innerHTML = `<div class="work-card"><div class="work-title"><span class="spinner"></span>${esc(S.work.text)}</div>
-    <div class="progress ${p === null || p === undefined ? 'indeterminate' : ''}"><span style="width:${Math.round((p || 0) * 100)}%"></span></div></div>`;
+    <div class="progress ${p === null || p === undefined ? 'indeterminate' : ''}"><span style="width:${Math.round((p || 0) * 100)}%"></span></div>
+    ${long ? `<p class="subtle" style="margin:12px 0 0">Taking long? The server may have lost this job.</p><button class="btn btn-sm" data-act="work-hide" style="margin-top:8px">Hide this and check</button>` : ''}</div>`;
 }
+const WORK_HIDE_AFTER = 60 * 1000;
 
 /* ---------- Exam actions ---------- */
 
 const validName = (names, current = null) => (d) => {
   const n = (d.name || '').trim();
   if (!n) return 'Give the exam a name.';
-  if (/[\\/]/.test(n) || n === '.' || n === '..') return 'A name can\'t contain / or \\.';
+  if (/[\\/:*?"<>|\x00-\x1f\x7f]/.test(n)) return 'A name can\'t contain / \\ : * ? " < > |.';
+  if (/^[_.\-]/.test(n)) return 'A name can\'t start with _ . or -';
+  if (new TextEncoder().encode(n).length > 120) return 'This name is too long.';
   if (n !== current && names.includes(n)) return 'An exam with this name already exists.';
   return '';
 };
-
-async function newExam() {
-  const t = await loadTemplates();
-  const names = (S.projects || []).map((p) => p.name);
-  const groupTitle = (gid) => (t.groups.find((g) => g.id === gid) || {}).title || gid;
-  const gids = [...new Set(t.templates.map((x) => x.gid))];
-  const options = gids.map((g) => `<optgroup label="${esc(groupTitle(g))}">${t.templates.filter((x) => x.gid === g).map((x) => `<option value="${esc(x.gid + '/' + x.id)}">${esc(x.title || x.id)}</option>`).join('')}</optgroup>`).join('');
-  const data = await formDialog({
-    title: 'New exam', ok: 'Create exam', icon: 'plus',
-    body: `<label class="field"><span class="field-label">Name</span><input class="input" name="name" autocomplete="off" placeholder="Physics mid-term 10B"></label>
-      <label class="field"><span class="field-label">Start from</span><select class="select" name="from">
-        <option value="empty:latex">An empty LaTeX file</option><option value="empty:plain">An empty plain-text file (AMC-TXT)</option>
-        ${options}</select><span class="field-hint">Templates are AMC's examples. A gallery with previews comes later.</span></label>`,
-    validate: validName(names),
-  });
-  if (!data) return;
-  const name = data.name.trim();
-  S.creating = name;
-  if (data.from.startsWith('empty:')) socket_emit('create-project-empty', [name, data.from.slice(6)]);
-  else socket_emit('create-project-template', [name, data.from]);
-}
 
 async function renameExam(old) {
   const names = (S.projects || []).map((p) => p.name);
@@ -1966,14 +2608,24 @@ async function renameExam(old) {
 }
 
 async function deleteExam(name) {
-  const ok = await confirmDialog({
-    danger: true, icon: 'trash', title: `Delete "${esc(name)}"?`,
-    body: '<p>The exam is removed with its questions, scans, marks and exported files. This can\'t be undone.</p><p class="subtle">Download it first if you might need it again.</p>',
-    ok: 'Delete exam',
-  });
+  // An exam that was printed, scanned or marked is deleted only after its name is typed.
+  const p = (S.projects || []).find((x) => x.name === name);
+  const st = S.project === name ? S.status : null;
+  const risky = st ? !!(st.lock || st.scans || st.marked) : !!(p && ['printed', 'scanned', 'marked', 'exported'].includes(p.state));
+  const body = '<p>The exam is removed with its questions, scans, marks and exported files. This can\'t be undone.</p><p class="subtle">Download it first if you might need it again.</p>';
+  let ok;
+  if (risky) {
+    ok = await formDialog({
+      title: `Delete "${esc(name)}"?`, ok: 'Delete exam', icon: 'trash',
+      body: `${body}<label class="field"><span class="field-label">This exam has been printed, scanned or marked. Type its name to confirm: <b>${esc(name)}</b></span><input class="input" name="name" autocomplete="off"></label>`,
+      validate: (d) => ((d.name || '').trim() === name ? '' : 'The name doesn\'t match.'),
+    });
+  } else {
+    ok = await confirmDialog({ danger: true, icon: 'trash', title: `Delete "${esc(name)}"?`, body, ok: 'Delete exam' });
+  }
   if (!ok) return;
   socket_emit('project-delete', name);
-  if (S.route.kind === 'exam' && S.route.name === name) navigate('/exams');
+  if (S.route.kind === 'exam' && S.route.name === name) { S.source.dirty = false; navigate('/exams'); }
   else setTimeout(loadProjects, 300);
 }
 
@@ -1987,7 +2639,9 @@ function applyTheme() {
 const ACTIONS = {
   theme: () => { S.theme = { auto: 'light', light: 'dark', dark: 'auto' }[S.theme]; store.set('theme', S.theme); applyTheme(); renderTop(); },
   menu: (el) => { const m = el.dataset.menu; S.menu = S.menu === m ? null : m; renderTop(); if (S.route.kind === 'exams') renderMain(true); },
-  'toggle-preview': () => { S.previewOpen = !S.previewOpen; S.previewMax = false; store.set('previewOpen', S.previewOpen); renderTop(); renderPreview(); resizeEditor(); },
+  'toggle-preview': () => {
+    if (S.route.kind !== 'exam') { S.previewMode = null; renderPreview(); return; }
+    S.previewOpen = !S.previewOpen; S.previewMax = false; store.set('previewOpen', S.previewOpen); renderTop(); renderPreview(); resizeEditor(); },
   'preview-max': () => { S.previewMax = !S.previewMax; renderPreview(); resizeEditor(); },
   'preview-docs': () => { S.previewFile = null; S.previewMode = null; S.previewList = null; renderPreview(); },
   'show-doc': (el) => { S.previewDoc = el.dataset.doc; S.previewFile = null; S.previewMode = null; if (!S.previewOpen) { S.previewOpen = true; store.set('previewOpen', true); renderTop(); } renderPreview(); },
@@ -2030,7 +2684,11 @@ const ACTIONS = {
   'review-revert': async () => {
     const rv = S.review;
     const ok = await confirmDialog({ title: 'Go back to what was detected?', body: '<p>Your decisions on this page are removed, and the page goes back to the list of pages to check if it has uncertain boxes.</p>', ok: 'Back to detected', icon: 'undo' });
-    if (ok) { socket_emit('revert-manual', [rv.student, rv.page, rv.copy]); setTimeout(() => loadScans().then(() => openReview(rv.key)), 400); }
+    if (ok) {
+      const project = S.project;
+      socket_emit('revert-manual', [rv.student, rv.page, rv.copy]);
+      setTimeout(() => { if (S.project === project && S.route.step === 'check-scans') loadScans().then(() => { if (S.route.step === 'check-scans') openReview(rv.key); }); }, 400);
+    }
   },
   'accept-rest': async () => {
     const n = S.scans.pages.filter((p) => p.to_check).length;
@@ -2044,6 +2702,10 @@ const ACTIONS = {
   },
   'mark-printed': () => markPrinted(),
   mark: () => socket_emit('ui-mark', {}),
+  'q-answer': (el) => toggleAnswer(el.dataset.title, +el.dataset.answer),
+  'q-edit': (el) => editQuestion(el.dataset.title),
+  'q-restore': (el) => socket_emit('ui-question-edit', { title: el.dataset.title, action: 'neutral', how: 'off' }),
+  'scale-refresh': () => socket_emit('ui-scale-refresh'),
   'mark-anyway': () => markAnyway(),
   'open-page': (el) => { S.pendingReview = el.dataset.key; navigate(examPath(S.project, 'check-scans')); },
   'list-preview': () => { const f = S.students.list.file; showFile(f, `Class list · ${f}`); },
@@ -2093,7 +2755,44 @@ const ACTIONS = {
   'annotated-open': (el) => openAnnotated(+el.dataset.i),
   'plist-step': (el) => { if (S.previewList) previewListGo(S.previewList.i + parseInt(el.dataset.delta, 10)); },
   'guide-toggle': (el) => { const k = el.dataset.step; S.guide[k] = !S.guide[k]; store.set('guide', S.guide); const g = el.closest('.guide'); g.classList.toggle('is-collapsed', S.guide[k]); el.setAttribute('aria-expanded', !S.guide[k]); resizeEditor(); },
-  'new-exam': () => newExam(),
+  'new-exam': () => navigate('/new'),
+  'exam-details': (el) => { S.menu = null; editExamDetails(el.dataset.name); },
+  'look-color': (el) => { setLookColor(el.dataset.color); },
+  'look-remove-logo': () => { S.look.removeLogo = true; S.look.file = null; S.look.fileUrl = null; S.look.swatches = []; renderMain(true); },
+  'look-save': () => saveLook(),
+  'look-reset': async () => {
+    const ok = await confirmDialog({ title: 'Reset to the neutral look?', body: '<p>The school name, logo and colour are removed, for everyone.</p>', ok: 'Reset', danger: true, icon: 'undo' });
+    if (ok) saveLook(true);
+  },
+  'guide-open': (el) => { S.menu = null; if (el.dataset.page) openGuide(el.dataset.page); },
+  'tour-start': () => startTour(),
+  'tour-end': () => endTour(),
+  'tour-step': (el) => { tour.i = Math.max(0, Math.min(tour.steps.length - 1, tour.i + parseInt(el.dataset.delta, 10))); renderTour(); },
+  'save-meta': () => { socket_emit('ui-exam-meta', { exam: S.project, class: $('#meta-class').value, subject: $('#meta-subject').value, date: $('#meta-date').value }); toast('Details saved.'); },
+  'archive-exam': (el) => { S.menu = null; socket_emit('ui-exam-archive', { exam: el.dataset.name, archived: el.dataset.v === '1' }); toast(el.dataset.v === '1' ? 'Archived. Find it with the "Archived" filter.' : 'Taken out of the archive.'); },
+  'wiz-go': (el) => { S.wizard.step = +el.dataset.step; renderMain(); },
+  'wiz-next': () => {
+    const w = S.wizard;
+    if (w.step === 1) {
+      const err = wizardNameError();
+      w.error = err;
+      if (err) { const e = $('#wiz-error'); if (e) e.textContent = err; const f = $('#wiz-name'); if (f) f.focus(); return; }
+    }
+    if (w.step === 2 && !wizardTemplate()) return;
+    w.step += 1; renderMain();
+  },
+  'wiz-group': (el) => { S.wizard.group = el.dataset.v; S.wizard.query = ''; renderMain(true); },
+  'wiz-pick': (el) => { S.wizard.gid = el.dataset.gid; S.wizard.id = el.dataset.id; renderMain(true); },
+  'wiz-style': (el) => { S.wizard.style = el.dataset.v; renderMain(true); },
+  'wiz-create': () => {
+    const w = S.wizard;
+    const err = wizardNameError();
+    if (err) { w.step = 1; renderMain(); toast(err, 'warning-triangle'); return; }
+    if (S.creating) return;
+    S.creating = w.name.trim();
+    renderMain(true);
+    socket_emit('ui-create-exam', { name: w.name.trim(), class: w.class, subject: w.subject, date: w.date, gid: w.gid, id: w.id, style: w.style, code: w.code ? w.digits : 0, copies: w.copies });
+  },
   'rename-exam': (el) => { S.menu = null; renameExam(el.dataset.name); },
   'clone-exam': (el) => { S.menu = null; socket_emit('project-clone', el.dataset.name); },
   'delete-exam': (el) => { S.menu = null; deleteExam(el.dataset.name); },
@@ -2109,6 +2808,8 @@ const ACTIONS = {
   },
   build: () => buildPreview(),
   'dialog-ok': () => closeDialog(true),
+  reload: () => location.reload(),
+  'work-hide': () => { S.work = null; renderWork(); refreshStatus(); },
   'dialog-cancel': () => closeDialog(false),
 };
 
@@ -2132,7 +2833,7 @@ document.addEventListener('click', (e) => {
   }
   if (!el) return;
   const act = el.dataset.act;
-  if (act === 'dialog-backdrop') { if (e.target === el && !el.querySelector('.server-dialog')) closeDialog(false); return; }
+  if (act === 'dialog-backdrop') { if (e.target === el && !el.querySelector('.sticky')) closeDialog(false); return; }
   if (ACTIONS[act]) { e.preventDefault(); ACTIONS[act](el); }
 });
 
@@ -2163,6 +2864,28 @@ document.addEventListener('change', async (e) => {
   if (t.id === 'list-key' && t.value) changeListKey(t);
   if (t.id === 'assoc-code' && t.value) { socket_emit('change-acode', t.value); if (S.students) S.students.code = t.value; renderMain(true); toast('Saved.'); }
   if (t.id === 'plist-select') previewListGo(+t.value);
+  if (t.id === 'guide-select') openGuide(t.value);
+  if (t.id === 'look-logo' && t.files[0] && S.look) {
+    const f = t.files[0];
+    if (f.size > 1024 * 1024) { toast('The logo is larger than 1 MB.', 'warning-triangle'); t.value = ''; return; }
+    S.look.file = f; S.look.removeLogo = false;
+    S.look.fileUrl = URL.createObjectURL(f);
+    logoSwatches(S.look.fileUrl);
+    renderMain(true);
+  }
+  if (t.id === 'look-hex' && S.look) {
+    const v = t.value.trim();
+    if (!v) setLookColor(null);
+    else if (/^#[0-9a-fA-F]{6}$/.test(v)) setLookColor(v.toLowerCase());
+    else toast('A colour looks like #1c7ed6.', 'warning-triangle');
+  }
+  if (t.id === 'wiz-code' && S.wizard) { S.wizard.code = t.checked; renderMain(true); }
+  if (['dash-class', 'dash-state', 'dash-sort', 'dash-archived'].includes(t.id)) {
+    const key = { 'dash-class': 'klass', 'dash-state': 'state', 'dash-sort': 'sort', 'dash-archived': 'archived' }[t.id];
+    S.dash[key] = t.type === 'checkbox' ? t.checked : t.value;
+    store.set('dash', S.dash);
+    renderMain(true);
+  }
   if (/^score-[SM]-preset$/.test(t.id)) $(`#score-${t.id[6]}-custom-field`).classList.toggle('hidden', t.value !== 'custom');
   if (t.id === 'scan-files' && t.files.length) { uploadScans(t.files); t.value = ''; }
   if (t.id === 'scan-photocopy') { socket_emit('scans-mode-change', t.checked ? 1 : 0); if (S.scans) S.scans.photocopy = t.checked; renderMain(true); }
@@ -2184,11 +2907,23 @@ document.addEventListener('change', async (e) => {
 
 document.addEventListener('input', (e) => {
   const t = e.target;
+  if (t.dataset && t.dataset.wiz && S.wizard) { S.wizard[t.dataset.wiz] = t.value; if (t.dataset.wiz === 'name') { S.wizard.error = ''; const er = $('#wiz-error'); if (er) er.textContent = ''; } }
+  if (t.id === 'wiz-search' && S.wizard) {
+    S.wizard.query = t.value;
+    renderMain(true);
+    const f = $('#wiz-search'); if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
+  }
+  if (t.id === 'look-color' && S.look) setLookColor(t.value);
+  if (t.id === 'look-name' && S.look) S.look.name = t.value;
+  if (t.id === 'dash-search') { S.dash.query = t.value; store.set('dash', S.dash); renderDashCards(); }
   if (t.id === 'match-search') { S.matchQuery = t.value; S.matchCursor = 0; renderMatchResults(); }
   if (t.id === 'marks-search') { S.marksQuery = t.value; const host = $('#marks-table'); if (host && S.marks) host.innerHTML = marksTable(S.marks.rows); }
 });
 
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && S.route.kind === 'new' && S.wizard && S.wizard.step === 1 && e.target instanceof Element && e.target.matches('[data-wiz]')) {
+    e.preventDefault(); ACTIONS['wiz-next'](); return;
+  }
   if (e.target instanceof Element && e.target.id === 'match-search' && !$('#layer').innerHTML) {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); S.matchCursor += e.key === 'ArrowDown' ? 1 : -1; renderMatchResults(); return; }
     if (e.key === 'Enter') {
@@ -2199,9 +2934,14 @@ document.addEventListener('keydown', (e) => {
     }
     if (e.key === 'Escape' && e.target.value) { e.preventDefault(); e.target.value = ''; S.matchQuery = ''; S.matchCursor = 0; renderMatchResults(); return; }
   }
+  if (e.key === 'Escape' && tour) { endTour(); return; }
   if (e.key === 'Escape') {
-    if ($('#layer').innerHTML && !$('#layer .server-dialog')) closeDialog(false);
+    if ($('#layer').innerHTML && !$('#layer .sticky')) closeDialog(false);
     else if (S.menu) { S.menu = null; renderTop(); if (S.route.kind === 'exams') renderMain(true); }
+  }
+  // A message from AMC closes with Enter or Space too (its button isn't a real <button>).
+  if ((e.key === 'Enter' || e.key === ' ') && $('#layer .server-dialog:not(.sticky)') && !(e.target instanceof Element && e.target.closest('input, textarea, select, a, button'))) {
+    e.preventDefault(); closeDialog(false); return;
   }
   const typingNow = e.target instanceof Element && e.target.closest('input, textarea, select, .ace_editor');
   if (S.route.step === 'check-scans' && S.review && !S.review.loading && !typingNow && !$('#layer').innerHTML && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -2273,10 +3013,11 @@ document.addEventListener('pointerdown', (e) => {
   handle.addEventListener('pointerup', up);
 });
 
-function resizeEditor() { if (editor) requestAnimationFrame(() => editor.resize()); }
+function resizeEditor() { requestAnimationFrame(() => { if (editor) editor.resize(); }); } // the editor may be gone by the next frame
 window.addEventListener('resize', resizeEditor);
 
 /* ---------- Start ---------- */
 
 applyTheme();
 onRoute();
+loadGuide();

@@ -11,14 +11,21 @@ Kept in its own file so merging AMC team updates stays easy.
 """
 
 import base64
+import colorsys
+import functools
 import hashlib
 import html
 import json
 import os
 import re
+import shutil
 import sqlite3
+import tarfile
 import time
 import uuid
+
+import ui_gallery as gallery
+import ui_scale as scale
 
 from flask import Blueprint, Response, abort, jsonify, make_response, render_template, request, send_file
 from flask import g as flask_g
@@ -43,21 +50,28 @@ def init_app(app, server_module):
     core = server_module
     app.register_blueprint(bp)
     for event, handler in SOCKET_EVENTS.items():
-        core.socketio_name(event)(handler)
+        core.socketio_name(event)(_guarded(event, handler))
 
 
 # ---------------------------------------------------------------- pages
 
 @bp.route("/")
 @bp.route("/exams")
+@bp.route("/new")
+@bp.route("/appearance")
 @bp.route("/exam/<name>")
 @bp.route("/exam/<name>/<step>")
 def page(name=None, step=None):
     core.headers_info()
+    b = branding()
     resp = make_response(render_template(
         "ui_app.html",
         username=core.username(ifnone=""),
         app_version=core.AMCWEB_VERSION or "",
+        school=b.get("name", ""),
+        logo=_logo_url(b) or "",
+        brand_css=brand_css(b) if b.get("color") else "",
+        can_brand="1" if can_brand() else "",
     ))
     # The session id names the browser's temporary folder (uploads,
     # print files); same rule as upstream's page.
@@ -137,8 +151,13 @@ def api_projects():
             modified = os.path.getmtime(f"{pdir}/options.xml")
         except OSError:
             modified = None
-        projects.append({"name": name, "modified": modified,
-                         "state": _summary(pdir)})
+        item = {"name": name, "modified": modified}
+        try:
+            item.update(exam_progress(pdir, name))
+        except Exception as e:  # one broken exam mustn't hide the others
+            core.app.logger.error(f"Progress of {name}: {e}")
+            item.update(state=_summary(pdir), next=None, done=0, meta={}, archived=False)
+        projects.append(item)
     return jsonify(projects=projects)
 
 
@@ -200,13 +219,15 @@ def api_status():
             counts[s["state"]] += 1
         out["matched"] = counts["auto"] + counts["manual"]
         out["not_in_list"] = counts["none"]
-        out["unmatched"] = counts["unmatched"]
+        # Without a class list there is nothing to match them to.
+        out["unmatched"] = counts["unmatched"] if core.students_list_file() else 0
     if out["marked"]:
         out.update(results_freshness(pdir, rec, out))
     out["lock"] = exam_lock(pdir, rec)
     out["layout_ok"] = layout_confirmation(pdir, rec)
     out["format"] = "plain" if core.get_option("filter") == "plain" else "latex"
     out["activity"] = list(reversed(rec.get("activity", [])[-30:]))
+    out["meta"] = rec.get("meta") or {}
     return jsonify(out)
 
 
@@ -290,15 +311,31 @@ def _record_file(pdir):
 
 
 def read_record(pdir):
+    path = _record_file(pdir)
     try:
-        with open(_record_file(pdir), encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             rec = json.load(f)
         return rec if isinstance(rec, dict) else {}
-    except (OSError, ValueError):
+    except OSError:
+        return {}
+    except ValueError:
+        # Damaged: keep it for a look instead of writing over it (it may
+        # hold the lock) at the next change.
+        try:
+            os.replace(path, path + ".corrupt")
+            core.app.logger.error(f"Unreadable {path}, kept as {RECORD}.corrupt")
+        except OSError:
+            pass
         return {}
 
 
+def _is_exam(pdir):
+    return os.path.isfile(os.path.join(pdir, "options.xml"))
+
+
 def _update_record(pdir, change):
+    if not _is_exam(pdir):
+        return {}  # the exam was deleted meanwhile: don't bring its folder back
     path = _record_file(pdir)
     with core.FileLock(path + ".lock"):
         rec = read_record(pdir)
@@ -338,6 +375,9 @@ def layout_confirmation(pdir, rec=None):
     ok = rec.get("layout_ok") or {}
     stamp = _build_stamp(pdir)
     if stamp and ok.get("stamp") == stamp:
+        # A rebuild that failed clears the layout and keeps the old PDF.
+        if not (_has_db(pdir, "layout") and _query(core.Amcdb(pdir).layout_npages, 0)):
+            return None
         return {"at": ok.get("at"), "by": ok.get("by")}
     return None
 
@@ -399,22 +439,45 @@ def refuse_if_locked(what):
 
 
 def option_refused(name):
-    return (str(name) in LOCKED_OPTIONS
+    # change_option() drops a "project:" prefix and puts the name into an
+    # XPath, so compare the bare name and allow only plain option names.
+    bare = re.sub(r"^(?:project|global):", "", str(name))
+    if not re.fullmatch(r"[A-Za-z0-9_]+", bare):
+        core.dialog_msg(warn="Unknown setting.")
+        return True
+    return (bare in LOCKED_OPTIONS
             and refuse_if_locked("This setting changes the papers."))
 
 
 def delete_refused(filename):
-    ext = str(filename).rsplit(".", 1)[-1].lower()
+    filename = str(filename)
+    if filename in (RECORD, "options.xml"):
+        return refuse_if_locked("The exam's settings and record can't be deleted.")
+    ext = filename.rsplit(".", 1)[-1].lower()
     return (ext in SOURCE_EXTENSIONS
             and refuse_if_locked("Source files can't be deleted."))
 
 
-def upload_refusal(upload, dest):
-    """In /upload: the reason this file can't be saved, or None."""
-    if not _current_lock():
+def _lock_for_path(path):
+    """The lock of the exam whose folder holds PATH, or None."""
+    root = os.path.realpath(core.projects_dir())
+    d = os.path.realpath(os.path.dirname(path))
+    while d.startswith(root + os.sep):
+        if _is_exam(d):
+            return exam_lock(d)
+        d = os.path.dirname(d)
+    return None
+
+
+def write_refusal(path, upload):
+    """In /upload and /fs (POST): the reason this file can't be written
+    to PATH, or None."""
+    if not _lock_for_path(path):
         return None
-    fn, ext = core.upload_file_parts(upload)
-    path = os.path.join(core.project_dir(), fn)
+    fn = os.path.basename(path)
+    ext = fn.rsplit(".", 1)[-1].lower() if "." in fn else ""
+    if fn in (RECORD, "options.xml"):
+        return LOCKED.format(what="This file holds the exam's settings and record.")
     if ext not in SOURCE_EXTENSIONS or not os.path.isfile(path):
         return None  # a new file isn't used by the printed papers
     new = upload.stream.read()
@@ -427,6 +490,12 @@ def upload_refusal(upload, dest):
     return ONLY_SCORING
 
 
+def upload_refusal(upload, dest):
+    """In /upload: the reason this file can't be saved, or None."""
+    fn, _ = core.upload_file_parts(upload)
+    return write_refusal(os.path.join(core.project_dir(), fn), upload)
+
+
 BRACED = r"\{(?:[^{}]|\{[^{}]*\})*\}"
 SCORING_COMMAND = re.compile(
     r"\\(?:scoringDefault[SM]|baremeDefaut[SM]|scoring|bareme)\s*" + BRACED)
@@ -434,6 +503,8 @@ CHOICE_COMMAND = re.compile(r"\\(?:correctchoice|wrongchoice|bonne|mauvaise)(?![
 COMMENT = re.compile(r"(?<!\\)%.*$")
 TXT_DEFAULT_LINE = re.compile(r"^\s*DefaultScoring[SM]\s*:", re.I)
 TXT_ANSWER = re.compile(r"^(\s*)[+-]")
+TXT_Q_SCORING = re.compile(r"^(\s*\*{1,2}(?:<[^>]*>)?(?:\[[^\]]*\])?)\{[^}]*\}")
+TXT_A_SCORING = re.compile(r"^(\s*[+-](?:\[[^\]]*\])?)\{[^}]*\}")
 
 
 def _normalized_lines(text, latex):
@@ -449,7 +520,9 @@ def _normalized_lines(text, latex):
         else:
             if TXT_DEFAULT_LINE.match(raw):
                 continue
-            line = TXT_ANSWER.sub(r"\1±", raw)
+            line = TXT_Q_SCORING.sub(r"\1", raw)
+            line = TXT_A_SCORING.sub(r"\1", line)
+            line = TXT_ANSWER.sub(r"\1±", line)
         line = re.sub(r"[ \t]+", " ", line).strip()
         if line:
             lines.append(line)          # lines left empty (comments,
@@ -575,6 +648,12 @@ def on_printed(data):
     how = "printer" if data.get("how") == "printer" else "files"
     copies = str(data.get("copies", ""))[:20]
     pdir = core.project_dir()
+    if how == "printer" and not (_has_db(pdir, "layout") and _query(core.Amcdb(pdir).print_timestamp)):
+        # AMC records the print time once the job reached the print system;
+        # none means the print failed (the error has been shown), so the
+        # exam stays unlocked.
+        add_activity(pdir, "Printing failed: nothing reached the printer")
+        return
     lock = {"since": int(time.time()), "by": _who(), "how": how}
     _update_record(pdir, lambda rec: rec.setdefault("lock", lock))
     add_activity(pdir, ("Printed on the shared machine" if how == "printer"
@@ -594,11 +673,21 @@ def on_unlock(data):
     core.clear_data("mep:")
     core.get_db().clear_print_timestamp()
 
+    # Exported marks and annotated sheets came from those marks: without
+    # them the exam would still look "exported".
+    for sub in ("exports", PREVIEW_DIR, f"{PREVIEW_DIR}/pdf", f"{PREVIEW_DIR}/jpg"):
+        d = os.path.join(pdir, sub)
+        for f in _files(d):
+            try:
+                os.unlink(os.path.join(d, f))
+            except OSError:
+                pass
+
     def change(rec):
-        rec.pop("lock", None)
-        rec.pop("layout_ok", None)
+        for k in ("lock", "layout_ok", "marks"):
+            rec.pop(k, None)
     _update_record(pdir, change)
-    add_activity(pdir, "Unlocked: layout, scans, marks and matches removed")
+    add_activity(pdir, "Unlocked: layout, scans, marks, matches, exported marks and annotated sheets removed")
     core.emit_msg("ui-changed", "unlock")
 
 
@@ -611,15 +700,18 @@ def on_scoring_defaults(data):
             return
     fmt, path = _main_source()
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", newline="") as f:
             text = f.read()
         new = write_scoring_defaults(text, fmt, values)
+    except UnicodeDecodeError:
+        core.dialog_msg(warn="The main source file isn't UTF-8 text, so it can't be changed here.")
+        return
     except (OSError, TypeError, ValueError) as e:
-        core.dialog_msg(warn=str(e) if isinstance(e, ValueError) else "The main source file can't be changed.")
+        core.dialog_msg(warn=html.escape(str(e)) if isinstance(e, ValueError) else "The main source file can't be changed.")
         return
     if new != text:
         tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
+        with open(tmp, "w", encoding="utf-8", newline="") as f:
             f.write(new)
         os.replace(tmp, path)
         add_activity(core.project_dir(), "Default scoring changed: single "
@@ -832,18 +924,33 @@ def _db_for(pdir, *modules):
     return db
 
 
+def _source_files(pdir):
+    """The main source and the other LaTeX files next to it (\\input).
+    For AMC-TXT only the main source: AMC writes LaTeX files of its own
+    next to it each time it reads it."""
+    main = core.main_source_file()
+    if core.get_option("filter") == "plain":
+        return [main] if main and os.path.isfile(os.path.join(pdir, main)) else []
+    return [f for f in sorted(os.listdir(pdir))
+            if (f == main or f.rsplit(".", 1)[-1].lower() in ("tex", "latex"))
+            and os.path.isfile(os.path.join(pdir, f))]
+
+
+def source_digest(pdir):
+    h = hashlib.sha256()
+    for f in _source_files(pdir):
+        with open(os.path.join(pdir, f), "rb") as fh:
+            h.update(f.encode() + b"\0" + hashlib.sha256(fh.read()).digest())
+    return h.hexdigest()[:32]
+
+
 def marking_inputs(pdir):
     """A fingerprint of what the marks depend on: the LaTeX or AMC-TXT
     sources (scoring and answer key), the final mark settings, the
     detection thresholds, and the scanned pages with every decision made in
     Check scans. Marks computed from different inputs are out of date."""
     h = hashlib.sha256()
-    main = core.main_source_file()
-    for f in sorted(os.listdir(pdir)):
-        path = os.path.join(pdir, f)
-        if (f == main or f.rsplit(".", 1)[-1].lower() in ("tex", "latex")) and os.path.isfile(path):
-            with open(path, "rb") as fh:
-                h.update(f.encode() + b"\0" + hashlib.sha256(fh.read()).digest())
+    h.update(source_digest(pdir).encode())
     h.update(json.dumps(core.get_options(list(MARK_OPTIONS)), sort_keys=True).encode())
     db = _db_for(pdir, "capture")
     if db:
@@ -890,9 +997,16 @@ def class_list():
     out = {"file": os.path.basename(path), "columns": [], "rows": [], "unique": [],
            "key": None, "error": None}
     try:
-        rows = [{k: (v or "").strip() for k, v in r.items() if k is not None}
+        # A file saved by Excel as "CSV UTF-8" starts with a byte-order
+        # mark, which would stick to the first column's name.
+        bom = lambda k: k.lstrip("\ufeff") if isinstance(k, str) else k
+        rows = [{bom(k): (v or "").strip() for k, v in r.items() if k is not None}
                 for r in core.list_file_read(path)]
-        columns = core.list_file_headers(path)[1]
+        columns = [bom(c) for c in core.list_file_headers(path)[1]]
+    except UnicodeDecodeError:
+        out["error"] = ("The class list isn't UTF-8 text. Save it again as CSV UTF-8 "
+                        "(in Excel: \"CSV UTF-8\"), then upload it.")
+        return out
     except Exception as e:  # unreadable, empty, or no separator found
         core.app.logger.warning(f"Can't read class list {path}: {e}")
         out["error"] = ("The class list can't be read. Save it as CSV with column "
@@ -1086,11 +1200,16 @@ def on_mark(data=None):
     key (as upstream's do-mark with "update the scale" ticked)."""
     pdir = core.project_dir()
     inputs = marking_inputs(pdir)
+    sources = source_digest(pdir)
     messages, variables = {}, {}
     core.emit_msg("begin-command")
     core.emit_msg("t", "Reading the marking scheme")
     core.amc_command("prepare", "--mode", "b", "--progression-id", "MAJ", "--progression", "1",
                      messages=messages, variables=variables)
+    scale_entry = {"inputs": sources, "at": int(time.time()),
+                   "error": "The questions can't be read: the source doesn't compile. Fix it in Questions."
+                   if messages.get("ERR") else None}
+    _update_record(pdir, lambda rec: rec.__setitem__("scale", scale_entry))
     core.u_exports_available()
     core.emit_msg("t", "Computing the marks")
     core.amc_command("note", "--progression-id", "GRD", "--progression", "1",
@@ -1355,11 +1474,817 @@ def class_list_refusal(filename):
         return "A class list is a CSV file (.csv or .txt)."
     pdir = core.project_dir()
     main = core.main_source_file()
+    current = os.path.basename(core.students_list_file() or "")
     if filename in (RECORD, "options.xml", main) or (
-            os.path.isfile(os.path.join(pdir, filename)) and ext == "txt"
+            filename != current
+            and os.path.isfile(os.path.join(pdir, filename)) and ext == "txt"
             and core.get_option("filter") == "plain"):
         return f"{filename} is one of the exam's own files. Rename the class list and upload it again."
     return None
+
+
+# ---------------------------------------------------------------- marking scheme panel
+#
+# Questions come from AMC's extracted scale (scoring.sqlite, written by
+# "prepare --mode b"), so what the panel shows is what AMC will compute.
+# A question is editable when the source has it in a form the panel
+# understands and that agrees with AMC's data (ui_scale.py). Changes are
+# written to the source (scoring and which answers are correct only, so
+# they pass the lock), then the scale is extracted again in the
+# background.
+
+QUESTION_SIMPLE, QUESTION_MULT = 1, 2
+_scale_jobs = {}  # exam folder -> {"pending": bool}: one extraction at a time
+
+
+def extracted_scale(pdir):
+    """AMC's extracted scale: per question (first copy that has it) its
+    title, type and answers, with the rules for computing maxima."""
+    db = _db_for(pdir, "scoring")
+    if not db:
+        return None
+    q = db.db.execute
+    titles = dict(_query(lambda: q("SELECT question, title FROM scoring.scoring_title").fetchall(), []))
+    defaults = dict(_query(lambda: q("SELECT type, strategy FROM scoring.scoring_default").fetchall(), []))
+    main = dict(_query(lambda: q("SELECT student, strategy FROM scoring.scoring_main").fetchall(), []))
+    answers = {}
+    for st, qn, an, correct, rule in _query(lambda: q(
+            "SELECT student, question, answer, correct, strategy FROM scoring.scoring_answer"
+            " ORDER BY student, question, answer").fetchall(), []):
+        answers.setdefault((st, qn), []).append((an, bool(correct), rule or ""))
+    per_student, first = {}, {}
+    for st, qn, qtype, indicative, rule in _query(lambda: q(
+            "SELECT student, question, type, indicative, strategy FROM scoring.scoring_question"
+            " ORDER BY student, question").fetchall(), []):
+        item = {"question": qn, "title": titles.get(qn, str(qn)), "multiple": qtype == QUESTION_MULT,
+                "indicative": bool(indicative), "rule": rule or "",
+                "answers": answers.get((st, qn), []),
+                "rules": [scale.BASE_RULES, main.get(st, ""), defaults.get(qtype, ""), rule or ""]}
+        per_student.setdefault(st, []).append(item)
+        first.setdefault(qn, item)
+    return {"first": first, "per_student": per_student}
+
+
+def _code_digit(title, pdir):
+    db = _db_for(pdir, "layout")
+    pattern = (_query(db.code_digit_pattern) if db else None) or r"\.(\d+)$"
+    return bool(re.search(pattern, title or ""))
+
+
+def source_questions(pdir):
+    """Questions found in the sources, by id; ids found twice are kept as
+    a list so they can be refused."""
+    fmt, _ = _main_source()
+    found = {}
+    files = [core.main_source_file()] if fmt == "plain" else _source_files(pdir)
+    for f in files:
+        problem = None
+        try:
+            with open(os.path.join(pdir, f), "rb") as fh:
+                raw = fh.read()
+        except (OSError, TypeError):
+            continue
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("utf-8", "replace")
+            problem = "The file isn't UTF-8 text."  # shown read-only
+        for item in (scale.read_txt(text, f) if fmt == "plain" else scale.read_latex(text, f)):
+            item["problem"] = item["problem"] or problem
+            found.setdefault(item["id"], []).append(item)
+    return found
+
+
+def _agrees(src, amc, fresh):
+    """Whether the source question and AMC's data describe the same thing."""
+    plain = [a for a in amc["answers"] if a[0] != 0]
+    if src["multiple"] != amc["multiple"] or len(src["answers"]) != len(plain):
+        return False
+    return not fresh or all(s["correct"] == a[1] for s, a in zip(src["answers"], plain))
+
+
+def _max(item):
+    try:
+        return scale.question_max(item["multiple"], item["answers"], item["rules"])
+    except scale.Unknown:
+        return None
+
+
+@bp.route("/ui/api/questions")
+def api_questions():
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    rec = read_record(pdir)
+    sc = rec.get("scale") or {}
+    fresh = bool(sc.get("inputs")) and sc["inputs"] == source_digest(pdir) and _has_db(pdir, "scoring")
+    out = {"project": name, "format": _main_source()[0], "fresh": fresh,
+           "updating": pdir in _scale_jobs, "error": sc.get("error") if fresh else None,
+           "questions": [], "totals": None, "neutral": rec.get("neutral") or {}}
+    data = extracted_scale(pdir)
+    if not data or not data["first"]:
+        return jsonify(out)
+    src = source_questions(pdir)
+    # AMC's own maxima, when the marks are up to date
+    amc_max = {}
+    if rec.get("marks", {}).get("inputs") == marking_inputs(pdir):
+        db = _db_for(pdir, "scoring")
+        amc_max = {qn: mx for qn, mx in _query(lambda: db.db.execute(
+            "SELECT question, max FROM scoring.scoring_score GROUP BY question").fetchall(), [])}
+    for qn in sorted(data["first"]):
+        amc = data["first"][qn]
+        if _code_digit(amc["title"], pdir):
+            continue  # a digit of a student code grid
+        found = src.get(amc["title"], [])
+        s = found[0] if len(found) == 1 else None
+        problem = None
+        if not found:
+            problem = "This question isn't written in a way the panel can read (for example it comes from a macro)."
+        elif len(found) > 1:
+            problem = "Two questions have this name in the source."
+        elif s["problem"]:
+            problem = s["problem"]
+        elif not _agrees(s, amc, fresh):
+            problem = "The source and AMC's reading of it don't agree for this question."
+        rule = s["scoring"]["rule"] if s and s["scoring"] else ""
+        neutral = scale.neutral_kind(rule)
+        texts = [a["text"] for a in s["answers"]] if s else []
+        mx = amc_max.get(qn)
+        out["questions"].append({
+            "question": qn, "title": amc["title"], "multiple": amc["multiple"],
+            "indicative": amc["indicative"], "text": s["text"] if s else "",
+            "answers": [{"answer": no, "correct": (s["answers"][no - 1]["correct"] if s and not problem and no else c),
+                         "text": "None of these" if no == 0 else (texts[no - 1] if no - 1 < len(texts) else f"Answer {no}")}
+                        for no, c, _ in amc["answers"]],
+            "rule": rule, "kind": "none" if neutral == "none" else "full" if neutral else "custom" if rule else "default",
+            "max": mx if mx is not None else _max(amc), "max_from": "amc" if mx is not None else "rules",
+            "rules_max": _max(amc),
+            "answer_rules": any(rule for _, _, rule in amc["answers"]),
+            "editable": problem is None, "problem": problem,
+            "file": s["file"] if s else (found[0]["file"] if found else None),
+            "line": s["line"] if s else (found[0]["line"] if found else None)})
+    # Total per copy, from the rules (questions can differ between copies)
+    totals, unknown = [], False
+    for st, items in data["per_student"].items():
+        t = 0.0
+        for item in items:
+            if item["indicative"]:
+                continue
+            m = _max(item)
+            if m is None:
+                unknown = True
+            else:
+                t += m
+        totals.append(t)
+    if totals:
+        out["totals"] = {"min": min(totals), "max": max(totals), "unknown": unknown}
+    return jsonify(out)
+
+
+def refresh_scale(pdir, report_errors=False):
+    """Extract the scale again (AMC's prepare --mode b). A request while
+    one runs makes it run once more afterwards."""
+    if pdir in _scale_jobs:
+        _scale_jobs[pdir]["pending"] = True
+        return
+    _scale_jobs[pdir] = {"pending": False}
+    try:
+        while _is_exam(pdir):
+            inputs = source_digest(pdir)
+            core.emit_msg("ui-scale", "updating")
+            messages, variables = {}, {}
+            core.amc_command("prepare", "--mode", "b", "--progression-id", "MAJ", "--progression", "1",
+                             messages=messages, variables=variables)
+            if not _is_exam(pdir):
+                # The exam was deleted while AMC ran, and AMC made its
+                # folders again: without options.xml it is no exam, remove it.
+                if os.path.isdir(pdir):
+                    core.app.logger.info(f"Removing {pdir}, recreated by AMC after the exam was deleted")
+                    shutil.rmtree(pdir, ignore_errors=True)
+                break
+            errors = [m.lstrip(":>") for m in messages.get("ERR", [])]
+            entry = {"inputs": inputs, "at": int(time.time()),
+                     "error": ("The questions can't be read: the source doesn't compile. "
+                               "Fix it in Questions.") if errors else None}
+            _update_record(pdir, lambda rec: rec.__setitem__("scale", entry))
+            if errors and report_errors:
+                core.show_messages(messages, variables)
+            if not _scale_jobs[pdir]["pending"]:
+                break
+            _scale_jobs[pdir]["pending"] = False
+    finally:
+        _scale_jobs.pop(pdir, None)
+        core.emit_msg("ui-scale", "done")
+
+
+def on_scale_refresh(data=None):
+    refresh_scale(core.project_dir(), report_errors=True)
+
+
+def on_question_edit(data):
+    """Change one question: which answers are correct, its own scoring
+    rule, or neutralise it (full marks for everyone, or not counted)."""
+    data = data if isinstance(data, dict) else {}
+    title, action = str(data.get("title", "")), data.get("action")
+    pdir = core.project_dir()
+    found = source_questions(pdir).get(title, [])
+    if len(found) != 1 or found[0]["problem"]:
+        core.dialog_msg(warn="This question can't be changed here. Edit it in Questions.")
+        return
+    q = found[0]
+    path = os.path.join(pdir, q["file"])
+    try:
+        with open(path, encoding="utf-8", newline="") as f:
+            old = f.read()
+    except (OSError, UnicodeDecodeError):
+        core.dialog_msg(warn="This file isn't UTF-8 text, so it can't be changed here. Edit it in Questions.")
+        return
+    rec = read_record(pdir)
+    neutral = dict(rec.get("neutral") or {})
+    try:
+        if action == "correct":
+            new = scale.set_correct(old, q, int(data["answer"]), bool(data.get("correct")))
+            what = f"Answer key changed: {title}"
+        elif action == "rule":
+            rule = str(data.get("rule") or "").strip()
+            if not STRATEGY.match(rule):
+                raise ValueError(f"The scoring rule '{rule}' contains characters AMC doesn't accept here.")
+            new = scale.set_scoring(old, q, rule)
+            neutral.pop(title, None)
+            what = f"Scoring of {title}: " + (rule or "default")
+        elif action == "neutral":
+            how = data.get("how")
+            current = q["scoring"]["rule"] if q["scoring"] else ""
+            if how in ("full", "none"):
+                if not scale.neutral_kind(current):
+                    neutral[title] = current
+                points = 1
+                if how == "full":
+                    amc = (extracted_scale(pdir) or {"first": {}})["first"]
+                    item = next((x for x in amc.values() if x["title"] == title), None)
+                    points = (_max(dict(item, rules=item["rules"][:3] + [neutral.get(title, "")])) if item else None) or 1
+                new = scale.set_scoring(old, q, scale.neutral_rule(how, points))
+                what = f"{title} neutralised: " + ("full marks for everyone" if how == "full" else "not counted")
+            else:
+                new = scale.set_scoring(old, q, neutral.pop(title, ""))
+                what = f"{title} counted normally again"
+        else:
+            raise ValueError("Unknown change.")
+    except (KeyError, TypeError, ValueError) as e:
+        core.dialog_msg(warn=html.escape(str(e)) if isinstance(e, ValueError) else "This change couldn't be made.")
+        return
+    if new == old:
+        return
+    ext = q["file"].rsplit(".", 1)[-1].lower()
+    if exam_lock(pdir) and not same_layout(old, new, ext):
+        core.dialog_msg(warn=ONLY_SCORING)
+        return
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="") as f:
+        f.write(new)
+    os.replace(tmp, path)
+    _update_record(pdir, lambda r: r.__setitem__("neutral", neutral))
+    add_activity(pdir, what)
+    core.emit_msg("ui-changed", "questions")
+    refresh_scale(pdir)
+    core.emit_msg("ui-changed", "questions")
+
+
+# ---------------------------------------------------------------- dashboard and new-exam wizard
+
+GALLERY_DIR = os.environ.get("AMC_UI_GALLERY", "/amc-web/gallery")
+STARTERS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "school_templates")
+STARTER_GROUP = gallery.STARTER_GROUP
+# Starters shown in the gallery; "blank" has a separate-answer-sheet variant.
+STARTERS = ("blank", "blank-txt")
+STARTER_VARIANTS = {("blank", "separate"): "blank-separate"}
+META_FIELDS = ("class", "subject", "date")
+
+
+# ---------------------------------------------------------------- branding
+#
+# School name, logo and colours (Appearance), kept with the app's data in
+# MC-Projects/_branding/, so ./amc backup includes them. Upstream skips
+# "_" folders there, and account names can't start with "_".
+
+BRANDING_DIR = "_branding"
+LOGO_TYPES = {"png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml"}
+LOGO_MAX = 1024 * 1024
+NEUTRAL = "#3b5bdb"           # ui.css --brand
+SURFACES = {"light": "#ffffff", "dark": "#15181e"}  # ui.css --surface
+DARK_TEXT = "#111418"
+COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+# Presets keep white button text readable in both themes.
+PRESETS = [("Blue", "#3b5bdb"), ("Teal", "#0b7285"), ("Green", "#2b7a3a"), ("Purple", "#7048e8"),
+           ("Crimson", "#c92a2a"), ("Orange", "#c2410c"), ("Slate", "#495057")]
+
+
+def _brand_dir():
+    return os.path.join(core.projects_dir(root=True), BRANDING_DIR)
+
+
+def branding():
+    """The school's branding: name, colour, palette, logo file."""
+    d = _brand_dir()
+    try:
+        with open(os.path.join(d, "branding.json"), encoding="utf-8") as f:
+            b = json.load(f)
+    except (OSError, ValueError):
+        b = {}
+    b = b if isinstance(b, dict) else {}
+    logo = b.get("logo")
+    if logo and logo in {f"logo.{e}" for e in LOGO_TYPES} and os.path.isfile(os.path.join(d, logo)):
+        b["logo_path"] = os.path.join(d, logo)
+    else:
+        b.pop("logo", None)
+    if not COLOR_RE.match(b.get("color") or ""):
+        b.pop("color", None)
+    b["palette"] = palette(b.get("color") or NEUTRAL)
+    return b
+
+
+def _rgb(c):
+    return tuple(int(c[i:i + 2], 16) / 255 for i in (1, 3, 5))
+
+
+def _hex(rgb):
+    return "#%02x%02x%02x" % tuple(round(max(0.0, min(1.0, x)) * 255) for x in rgb)
+
+
+def _luminance(c):
+    lin = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in _rgb(c)]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def contrast(a, b):
+    la, lb = _luminance(a), _luminance(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def theme_palette(color, theme):
+    """The brand colour for one theme: changed in lightness only as much as
+    needed for it to stand out on the theme's surface (3:1, as for
+    controls) and for button text on it to be readable (4.5:1, white or
+    near-black)."""
+    h, l, s = colorsys.rgb_to_hls(*_rgb(color))
+    step = -0.02 if theme == "light" else 0.02
+    for _ in range(60):
+        c = _hex(colorsys.hls_to_rgb(h, l, s))
+        if contrast(c, SURFACES[theme]) >= 3:
+            for on in ("#ffffff", DARK_TEXT):
+                if contrast(on, c) >= 4.5:
+                    return {"brand": c, "on_brand": on, "text_contrast": round(contrast(on, c), 1),
+                            "adjusted": c.lower() != color.lower()}
+        l = min(1.0, max(0.0, l + step))
+    return {"brand": NEUTRAL, "on_brand": "#ffffff", "text_contrast": round(contrast("#ffffff", NEUTRAL), 1),
+            "adjusted": True}
+
+
+def palette(color):
+    return {t: theme_palette(color, t) for t in ("light", "dark")}
+
+
+def brand_css(b):
+    """CSS overriding the two brand tokens in each theme (ui.css derives the rest)."""
+    p = b["palette"]
+    light = f"--brand:{p['light']['brand']};--on-brand:{p['light']['on_brand']};"
+    dark = f"--brand:{p['dark']['brand']};--on-brand:{p['dark']['on_brand']};"
+    return (f":root{{{light}}}:root[data-theme=\"dark\"]{{{dark}}}"
+            f"@media (prefers-color-scheme: dark){{:root:not([data-theme=\"light\"]){{{dark}}}}}")
+
+
+def can_brand():
+    """Admins of the sign-in service in shared-machine mode (the proxy
+    sets X-AMC-Admin and strips any copy a browser sends); the local
+    user in single-user mode."""
+    if not os.environ.get("AMC_USERHEADER"):
+        return True
+    return request.headers.get("X-AMC-Admin") == "1"
+
+
+def _logo_url(b):
+    return f"/public/branding/logo?v={b.get('updated', 0)}" if b.get("logo") else None
+
+
+@bp.route("/ui/api/branding")
+def api_branding():
+    core.headers_info()
+    b = branding()
+    return jsonify(name=b.get("name", ""), color=b.get("color"), neutral=NEUTRAL, logo=_logo_url(b),
+                   palette=b["palette"], can_edit=can_brand(), presets=PRESETS)
+
+
+@bp.route("/ui/api/branding/palette")
+def api_branding_palette():
+    color = request.args.get("color", "")
+    if not COLOR_RE.match(color):
+        return jsonify(error="A colour looks like #1c7ed6."), 400
+    return jsonify(palette=palette(color))
+
+
+def _logo_kind(data):
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    head = data[:2048].lstrip().lower()
+    if (head.startswith(b"<?xml") or head.startswith(b"<svg") or head.startswith(b"<!--")) and b"<svg" in head:
+        return "svg"
+    return None
+
+
+@bp.route("/ui/branding", methods=["POST"])
+def save_branding():
+    """Save the school name, colour and logo; "reset" goes back to neutral.
+    Needs the AMC-sid header, which a page on another site can't send."""
+    core.headers_info()
+    if not can_brand() or not request.headers.get("AMC-sid"):
+        return jsonify(error="Only administrators can change the appearance."), 403
+    d = _brand_dir()
+    os.makedirs(d, exist_ok=True)
+    b = branding()
+    keep = {k: b[k] for k in ("name", "color", "logo") if k in b}
+    if request.form.get("reset") == "1":
+        keep = {}
+    else:
+        if "name" in request.form:
+            keep["name"] = request.form["name"].strip()[:80]
+        if "color" in request.form:
+            color = request.form["color"].strip()
+            if color and not COLOR_RE.match(color):
+                return jsonify(error="A colour looks like #1c7ed6."), 400
+            keep["color"] = color.lower() if color else None
+        if request.form.get("remove_logo") == "1":
+            keep.pop("logo", None)
+        upload = request.files.get("logo")
+        if upload and upload.filename:
+            data = upload.read(LOGO_MAX + 1)
+            if len(data) > LOGO_MAX:
+                return jsonify(error="The logo is larger than 1 MB."), 400
+            kind = _logo_kind(data)
+            if not kind:
+                return jsonify(error="The logo must be a PNG, JPEG or SVG image."), 400
+            tmp = os.path.join(d, f"logo.{kind}.tmp")
+            with open(tmp, "wb") as f:
+                f.write(data)
+            os.replace(tmp, os.path.join(d, f"logo.{kind}"))
+            keep["logo"] = f"logo.{kind}"
+    for f in os.listdir(d):  # logos no longer used
+        if f.startswith("logo.") and f != keep.get("logo"):
+            os.unlink(os.path.join(d, f))
+    keep = {k: v for k, v in keep.items() if v}
+    keep["updated"] = int(time.time())
+    keep["by"] = _who()
+    tmp = os.path.join(d, "branding.json.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(keep, f, indent=1)
+    os.replace(tmp, os.path.join(d, "branding.json"))
+    core.app.logger.info(f"Branding changed by {_who()}: {keep}")
+    return jsonify(ok=True)
+
+
+# Public, read-only: the sign-in page (a separate service) uses these.
+
+@bp.route("/public/branding.json")
+def public_branding():
+    b = branding()
+    resp = jsonify(name=b.get("name", ""), logo=_logo_url(b), palette=b["palette"])
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@bp.route("/public/branding/logo")
+def public_logo():
+    b = branding()
+    if not b.get("logo_path"):
+        abort(404)
+    resp = send_file(b["logo_path"], mimetype=LOGO_TYPES[b["logo"].rsplit(".", 1)[1]], max_age=3600)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
+    return resp
+
+
+@bp.route("/public/branding.js")
+def public_branding_js():
+    resp = make_response(render_template("ui_branding.js"))
+    resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+def _gallery_index():
+    try:
+        with open(os.path.join(GALLERY_DIR, "index.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def gallery_templates():
+    """Starters first, then AMC's templates, with what the gallery has
+    compiled for them."""
+    index = _gallery_index()
+    out = []
+    for tid in STARTERS:
+        info = gallery.read_description(os.path.join(STARTERS_DIR, tid))
+        if info:
+            out.append(dict(info, gid=STARTER_GROUP, id=tid, starter=True,
+                            format="plain" if tid.endswith("-txt") else "latex"))
+    for t in core.templates:
+        out.append(dict(t, starter=False, format="plain" if "txt" in t["id"].lower() else "latex"))
+    for t in out:
+        built = index.get(f"{t['gid']}/{t['id']}")
+        t["preview"] = bool(built)
+        t["pages"] = built.get("pages") if built else None
+    variant = index.get(f"{STARTER_GROUP}/blank-separate")
+    for t in out:
+        if t["gid"] == STARTER_GROUP and t["id"] == "blank" and variant:
+            t["variants"] = {"separate": "blank-separate"}
+    return out
+
+
+@bp.route("/ui/api/gallery")
+def api_gallery():
+    core.headers_info()
+    groups = [{"id": STARTER_GROUP, "title": "Starters", "text": "Clean starting points"}]
+    languages = {"en": "English", "fr": "French", "other": "Other"}  # AMC titles both "Documentation"
+    groups += [dict(g, title=languages.get(g["id"]) or re.sub(r"^\[[A-Z]+\]\s*", "", g.get("title") or g["id"]))
+               for g in core.template_groups]
+    return jsonify(groups=groups, templates=gallery_templates())
+
+
+@bp.route("/ui/gallery/<gid>/<tid>/<any(thumb, paper):kind>")
+def gallery_file(gid, tid, kind):
+    core.headers_info()
+    known = {(STARTER_GROUP, "blank-separate")} | {(t["gid"], t["id"]) for t in gallery_templates()}
+    if (gid, tid) not in known:
+        abort(404)
+    path = os.path.join(GALLERY_DIR, gid, tid, "thumb.png" if kind == "thumb" else "paper.pdf")
+    if not os.path.isfile(path):
+        abort(404)
+    return send_file(path, max_age=86400)
+
+
+def _install_starter(tid, rep, style, code_digits):
+    src = os.path.join(STARTERS_DIR, STARTER_VARIANTS.get((tid, style), tid))
+    shutil.copytree(src, rep, dirs_exist_ok=True)
+    school = branding()
+    logo = ""
+    if school.get("logo_path") and school.get("logo_path").lower().endswith((".png", ".jpg", ".jpeg")):
+        logo = "school-logo" + os.path.splitext(school["logo_path"])[1].lower()
+        shutil.copyfile(school["logo_path"], os.path.join(rep, logo))
+    for f in os.listdir(rep):
+        if f.endswith((".tex", ".txt")) and f not in ("README.txt",):
+            path = os.path.join(rep, f)
+            fmt = "plain" if f.endswith(".txt") else "latex"
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(gallery.starter_source(text, fmt, school.get("name", ""), logo, code_digits,
+                                                separate=(style == "separate")))
+    try:
+        os.unlink(os.path.join(rep, "description.xml"))
+    except OSError:
+        pass
+
+
+def on_create_exam(data):
+    """The new-exam wizard: details, a template (a starter or one of
+    AMC's), the answer sheet style, student code boxes and copies."""
+    data = data if isinstance(data, dict) else {}
+    name = str(data.get("name") or "").strip()
+    gid, tid = str(data.get("gid") or ""), str(data.get("id") or "")
+    try:
+        core.check_dir_name(name, "project")
+        rep = core.check_unused_name(name)
+    except ValueError:
+        core.dialog_msg(warn="This exam name can't be used.")
+        return
+    if not rep:
+        return  # upstream has said the name is taken
+    def number(v, most):
+        try:
+            return max(0, min(int(v or 0), most))
+        except (TypeError, ValueError):
+            return 0
+    copies, code_digits = number(data.get("copies"), 9999), number(data.get("code"), 12)
+    style = "separate" if data.get("style") == "separate" else "paper"
+    if gid == STARTER_GROUP:
+        if tid not in STARTERS:
+            core.dialog_msg(warn="Unknown template.")
+            return
+        _install_starter(tid, rep, style, code_digits)
+        title = gallery.read_description(os.path.join(STARTERS_DIR, tid)).get("title", tid)
+    else:
+        if not any(t["gid"] == gid and t["id"] == tid for t in core.templates):
+            core.dialog_msg(warn="Unknown template.")
+            return
+        tpath = core.template_path(f"{gid}/{tid}")
+        with tarfile.open(tpath + ".tgz") as tarf:
+            if not core.tar_extract_options_siblings(tarf, rep):
+                core.dialog_msg(warn="This template can't be used: it holds no AMC project.")
+                return
+        title = next((t.get("title") for t in core.templates if t["gid"] == gid and t["id"] == tid), tid)
+    core.create_project_dirs(rep)
+    name, _ = core.set_project(name)
+    core.amc_command("db", "upgrade")
+    core.remove_uuid(name)
+    if copies:
+        core.change_option("nombre_copies", copies)
+    if gid == STARTER_GROUP and not tid.endswith("-txt") and gallery.needs_unicode_engine(branding().get("name", "")):
+        core.change_option("moteur_latex_b", "xelatex")  # the starter's preamble follows the engine
+    meta = {k: str(data.get(k) or "").strip()[:120] for k in META_FIELDS}
+    _update_record(rep, lambda rec: rec.__setitem__("meta", meta))
+    add_activity(rep, f"Exam created from the template \"{title}\"")
+    core.emit_msg("project-open", [name, True])
+
+
+def _named_exam(data):
+    """For dashboard actions on an exam other than the open one."""
+    name = data.get("exam") if isinstance(data, dict) else None
+    try:
+        if not name or not core.project_exists(name):
+            return None
+    except ValueError:
+        return None
+    return core.project_dir(p=name)
+
+
+def on_exam_meta(data):
+    pdir = _named_exam(data)
+    if not pdir:
+        return
+    meta = {k: str(data.get(k) or "").strip()[:120] for k in META_FIELDS}
+    _update_record(pdir, lambda rec: rec.__setitem__("meta", meta))
+    core.emit_msg("u-projects-list")
+    core.emit_msg("ui-changed", "meta")
+
+
+def on_exam_archive(data):
+    pdir = _named_exam(data)
+    if not pdir:
+        return
+    archived = bool(data.get("archived"))
+    _update_record(pdir, lambda rec: rec.__setitem__("archived", archived))
+    add_activity(pdir, "Archived" if archived else "Taken out of the archive")
+    core.emit_msg("u-projects-list")
+
+
+def exam_progress(pdir, name):
+    """Where an exam stands, for its dashboard card: a state, the steps
+    done, and the next thing to do."""
+    rec = read_record(pdir)
+    db = core.Amcdb(pdir)
+    has = lambda m: _has_db(pdir, m)
+    layout = _query(db.layout_npages, 0) if has("layout") else 0
+    lock = exam_lock(pdir, rec)
+    layout_ok = layout_confirmation(pdir, rec)
+    scans = _query(db.capture_npages, 0) if has("capture") else 0
+    problems = 0
+    if scans:
+        problems += _query(db.n_failed, 0)
+        counts = _query(db.counts)
+        problems += counts[1] if counts else 0
+        try:
+            low = float(core.get_option("seuil", p=name) or 0.15)
+            high = float(core.get_option("seuil_up", p=name) or 1.0)
+        except (TypeError, ValueError):
+            low, high = 0.15, 1.0
+        problems += sum(1 for p in _query(lambda: db.capture_pages(low, high), [])
+                        if (p.get("sensitivity") or 0) >= SENSITIVITY_TO_CHECK
+                        and not (p.get("timestamp_manual") or 0) > 0)
+    marked = _query(db.n_graded_students, 0) if has("scoring") else 0
+    has_list = bool(core.get_option("listeetudiants", p=name))
+    unmatched = (sum(1 for s in _query(lambda: sheet_rows(pdir), []) if s["state"] == "unmatched")
+                 if marked and has_list else 0)
+    exports = _files(f"{pdir}/exports")
+    annotated = _files(_annotated_dir(pdir))
+    marks = rec.get("marks") or {}
+    stale = bool(marks.get("inputs")) and marks["inputs"] != marking_inputs_for(pdir, name)
+    built = os.path.isfile(f"{pdir}/DOC-sujet.pdf")
+    order = [s for s in STEPS if s != "settings"]
+    if not layout:
+        nxt = ("papers", "Build the papers") if built else ("questions", "Write the questions")
+    elif not lock and not layout_ok:
+        nxt = ("papers", "Check the layout")
+    elif not lock:
+        nxt = ("print", "Print the papers")
+    elif not scans:
+        nxt = ("upload-scans", "Upload the scans")
+    elif problems:
+        nxt = ("check-scans", f"Check {problems} scan problem{'' if problems == 1 else 's'}")
+    elif not marked or stale:
+        nxt = ("mark", "Compute the marks" if not marked else "Recompute the marks")
+    elif unmatched:
+        nxt = ("match-students", f"Match {unmatched} sheet{'' if unmatched == 1 else 's'} to students")
+    elif not exports:
+        nxt = ("export-marks", "Export the marks")
+    elif not annotated:
+        nxt = ("annotate", "Annotate the sheets")
+    else:
+        nxt = (None, "Done")
+    done = len(order) if nxt[0] is None else order.index(nxt[0])
+    if rec.get("archived"):
+        state = "archived"
+    elif exports:
+        state = "exported"
+    elif marked:
+        state = "marked"
+    elif scans:
+        state = "checking" if problems else "scanned"
+    elif lock:
+        state = "printed"
+    elif layout_ok:
+        state = "ready"
+    elif layout:
+        state = "tocheck"
+    else:
+        state = "draft"
+    return {"state": state, "problems": problems, "done": done, "next": {"step": nxt[0], "text": nxt[1]},
+            "meta": rec.get("meta") or {}, "archived": bool(rec.get("archived"))}
+
+
+def marking_inputs_for(pdir, name):
+    """marking_inputs() for an exam other than the open one."""
+    saved = getattr(flask_g, "project_name", None)
+    flask_g.project_name = name
+    try:
+        return marking_inputs(pdir)
+    finally:
+        flask_g.project_name = saved
+
+
+# ---------------------------------------------------------------- guide
+#
+# The guide is Markdown in server/guide/en/, one page per step plus an
+# overview, so teachers can improve it without touching code. Each step's
+# "What to do here" list also feeds the box at the top of that step.
+
+GUIDE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "guide", "en")
+GUIDE_PAGES = ("index",) + tuple(s for s in STEPS if s != "settings")
+
+
+@bp.route("/ui/api/guide")
+def api_guide():
+    core.headers_info()
+    pages = []
+    for pid in GUIDE_PAGES:
+        try:
+            with open(os.path.join(GUIDE_DIR, pid + ".md"), encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            continue
+        m = re.match(r"#\s+(.+)", text)
+        pages.append({"id": pid, "title": m.group(1).strip() if m else pid, "markdown": text})
+    return jsonify(pages=pages)
+
+
+def record_cloned(dest, source_name):
+    """Called by upstream's project-clone: a copy starts with its own
+    record (not locked by hand, not archived, its layout to check again,
+    its own history). Scans in the copy still lock it, as in any exam."""
+    def change(rec):
+        for k in ("lock", "layout_ok", "archived", "activity"):
+            rec.pop(k, None)
+    _update_record(dest, change)
+    try:
+        os.unlink(os.path.join(dest, RECORD + ".lock"))
+    except OSError:
+        pass
+    add_activity(dest, f"Copied from \"{source_name}\"")
+
+
+# Events that name their exam in their data rather than working on the open one.
+NO_PROJECT_EVENTS = {"ui-create-exam", "ui-exam-meta", "ui-exam-archive"}
+
+
+def _socket_project():
+    """The exam a socket message is about (its "proj" field), if it exists."""
+    name = getattr(flask_g, "project_name", None)
+    try:
+        return name if name and core.project_exists(name) else None
+    except ValueError:
+        return None
+
+
+def _guarded(event, handler):
+    """Run a ui-* handler on an exam that exists. If it raises, the browser
+    gets its screen back and a message, instead of "Working…" for ever."""
+    @functools.wraps(handler)
+    def wrapper(*args):
+        if event not in NO_PROJECT_EVENTS and not _socket_project():
+            core.dialog_msg(warn="This exam doesn't exist any more.")
+            return None
+        try:
+            return handler(*args)
+        except Exception:
+            core.app.logger.exception(f"{event} failed")
+            core.emit_msg("end-command")
+            core.emit_msg("ui-scale", "done")
+            core.dialog_msg(err="Something went wrong on the server. The server log has the details.")
+            return None
+    return wrapper
 
 
 SOCKET_EVENTS = {
@@ -1379,4 +2304,9 @@ SOCKET_EVENTS = {
     "ui-export": on_export,
     "ui-annotate": on_annotate,
     "ui-annotate-preview": on_annotate_preview,
+    "ui-scale-refresh": on_scale_refresh,
+    "ui-question-edit": on_question_edit,
+    "ui-create-exam": on_create_exam,
+    "ui-exam-meta": on_exam_meta,
+    "ui-exam-archive": on_exam_archive,
 }

@@ -97,7 +97,7 @@ The existing logic we build on:
 
 | Step | The teacher | The page shows | Done when |
 |---|---|---|---|
-| **1 Questions** | Writes and edits questions | LaTeX editor today, the form editor later (#4). A live preview of the paper sits in the preview panel, and errors are explained in plain words with a link to the line | The source compiles without errors |
+| **1 Questions** | Writes and edits questions | LaTeX editor today, the form editor later (#4). A live preview of the paper sits in the preview panel, and errors are explained in plain words with a link to the LaTeX log | The source compiles without errors |
 | **2 Marking scheme** | Sets scoring rules and the answer key | The marking panel (section 8): defaults, per-question rules, final mark conversion, answer key. Stays editable after printing | The scale has been extracted and shows a total |
 | **3 Papers** | Chooses the number of copies, builds the final papers and checks the layout | Number of copies with a "print a few spare copies" hint; builds the question paper, answer key and catalogue; preview of each document. Templates that print names on the papers ask for the class list here. Building runs **layout detection automatically**. Then a **"Check the layout"** prompt shows the detected corner marks, boxes and name field over each page, lists any layout warnings, and asks the teacher to confirm "Looks correct". Rebuilding the papers clears the confirmation. A locked exam skips the check | Papers built and the layout confirmed |
 | **4 Print** | Saves the PDF to print elsewhere, or prints on the shared machine's printer (Linux shared machines only) | Opens once the layout is confirmed; before that it explains why and links to the check. Both methods side by side where direct printing is available (section 7). The exam locks afterwards (section 6) | Saved for printing, printed, or marked as printed |
@@ -169,7 +169,7 @@ The layout check happens only before the first print. Once locked, the layout ca
 
 | Save for printing elsewhere (every system) | Print on the shared machine (Linux only) |
 |---|---|
-| Choose the range of copies, then download the print-ready PDF files to take on a pendrive. This is the existing "print to files", made clearer | Pick a printer attached to the shared machine and the range of copies. Shows the queue and lets the teacher cancel jobs. The printer list, queue and cancel already exist |
+| Choose the range of copies, then download the print-ready PDF files to take on a pendrive. This is the existing "print to files", made clearer | Pick a printer attached to the shared machine and the range of copies. The printer list comes from the machine's print system. (Not built: a print queue with cancel; teachers use the machine's own print queue. A print that fails doesn't lock the exam.) |
 
 - **Print checklist:** both routes show it before the file or job is produced: paper size A4, print at 100% (no "fit to page"), single- or double-sided as the template expects, and corner marks fully visible. A wrong scale is the most common reason scans fail later.
 - **Direct printing is Linux only.** On a Linux shared machine, the app connects to the machine's own print system (CUPS), and a new launcher command, `./amc printer`, sets that up. On macOS and Windows, saving PDFs is the only route: the Print step shows just that option, and `./amc printer` explains why.
@@ -197,9 +197,17 @@ The layout check happens only before the first print. Once locked, the layout ca
 - **Where questions come from:** the panel reads them from the source, understanding AMC's standard macros. A question written with unusual LaTeX is shown read-only with an "edit in LaTeX" link. Once the form editor (#4) exists, the panel reads its data directly.
 - **After printing:** the panel stays fully usable. This is the "only the marking scheme and answer key can change" rule from section 6.
 
+
+How it was built (phase 5):
+- **Questions** come from AMC's extracted scale (`prepare --mode b`), read again in the background after each change, so the panel shows what AMC will compute. A question is editable when the source has it in a form the panel understands (LaTeX environments, AMC-TXT lines) and it agrees with AMC's data: type, answers, and which are correct. Anything else is read-only with a link to Questions.
+- **Points** are computed from the rules the way AMC::Scoring does: a copy ticking exactly the correct answers, or `MAX`. Rules with formulas show "?". After marking, the panel shows AMC's own maximums.
+- **Edits** are `\scoring{…}` and `\correctchoice`/`\wrongchoice` switches (AMC-TXT: `{rule}` and `+`/`-`), so they pass the lock. In AMC a default `haut=` wins over a question's `mz=`, so "all or nothing" on a question is written `haut=0,mz=1`.
+- **Neutralising** writes `formula=X,MAX=X,v=X,e=X,…` (full marks) or `formula=0,MAX=0,…` (not counted). The earlier rule is kept in the exam's record for "count normally".
+- After printing, the LaTeX editor is read-only and points to this panel.
+
 ## 9. Exam dashboard, new-exam wizard and template gallery (#2)
 
-**Dashboard.** One card per exam showing its name, class and subject, date, a state chip ("Draft", "Printed", "Checking scans: 14 to review", "Marked", "Exported") and the next action. It has search and filters (class, state, date) and lets teachers archive old exams. Class, subject and date are kept in a small file of our own next to the AMC project, because AMC doesn't store them.
+**Dashboard.** One card per exam showing its name, class and subject, date, a state chip ("Draft", "Printed", "Checking scans: 14 to review", "Marked", "Exported") and the next action. It has search, filters (class, state, archived) and sorting (recent, name, date) and lets teachers archive old exams. (A date filter is not built; sorting by date covers it.) Class, subject and date are kept in a small file of our own next to the AMC project, because AMC doesn't store them.
 
 **New-exam wizard:**
 1. Name, class, subject and date.
@@ -223,6 +231,14 @@ The layout check happens only before the first print. Once locked, the layout ca
 - **Contents:** AMC's English and French templates, plus our own school templates kept in this repo. School templates can use the school name and logo from branding (section 12). Later, teachers can "save an exam as a template", and admins can publish templates to all teachers.
 - **Security:** template ids keep going through the existing `template_path()` check.
 
+
+How it was built (phase 5):
+- **Dashboard:** each card shows a state and the next step, with steps done out of ten. Class, subject, date and "archived" are in the exam's record (`amcweb.json`).
+- **Wizard** at `/new`: details, the gallery, then options. The answer sheet style and student code boxes apply to our starters. AMC's templates keep their own layout.
+- **Starters** are in `server/school_templates/`: a blank LaTeX exam (with a separate-answer-sheet variant) and a blank AMC-TXT exam. The server fills in the school header, the name field and the code boxes.
+- **Previews** are compiled when the Docker image is built (`server/ui_gallery.py`, its own cached layer, about 20 seconds for 22 templates), so no compile runs in a teacher's session.
+- Still to come: "save an exam as a template" and admin-published templates.
+
 ## 10. Preview panel
 
 - **What it shows:**
@@ -237,11 +253,14 @@ The layout check happens only before the first print. Once locked, the layout ca
 
 ## 11. Step-by-step guide
 
-- **"What to do here":** every step starts with 3 to 5 bullet points, collapsible and remembered per user.
+- **"What to do here":** every step starts with 3 to 5 bullet points, collapsible and remembered in the browser (per computer, not per account).
 - **Full guide:** opens in the preview panel. Each step's page covers what it is for, how to do it, and common problems with fixes (for example "Pages not recognised: scan at 300 dpi, check the print was at 100%, use photocopy mode for photocopied sheets").
 - **Exam checklist on the dashboard:** progress through the ten steps and the single next action, such as "Next: check 14 scan problems".
 - **Short first-run tour:** points out the sidebar, preview panel and guide. It can be skipped and replayed from the Guide menu.
 - **Editable content:** the guide is written in Markdown files in this repo (`server/guide/en/`), so teachers can improve it without touching code.
+
+
+How it was built (phase 5): the guide is `server/guide/en/*.md`, an overview plus one page per step. Each page's "What to do here" list feeds that step's box, so there is one text for both. The Guide menu in the top bar opens this step's page, the contents, or the tour. The tour starts the first time an exam is opened and is remembered per browser.
 
 ## 12. Branding
 
@@ -255,12 +274,19 @@ The layout check happens only before the first print. Once locked, the layout ca
 - **Sign-in page:** it belongs to the separate sign-in service, so it fetches the logo and colours from a public, read-only address.
 - **Admin rights:** in shared-machine mode, admins are the sign-in service's admins. Their admin flag reaches the app the same way the username does, and the proxy strips any copy sent by a browser. In single-user mode, the local user can edit branding.
 
+
+How it was built (phase 5):
+- **Storage:** `MC-Projects/_branding/` (`branding.json` and the logo), included in `./amc backup`. Upstream skips `_` folders there, and account names can't start with `_`.
+- **Palette:** branding sets only `--brand` and `--on-brand`; the design system derives the rest. For each theme the chosen colour changes in lightness only as much as needed: 3:1 against the surface, as for controls, and 4.5:1 for button text (white, else near-black). The presets keep white text.
+- **Sign-in page:** it loads `/public/branding.js`, which reads `/public/branding.json`. Both are public and read-only, routed past sign-in like the shareable marks link.
+- **Admin rights:** `/auth/verify` returns `X-AMC-Admin`, Caddy copies it and strips any copy a browser sends. Saving also needs the page's own `AMC-sid` header, so another site can't post changes.
+
 ## 13. Further recommendations
 
 1. **Background jobs with progress:** compiling, reading scans, marking and annotating show progress in the step header and as notifications instead of blocking the screen. Teachers can keep working or switch steps while a job runs.
-2. **Plain-language errors:** LaTeX errors are shown as a short message plus "show details" (log in the preview panel) and "go to line".
+2. **Plain-language errors:** LaTeX errors are shown as a short message plus the LaTeX log in the preview panel. ("Go to line" is not built.)
 3. **Activity list per exam:** "Printed by Priya, 5 Nov", "Answer key changed for Q3, marks recomputed". This helps on a shared machine and when a student questions a mark.
-4. **Consistent confirmations:** destructive actions say exactly what will be lost, with counts. The riskiest ones (unlock, delete exam) need the exam name typed.
+4. **Consistent confirmations:** destructive actions say exactly what will be lost, with counts. The riskiest ones need the exam name typed: unlocking, and deleting an exam that has been printed, scanned or marked (a draft is deleted after a plain confirmation).
 5. **Unsaved-changes guard and autosave** of the source draft. Building the official papers stays an explicit action.
 6. **Settings split three ways:**
    - exam settings, under the exam;
@@ -288,10 +314,10 @@ The layout check happens only before the first print. Once locked, the layout ca
 - **New screens, same server actions:** every screen is new, but it calls the existing Socket.IO events and AMC commands (build, read scans, mark, export, annotate), so AMC's processing doesn't change. New read-only JSON endpoints provide the data that upstream sends as HTML fragments. The first is an exam status summary: documents built, print time and lock, pages scanned, unreadable, missing and to check, marks computed and out of date, students matched, exports and annotated files.
 - **No build step:** plain JavaScript modules and CSS custom properties, the same style as upstream. Libraries are vendored into the repo (nothing fetched at runtime), and the Docker build and `./amc start` stay as they are.
 - **Tests:**
-  - Browser tests for the new screens, reusing upstream's Selenium harness, run in both modes (single user, and shared machine with sign-in).
+  - Browser tests for the new screens (`tests-ui/`: headless Chrome driven over the DevTools protocol, no packages), run by hand in both modes (single user, and shared machine with sign-in). They refuse to run against a copy of the app that holds real exams or branding.
   - The lock and its server-side refusals get dedicated tests.
   - Upstream's own browser tests (`tests/`) drive the old pages, so they no longer apply; ours replace them.
-- **Translations:** every new string goes through the existing translation system, in English.
+- **Translations:** the new screens are in English, with the strings in the code; wiring them into the translation catalogues is left for when a second language is wanted.
 
 ## 15. Phases
 

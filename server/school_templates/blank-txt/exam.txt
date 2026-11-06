@@ -1,0 +1,15 @@
+# AMC-TXT exam. Lines starting with # are comments.
+Title: Exam title
+%%AMCUI:OPTIONS%%
+Presentation: Questions marked with a club may have zero, one or several
+correct answers. Other questions have exactly one.
+
+* Write a question that has exactly one correct answer.
++ The correct answer
+- A wrong answer
+- Another wrong answer
+
+** Write a question that can have several correct answers.
++ A correct answer
++ Another correct answer
+- A wrong answer

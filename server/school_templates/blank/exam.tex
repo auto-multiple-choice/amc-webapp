@@ -1,0 +1,63 @@
+\documentclass[a4paper]{article}
+
+% pdflatex by default; XeLaTeX when the school name needs it (set by the app).
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+\else
+  \usepackage{fontspec}
+  \setmainfont{Linux Libertine O}
+\fi
+\usepackage{graphicx}
+\usepackage[box,completemulti]{automultiplechoice}
+
+\begin{document}
+
+% Each question goes in \element{general}{...}, so the order can be
+% shuffled for each copy.
+
+\element{general}{
+  \begin{question}{example-single}
+    Write a question that has exactly one correct answer.
+    \begin{choices}
+      \correctchoice{The correct answer}
+      \wrongchoice{A wrong answer}
+      \wrongchoice{Another wrong answer}
+    \end{choices}
+  \end{question}
+}
+
+\element{general}{
+  \begin{questionmult}{example-multiple}
+    Write a question that can have several correct answers.
+    \begin{choices}
+      \correctchoice{A correct answer}
+      \correctchoice{Another correct answer}
+      \wrongchoice{A wrong answer}
+    \end{choices}
+  \end{questionmult}
+}
+
+\onecopy{10}{
+
+%%AMCUI:SCHOOL%%
+\noindent{\large\bf Exam title}\hfill Date
+
+\vspace*{3mm}
+%%AMCUI:IDENTITY%%
+
+\vspace*{3mm}
+\begin{center}\em
+  Questions marked with \multiSymbole{} may have zero, one or several
+  correct answers. Other questions have exactly one.
+\end{center}
+\vspace{1ex}
+
+\shufflegroup{general}
+\insertgroup{general}
+
+\AMCcleardoublepage
+}
+
+\end{document}

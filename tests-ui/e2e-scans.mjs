@@ -13,11 +13,11 @@
  * Use a test copy of the app, never your real exams.
  */
 import { startBrowser, sleep } from './cdp.mjs';
-import { makeScans, printedExam } from './fixtures.mjs';
+import { appContainer, makeScans, printedExam } from './fixtures.mjs';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8095';
 const USER = process.env.AMC_E2E_USER || '';
-const CONTAINER = process.env.AMC_E2E_CONTAINER || 'amc-uitest';
+const CONTAINER = appContainer(BASE);
 const EXAM = 'Scan test exam';
 const b = await startBrowser({ base: BASE, user: USER, pass: process.env.AMC_E2E_PASS || '', shots: process.argv[3] || null });
 const api = (path) => b.js(`fetch(${JSON.stringify(path)}, {headers: {'AMC-project': S.project}, cache: 'no-store'}).then(r => r.json())`);
@@ -27,6 +27,7 @@ async function main() {
   await b.signIn();
   await b.goto('/');
   b.check('The app opens', await b.waitFor('S.online === true'));
+  await b.preflight({ exams: [EXAM] });
 
   // An exam with built, confirmed and printed papers, and test scans for it
   await printedExam(b, { name: EXAM });
@@ -119,8 +120,7 @@ async function main() {
   await sleep(500);
   await b.shot('s3-clear');
 
-  await b.js(`socket_emit('project-delete', ${JSON.stringify(EXAM)}); true`);
-  await sleep(500);
+  b.check('The test exam is deleted', await b.deleteExam(EXAM));
 }
 
 main().then(() => b.finish(), (e) => b.finish(e));
