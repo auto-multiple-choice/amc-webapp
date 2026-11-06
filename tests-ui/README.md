@@ -57,3 +57,18 @@ AMC_E2E_USER=tester AMC_E2E_PASS='…' node tests-ui/e2e.mjs https://localhost:8
 With `AMC_E2E_PRINTER=1`, the test prints on the app's printer instead of saving PDFs (the app must see a print system, as after `./amc printer on`).
 
 Screenshots are saved to the folder given as the second argument, if any.
+
+### Scans
+
+`e2e-scans.mjs` tests Upload scans and Check scans:
+- it makes an exam with two pages per copy, builds and locks it;
+- it makes realistic scans with `make_scans.py`, which renders AMC's question paper and draws marks at the box positions AMC recorded, including faint marks AMC is unsure about, a blank page and a copy with a page left out;
+- it uploads the scans through the page and works through unreadable, missing and uncertain pages.
+
+```
+node tests-ui/e2e-scans.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
+```
+
+It runs `make_scans.py` in the app's container with `docker exec`. Set `AMC_E2E_CONTAINER` if the container isn't `amc-uitest`; `AMC_E2E_USER`/`AMC_E2E_PASS` sign in first, as above.
+
+`cdp.mjs` is the small Chrome driver the scans test uses.
