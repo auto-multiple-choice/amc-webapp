@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AMC new style prototype</title>
+  <!-- Phase 0 prototype: open this file in a browser. Nothing here talks to a server. -->
+  <link rel="stylesheet" href="../../src-icons/iconoir.css">
+  <link rel="stylesheet" href="../../server/static/ui/ui.css">
+  <link rel="stylesheet" href="prototype.css">
+</head>
+<body>
+  <div id="app" class="app">
+    <header class="topbar" id="topbar"></header>
+    <nav class="sidebar" id="sidebar" aria-label="Exam steps"></nav>
+    <main class="main" id="main" tabindex="-1"></main>
+    <aside class="preview" id="preview" aria-label="Preview"></aside>
+  </div>
+  <div id="layer"></div>
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <script src="prototype.js"></script>
+</body>
+</html>
