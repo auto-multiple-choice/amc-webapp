@@ -35,21 +35,21 @@ const STEPS = [
   { id: 'marking-scheme', n: 2, label: 'Marking scheme', group: 'before', phase: 2, built: true },
   { id: 'papers', n: 3, label: 'Papers', group: 'before', phase: 2, built: true },
   { id: 'print', n: 4, label: 'Print', group: 'before', phase: 2, built: true },
-  { id: 'upload-scans', n: 5, label: 'Upload scans', group: 'after', phase: 3 },
-  { id: 'check-scans', n: 6, label: 'Check scans', group: 'after', phase: 3 },
+  { id: 'upload-scans', n: 5, label: 'Upload scans', group: 'after', phase: 3, built: true },
+  { id: 'check-scans', n: 6, label: 'Check scans', group: 'after', phase: 3, built: true },
   { id: 'mark', n: 7, label: 'Mark', group: 'after', phase: 4 },
   { id: 'match-students', n: 8, label: 'Match students', group: 'after', phase: 4 },
   { id: 'export-marks', n: 9, label: 'Export marks', group: 'after', phase: 4 },
   { id: 'annotate', n: 10, label: 'Annotate', group: 'after', phase: 4 },
 ];
-const PHASE_NAMES = { 3: 'Scans', 4: 'Results' };
+const PHASE_NAMES = { 4: 'Results' };
 const GUIDES = {
   questions: ['Write each question with its answers, and mark which answers are correct.', 'Save, then build the preview to see the question paper on the right.', 'If the build fails, the message explains why and links to the LaTeX log.'],
   'marking-scheme': ['Choose how single- and multiple-answer questions are scored by default.', 'Set what the final mark is out of, and how it is rounded.', 'All of this can still change after printing.'],
   papers: ['Choose how many copies to print. Add a few spares.', 'Build the papers. The layout is detected automatically.', 'Check the layout in the preview, then confirm it looks correct. Printing opens after that.'],
   print: ['Save the PDFs and print them anywhere, or print directly when the shared machine runs Linux.', 'Print on A4 at 100% (actual size), never "fit to page".', 'The exam locks after printing: questions and layout can no longer change.'],
-  'upload-scans': ['Scan the answer sheets at 300 dpi.', 'Upload the files. Each page is detected automatically.', 'Problems appear in the next step, Check scans.'],
-  'check-scans': ['Fix pages the app couldn\'t read.', 'Look at each box it wasn\'t sure about.', 'Marks come next, once everything is clear.'],
+  'upload-scans': ['Scan the answer sheets at 300 dpi, in black and white or greyscale.', 'Upload the files (PDF or images). Each page is detected automatically.', 'Problems appear in the next step, Check scans.'],
+  'check-scans': ['Unreadable pages: see what AMC saw, then remove them or scan them again.', 'Missing pages: find and upload them.', 'Pages to check: decide each box AMC wasn\'t sure about (T = ticked, N = not ticked, Enter = page done).', 'Marks come next, once everything is clear.'],
   mark: ['Compute the marks once Check scans is clear.', 'Marking always uses the latest marking scheme and answer key.'],
   'match-students': ['Load the class list (a CSV file).', 'Match sheets to students automatically, then by hand for the rest.'],
   'export-marks': ['Check the marks and their distribution.', 'Export to CSV or ODS.'],
@@ -101,6 +101,9 @@ const S = {
   buildQueue: [],         // documents still to build after the current one
   buildError: false,
   printing: null,         // {how, copies} while a print job runs
+  scans: null,            // pages, unreadable and missing pages (/ui/api/scans)
+  review: null,           // the page being checked: boxes and decisions
+  previewImage: null,     // {url, title}: a scan or diagnostic image
 };
 let editor = null;
 
@@ -141,7 +144,7 @@ async function getJSON(url) {
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
   return r.json();
 }
-function upload(url, files, fields = {}) {
+function upload(url, files, fields = {}, onProgress = null) {
   return new Promise((resolve, reject) => {
     const form = new FormData();
     files.forEach(([blob, name]) => form.append('file', blob, name));
@@ -149,6 +152,7 @@ function upload(url, files, fields = {}) {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url, true);
     Object.entries(headers()).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+    if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
     xhr.onload = () => {
       let r = {};
       try { r = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
@@ -196,6 +200,7 @@ socket.on('ui-changed', (what) => {
   if (what === 'unlock') { toast('Exam unlocked. Rebuild the papers, then check the layout again.', 'lock-slash'); S.previewMode = null; }
   if (what === 'layout_ok') toast('Layout confirmed. You can print now.');
   if (what === 'lock') S.printing = null;
+  if (what === 'review') { loadScans().then(() => { if (S.route.step === 'check-scans') openNextReview(); }); }
   refreshStatus().then(() => { if (S.route.step === 'questions') renderMain(); });
 });
 socket.on('ui-scoring-saved', (v) => {
@@ -203,6 +208,10 @@ socket.on('ui-scoring-saved', (v) => {
   toast('Default scoring saved in the source.');
   if (S.route.step === 'marking-scheme') renderMain(true);
 });
+socket.on('scans-report', () => { loadScans(); refreshStatus(); });
+socket.on('failed-report', () => loadScans());
+socket.on('tab-scans', () => loadScans());
+socket.on('failed-pp-url', (url) => { S.previewImage = { url, title: 'What AMC saw on this page' }; S.previewMode = 'image'; openPreview(); });
 socket.on('layout-set-page', (data) => {
   S.layoutPage = { page: data[0], url: `${data[1]}?v=${Date.now()}` };
   if (S.previewMode === 'layout') renderPreview();
@@ -263,6 +272,7 @@ function onRoute() {
   const r = parsePath(location.pathname);
   const leavingQuestions = S.route.step === 'questions' && r.step !== 'questions';
   S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false; S.previewMode = null;
+  S.review = null; S.previewImage = null;
   if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) dropEditor();
   if (r.kind === 'exams') {
     S.project = null; S.status = null; S.files = null;
@@ -294,7 +304,8 @@ async function onProjectOpen(name) {
     S.creating = null;
     S.project = name; S.opening = null;
     toast(`Exam "${name}" created.`);
-    navigate(examPath(name, 'questions'));
+    await navigate(examPath(name, 'questions'));
+    refreshStatus();
     return;
   }
   if (!name) {
@@ -331,6 +342,8 @@ function enterStep() {
   if (S.route.step === 'settings' || S.route.step === 'marking-scheme') loadConfig();
   if (S.route.step === 'marking-scheme') loadScoring();
   if (S.route.step === 'print') loadPrinters();
+  if (S.route.step === 'upload-scans') loadScans();
+  if (S.route.step === 'check-scans') loadScans().then(() => { if (!S.review) openNextReview(); });
   if (S.route.step === 'papers' && S.status && S.status.layout_pages && !S.status.layout_ok && !locked()) showLayout();
 }
 
@@ -383,6 +396,11 @@ async function loadScoring() {
   try { const r = await getJSON('/ui/api/scoring'); if (S.project === p && r.project === p) S.scoring = r; } catch (e) { if (S.project === p) console.error(e); }
   if (S.route.step === 'marking-scheme' && S.project === p) renderMain(true);
 }
+async function loadScans() {
+  const p = S.project;
+  try { const r = await getJSON('/ui/api/scans'); if (S.project === p && r.project === p) S.scans = r; } catch (e) { if (S.project === p) console.error(e); }
+  if (S.project === p && (S.route.step === 'upload-scans' || S.route.step === 'check-scans')) renderMain(true);
+}
 async function loadPrinters() {
   try { S.printers = await getJSON('/ui/api/printers'); } catch { S.printers = { available: false, printers: [] }; }
   if (!S.printers.available) S.printRoute = 'files';
@@ -400,7 +418,7 @@ function stepStatus(id) {
     case 'questions': return st.lock ? r('is-locked') : st.docs.sujet ? r('is-done') : r('');
     case 'papers': return st.lock ? r('is-locked') : st.layout_ok ? r('is-done') : st.layout_pages ? r('is-attention') : r('');
     case 'print': return st.lock ? r('is-done') : st.layout_ok ? r('is-attention') : r('is-blocked');
-    case 'upload-scans': return st.scans ? r('is-done') : r('');
+    case 'upload-scans': return st.scans ? r('is-done') : st.lock ? r('is-attention') : r('');
     case 'check-scans': return !st.scans ? r('') : problems ? r('is-attention', problems) : r('is-done');
     case 'mark': return st.marked ? r('is-done') : r('');
     case 'match-students': return !st.marked ? r('') : st.matched < st.marked ? r('is-attention', st.marked - st.matched) : r('is-done');
@@ -480,6 +498,8 @@ function renderMain(keepScroll = false) {
   else if (r.step === 'marking-scheme') html = viewMarking();
   else if (r.step === 'papers') html = viewPapers();
   else if (r.step === 'print') html = viewPrint();
+  else if (r.step === 'upload-scans') html = viewUpload();
+  else if (r.step === 'check-scans') html = viewCheck();
   else if (r.step === 'settings') html = viewSettings();
   else html = viewSoon(r.step);
   main.classList.toggle('fill', r.kind === 'exam' && r.step === 'questions');
@@ -520,7 +540,15 @@ function renderPreview() {
   if (!open) { p.innerHTML = ''; return; }
   const docs = previewDocs();
   let title; let body; let bodyClass = 'preview-body'; let url = null; let tabs = '';
-  if (S.previewMode === 'layout' && S.status && S.status.layout_pages) {
+  if (S.previewMode === 'image' && S.previewImage) {
+    title = S.previewImage.title;
+    url = S.previewImage.url;
+    body = `<img class="preview-img" src="${esc(url)}" alt="${esc(title)}">`;
+  } else if (S.previewMode === 'page' && S.review) {
+    const rv = S.review;
+    title = `Copy ${rv.copy ? rv.student + '·' + rv.copy : rv.student}, page ${rv.page}`;
+    body = rv.svg ? `<p class="subtle" style="margin:0 0 8px">Click a box to change it. Green: counted as ticked.</p><div class="page-svg" id="page-svg">${rv.svg}</div>` : '<div class="preview-empty">Loading the scanned page…</div>';
+  } else if (S.previewMode === 'layout' && S.status && S.status.layout_pages) {
     const lp = S.layoutPage;
     const [copy, page] = lp ? lp.page.split('/') : ['', ''];
     title = lp ? `Layout · copy ${copy}, page ${page}` : 'Layout';
@@ -552,6 +580,7 @@ function renderPreview() {
       <button class="btn btn-ghost btn-icon btn-sm" data-act="toggle-preview" title="Close" aria-label="Close the preview">${ic('xmark')}</button></div>
     ${tabs}<div class="${bodyClass}" id="preview-body">${body}</div>`;
   if (S.previewFile && /\.(csv|txt|tex|log|yml|yaml)$/i.test(S.previewFile.name)) fillTextPreview(S.previewFile.name, url);
+  if (S.previewMode === 'page' && S.review && S.review.svg) paintPageBoxes();
 }
 
 function fileBody(name, url) {
@@ -1054,6 +1083,243 @@ async function markPrinted() {
   if (ok) socket_emit('ui-mark-printed');
 }
 
+/* ---------- View: upload scans ---------- */
+
+function openPreview() {
+  if (!S.previewOpen) { S.previewOpen = true; store.set('previewOpen', true); renderTop(); }
+  renderPreview();
+}
+
+function scanStats(st, sc) {
+  const toCheck = sc ? sc.pages.filter((p) => p.to_check).length : st.to_check;
+  const failed = sc ? sc.failed.length : st.failed;
+  return `<div class="stats" style="margin-bottom:16px">
+    ${stat(sc ? sc.pages.length : st.scans, 'Pages read', 'ok')}
+    ${stat(sc ? sc.complete : '–', 'Complete copies', 'ok')}
+    ${stat(sc ? sc.incomplete : st.incomplete, 'Incomplete copies', (sc ? sc.incomplete : st.incomplete) ? 'warn' : 'ok')}
+    ${stat(failed, 'Unreadable pages', failed ? 'bad' : 'ok')}
+    ${stat(toCheck, 'Pages to check', toCheck ? 'warn' : 'ok')}</div>`;
+}
+
+function viewUpload() {
+  const st = S.status || {};
+  const sc = S.scans;
+  const has = st.scans > 0;
+  return `<div class="page">
+    ${header('upload-scans', 'Upload scans', 'Upload the scanned answer sheets. Each page is detected automatically.',
+    has ? `<a class="btn btn-primary" href="${examPath(S.project, 'check-scans')}" data-nav>Next: Check scans ${ic('arrow-right')}</a>` : '')}
+    ${guideBox('upload-scans')}
+    ${!st.lock ? banner('info', 'info-circle', 'This exam isn\'t marked as printed.', 'That\'s fine if the papers were printed another way. Uploading scans locks the exam, like printing.') : ''}
+    ${has ? scanStats(st, sc) : ''}
+    <label class="dropzone" id="scan-drop" style="cursor:pointer">
+      ${ic('cloud-upload')}<div><strong>Drop scanned answer sheets here</strong> or click to choose files</div>
+      <div class="subtle">PDF, TIFF, JPEG or PNG · 300 dpi recommended · several files at once</div>
+      <input type="file" id="scan-files" multiple accept=".pdf,.tif,.tiff,.jpg,.jpeg,.png,application/pdf,image/*" hidden>
+    </label>
+    <section class="card" style="margin-top:16px"><div class="card-header"><h2>Scan options</h2></div><div class="card-body">
+      ${!sc ? '<p class="subtle">Loading…</p>' : `
+      <label class="check"><input type="checkbox" id="scan-photocopy" ${sc.photocopy ? 'checked' : ''} ${sc.mode_locked ? 'disabled' : ''}>
+        <span>Students wrote on photocopies<br><span class="subtle">${sc.mode_locked ? 'Can\'t change once scans are uploaded.' : 'Tick this if one printed paper was photocopied for the class, instead of printing each copy.'}</span></span></label>
+      ${sc.photocopy && (sc.max_pages || 0) > 1 ? `<label class="field" style="margin-top:14px"><span class="field-label">Pages of one copy</span>
+        <select class="select" data-option="multi_scan_mode">
+          ${[['strict', 'Must follow each other, in order'], ['skip-unrecognized', 'In order, skipping pages it can\'t read'], ['increasing', 'In increasing page order'], ['file', 'One file per copy']].map(([v, l]) => `<option value="${v}" ${sc.multi_scan_mode === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select><span class="field-hint">How AMC tells where one student's copy ends in photocopied scans.</span></label>` : ''}`}
+    </div></section>
+  </div>`;
+}
+
+async function uploadScans(files) {
+  if (!files.length) return;
+  S.work = { text: `Uploading ${files.length} file${files.length > 1 ? 's' : ''}…`, p: 0 }; renderWork();
+  try {
+    const r = await upload('/upload/scans', [...files].map((f) => [f, f.name]), { project_name: S.project },
+      (p) => { if (S.work) { S.work.p = p; renderWork(); } });
+    S.work = { text: 'Reading the scans…', p: null }; renderWork();
+    socket_emit('data-capture', r.list);
+  } catch (e) {
+    S.work = null; renderWork();
+    toast(e.message, 'warning-triangle');
+  }
+}
+
+/* ---------- View: check scans ---------- */
+
+const pageKey = (p) => `${p.student}/${p.page}/${p.copy}`;
+const pageName = (p) => `Copy ${p.copy ? `${p.student}·${p.copy}` : p.student}, page ${p.page}`;
+const boxKey = (b) => `${b.question}_${b.answer}`;
+
+function viewCheck() {
+  const st = S.status || {};
+  const sc = S.scans;
+  if (!st.scans && !(sc && sc.failed.length)) {
+    return `<div class="page">${header('check-scans', 'Check scans')}${guideBox('check-scans')}
+      <section class="card"><div class="empty"><div class="empty-icon">${ic('page-search')}</div><h2>No scans yet</h2>
+        <p>Upload the scanned answer sheets first. Anything that needs your eye appears here.</p>
+        <div class="btn-row"><a class="btn btn-primary" href="${examPath(S.project, 'upload-scans')}" data-nav>Go to Upload scans</a></div></div></section></div>`;
+  }
+  if (!sc) return `<div class="page">${header('check-scans', 'Check scans')}<div class="skeleton"></div></div>`;
+  const queue = sc.pages.filter((p) => p.to_check);
+  const left = queue.length + sc.failed.length + sc.missing.length;
+  return `<div class="page">
+    ${header('check-scans', 'Check scans', 'Fix what automatic detection couldn\'t settle. Marks come next.',
+    left ? `<span class="chip chip-warning">${left} to look at</span>` : `<a class="btn btn-primary" href="${examPath(S.project, 'mark')}" data-nav>Next: Mark ${ic('arrow-right')}</a>`)}
+    ${guideBox('check-scans')}
+    ${!left ? banner('success', 'check-circle', 'All clear.', 'Every page is read and every uncertain box is settled.') : ''}
+    ${scanStats(st, sc)}
+    ${unreadableCard(sc)}
+    ${missingCard(sc)}
+    ${reviewCard(queue)}
+    ${allPagesCard(sc)}
+    <details class="card" style="margin-top:16px"><summary class="card-header" style="cursor:pointer;border-bottom:0">${ic('settings')}<h2>Advanced: detection sensitivity</h2></summary>
+      <div class="card-body" style="border-top:1px solid var(--border)">
+        <p class="muted" style="margin-bottom:12px">A box counts as ticked when its darkness is between these two values. Darker than the upper value counts as filled in to cancel. Boxes close to either value are sent to you to check.</p>
+        <div class="form-grid">
+          <label class="field"><span class="field-label">Lower (ticked from)</span><input class="input" type="number" min="0" max="1" step="0.01" id="seuil" value="${sc.low}"></label>
+          <label class="field"><span class="field-label">Upper (cancelled above)</span><input class="input" type="number" min="0" max="1" step="0.01" id="seuil_up" value="${sc.high}"></label>
+        </div><p class="field-hint" style="margin-top:10px">Changing these changes which boxes count as ticked on every page. Pages you already checked keep your decisions.</p>
+      </div></details>
+  </div>`;
+}
+
+function unreadableCard(sc) {
+  if (!sc.failed.length) return '';
+  return `<section class="card"><div class="card-header">${ic('warning-triangle')}<h2>Unreadable pages</h2><span class="chip chip-danger">${sc.failed.length}</span></div>
+    <div class="list">${sc.failed.map((f, i) => `<div class="list-row"><span class="list-icon bad">${ic('page')}</span>
+      <div class="list-row-main"><div class="list-row-title">${esc(f.file)}</div><div class="subtle">AMC couldn't find this exam's corner marks or page code. The page may be rotated, cropped, too light, blank, or from another exam.</div></div>
+      ${f.local ? `<button class="btn btn-sm" data-act="failed-view" data-i="${i}">View</button>` : ''}
+      <button class="btn btn-sm" data-act="failed-diagnose" data-i="${i}">What AMC saw</button>
+      <button class="btn btn-sm btn-ghost" data-act="failed-remove" data-i="${i}" title="Remove from the list">${ic('trash')}</button></div>`).join('')}</div>
+    <div class="card-foot" style="justify-content:flex-start"><span class="subtle">If the page belongs to this exam, scan it again (straight, at 300 dpi) and upload it.</span></div></section>`;
+}
+
+function missingCard(sc) {
+  if (!sc.missing.length) return '';
+  const byCopy = {};
+  sc.missing.forEach((m) => { const k = m.copy ? `${m.student}·${m.copy}` : `${m.student}`; (byCopy[k] = byCopy[k] || []).push(m.page); });
+  return `<section class="card"><div class="card-header">${ic('multiple-pages')}<h2>Missing pages</h2><span class="chip chip-warning">${sc.missing.length}</span></div>
+    <div class="list">${Object.entries(byCopy).map(([k, pages]) => `<div class="list-row"><span class="list-icon warn">${ic('page')}</span>
+      <div class="list-row-main"><div class="list-row-title">Copy ${esc(k)}: page${pages.length > 1 ? 's' : ''} ${pages.join(', ')} missing</div>
+      <div class="subtle">Other pages of this copy were scanned. Find the missing page and upload it; otherwise the copy is marked with what was read.</div></div></div>`).join('')}</div></section>`;
+}
+
+function reviewCard(queue) {
+  const rv = S.review;
+  const inQueue = rv && queue.some((p) => pageKey(p) === rv.key);
+  if (!queue.length && !rv) return '';
+  let pane = '<p class="subtle" style="padding:16px">Choose a page.</p>';
+  if (rv) {
+    if (rv.loading) pane = '<div style="padding:16px"><div class="skeleton" style="height:160px"></div></div>';
+    else {
+      const show = rv.showAll ? rv.boxes : rv.boxes.filter((b) => b.uncertain);
+      pane = `<div style="padding:14px 16px">
+        <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap"><strong>${pageName(rv)}</strong>
+          <span class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-act="review-all">${rv.showAll ? 'Only uncertain boxes' : `All ${rv.boxes.length} boxes`}</button>
+          <button class="btn btn-ghost btn-sm" data-act="review-page-view">${ic('eye')} Page</button></span></div>
+        ${show.length ? `<div class="zoom-list">${show.map((b) => {
+    const i = rv.boxes.indexOf(b);
+    const on = rv.decisions[boxKey(b)];
+    return `<div class="zoom-row ${i === rv.cursor ? 'is-current' : ''} ${b.uncertain ? 'is-uncertain' : ''}" data-act="review-cursor" data-i="${i}">
+            ${b.image ? `<img class="zoom-img" src="${b.image}" alt="">` : '<span class="zoom-img"></span>'}
+            <div class="zoom-info"><div><b>${esc(b.name || 'Question ' + b.question)}</b> · ${b.label ? 'box ' + esc(b.label) : 'answer ' + b.answer}</div>
+              <div class="subtle">${b.prop === null ? 'not measured' : Math.round(b.prop * 100) + '% dark'} · detected ${b.auto ? 'ticked' : 'not ticked'}${b.uncertain ? ' · uncertain' : ''}</div></div>
+            <div class="segmented" role="group" aria-label="Decision"><button aria-pressed="${on}" data-act="review-set" data-i="${i}" data-v="1">Ticked</button><button aria-pressed="${!on}" data-act="review-set" data-i="${i}" data-v="0">Not ticked</button></div>
+          </div>`;
+  }).join('')}</div>` : '<p class="subtle">No uncertain boxes on this page.</p>'}
+        <div class="row" style="margin-top:12px;flex-wrap:wrap"><span class="subtle"><span class="kbd">T</span> ticked · <span class="kbd">N</span> not ticked · <span class="kbd">↑</span><span class="kbd">↓</span> move · <span class="kbd">Enter</span> page done</span>
+          <span class="spacer"></span>
+          ${rv.checked ? `<button class="btn btn-sm" data-act="review-revert">${ic('undo')} Back to detected</button>` : ''}
+          <button class="btn btn-primary" data-act="review-done">${ic('check')} ${inQueue ? 'Page done' : 'Save this page'}</button></div>
+      </div>`;
+    }
+  }
+  return `<section class="card"><div class="card-header">${ic('frame-select')}<h2>Pages to check</h2><span class="chip ${queue.length ? 'chip-warning' : 'chip-success'}">${queue.length || 'None'}</span>
+      ${queue.length > 1 ? '<button class="btn btn-ghost btn-sm" data-act="accept-rest">Accept the rest as detected</button>' : ''}</div>
+    <div class="review">
+      <div class="review-list">${queue.map((p) => `<button class="review-item" aria-current="${rv && rv.key === pageKey(p)}" data-act="review-open" data-key="${pageKey(p)}"><span class="ri-dot"></span><span><span class="ri-title">${pageName(p)}</span><br><span class="subtle">${p.sensitivity === null ? '' : 'uncertainty ' + p.sensitivity + '/10'}</span></span></button>`).join('')}
+        ${rv && !inQueue ? `<button class="review-item" aria-current="true"><span class="ri-dot" style="background:var(--success)"></span><span class="ri-title">${pageName(rv)}</span></button>` : ''}</div>
+      <div>${pane}</div>
+    </div></section>`;
+}
+
+function allPagesCard(sc) {
+  if (!sc.pages.length) return '';
+  return `<details class="card" style="margin-top:16px"><summary class="card-header" style="cursor:pointer;border-bottom:0">${ic('multiple-pages')}<h2>All pages read</h2><span class="chip">${sc.pages.length}</span></summary>
+    <div class="table-wrap" style="border:0;border-top:1px solid var(--border);border-radius:0;max-height:360px"><table class="table"><thead><tr><th>Copy</th><th>Page</th><th>Checked by a person</th><th class="num">Uncertainty</th><th></th></tr></thead>
+    <tbody>${sc.pages.map((p) => `<tr><td class="num">${p.copy ? `${p.student}·${p.copy}` : p.student}</td><td class="num">${p.page}</td><td>${p.checked ? 'Yes' : p.to_check ? '<span class="chip chip-warning">To check</span>' : 'No'}</td><td class="num">${p.sensitivity === null ? '–' : p.sensitivity}</td>
+      <td style="text-align:right"><button class="btn btn-sm" data-act="review-open" data-key="${pageKey(p)}">Open</button> <button class="btn btn-sm btn-ghost" data-act="delete-page" data-key="${pageKey(p)}" title="Delete this page's scan">${ic('trash')}</button></td></tr>`).join('')}</tbody></table></div></details>`;
+}
+
+function openNextReview() {
+  const sc = S.scans;
+  const next = sc && sc.pages.find((p) => p.to_check);
+  if (next) openReview(pageKey(next)); else { S.review = null; if (S.previewMode === 'page') S.previewMode = null; renderMain(true); renderPreview(); }
+}
+
+async function openReview(key) {
+  const [student, page, copy] = key.split('/').map(Number);
+  const found = S.scans && S.scans.pages.find((p) => pageKey(p) === key);
+  S.review = { key, student, page, copy, loading: true, boxes: [], decisions: {}, cursor: 0, showAll: false, checked: found ? found.checked : false, svg: null };
+  S.previewMode = 'page';
+  renderMain(true); renderPreview();
+  try {
+    const r = await getJSON(`/ui/api/scan-page?student=${student}&page=${page}&copy=${copy}`);
+    if (!S.review || S.review.key !== key) return;
+    S.review.boxes = r.boxes || [];
+    S.review.boxes.forEach((b) => { S.review.decisions[boxKey(b)] = b.ticked; });
+    const firstUncertain = S.review.boxes.findIndex((b) => b.uncertain);
+    S.review.cursor = firstUncertain >= 0 ? firstUncertain : 0;
+    S.review.loading = false;
+    renderMain(true);
+    const res = await fetch('/scans_page_select.html', { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' }, body: JSON.stringify({ student, page, copy }) });
+    const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+    const svg = doc.querySelector('svg');
+    if (svg) {
+      // Clicks are handled here; drop the old page's inline handlers and any script.
+      svg.querySelectorAll('script').forEach((el) => el.remove());
+      [svg, ...svg.querySelectorAll('*')].forEach((el) => [...el.attributes].forEach((a) => { if (/^on/i.test(a.name)) el.removeAttribute(a.name); }));
+    }
+    if (S.review && S.review.key === key) { S.review.svg = svg ? svg.outerHTML : ''; renderPreview(); }
+  } catch (e) { console.error(e); if (S.review) { S.review.loading = false; renderMain(true); } }
+}
+
+/* Show the current decisions on the scanned page. */
+function paintPageBoxes() {
+  const host = $('#page-svg');
+  if (!host || !S.review) return;
+  S.review.boxes.forEach((b, i) => {
+    const el = host.querySelector(`#box1_${b.question}_${b.answer}`);
+    if (!el) return;
+    el.classList.toggle('ticked', !!S.review.decisions[boxKey(b)]);
+    el.classList.toggle('uncertain', b.uncertain);
+    el.classList.toggle('current', i === S.review.cursor);
+  });
+}
+
+function reviewSet(i, value) {
+  const rv = S.review;
+  if (!rv || rv.loading || !rv.boxes[i]) return;
+  rv.decisions[boxKey(rv.boxes[i])] = value;
+  rv.cursor = i;
+  renderMain(true); paintPageBoxes();
+}
+function reviewMove(step) {
+  const rv = S.review;
+  if (!rv || rv.loading) return;
+  const idx = rv.boxes.map((b, i) => i).filter((i) => rv.showAll || rv.boxes[i].uncertain);
+  if (!idx.length) return;
+  const at = idx.indexOf(rv.cursor);
+  rv.cursor = idx[Math.max(0, Math.min(idx.length - 1, (at < 0 ? 0 : at + step)))];
+  renderMain(true); paintPageBoxes();
+}
+function reviewDone() {
+  const rv = S.review;
+  if (!rv || rv.loading) return;
+  const decisions = rv.boxes.filter((b) => b.uncertain || rv.decisions[boxKey(b)] !== b.ticked)
+    .map((b) => [b.question, b.answer, !!rv.decisions[boxKey(b)]]);
+  socket_emit('ui-review-page', { student: rv.student, page: rv.page, copy: rv.copy, decisions });
+  toast(`${pageName(rv)} checked.`);
+}
+
 /* ---------- Dialogs, toasts, progress ---------- */
 
 let dialogResolve = null;
@@ -1203,6 +1469,34 @@ const ACTIONS = {
     S.printRoute = el.dataset.route; renderMain(true);
   },
   print: () => printPapers(),
+  'failed-view': (el) => { const f = S.scans.failed[+el.dataset.i]; S.previewImage = { url: fsUrl(f.local), title: f.file }; S.previewMode = 'image'; openPreview(); },
+  'failed-diagnose': (el) => { const f = S.scans.failed[+el.dataset.i]; socket_emit('failed-pre-process', f.path); toast('Looking at the page as AMC sees it…', 'page-search'); },
+  'failed-remove': async (el) => {
+    const f = S.scans.failed[+el.dataset.i];
+    const ok = await confirmDialog({ title: 'Remove this page?', body: `<p><b>${esc(f.file)}</b> is taken off the list of unreadable pages. Upload a better scan if the page belongs to this exam.</p>`, ok: 'Remove', danger: true, icon: 'trash' });
+    if (ok) socket_emit('failed-delete', f.path);
+  },
+  'review-open': (el) => openReview(el.dataset.key),
+  'review-cursor': (el) => { if (S.review) { S.review.cursor = +el.dataset.i; renderMain(true); paintPageBoxes(); } },
+  'review-set': (el) => reviewSet(+el.dataset.i, el.dataset.v === '1'),
+  'review-all': () => { if (S.review) { S.review.showAll = !S.review.showAll; renderMain(true); } },
+  'review-page-view': () => { S.previewMode = 'page'; openPreview(); },
+  'review-done': () => reviewDone(),
+  'review-revert': async () => {
+    const rv = S.review;
+    const ok = await confirmDialog({ title: 'Go back to what was detected?', body: '<p>Your decisions on this page are removed, and the page goes back to the list of pages to check if it has uncertain boxes.</p>', ok: 'Back to detected', icon: 'undo' });
+    if (ok) { socket_emit('revert-manual', [rv.student, rv.page, rv.copy]); setTimeout(() => loadScans().then(() => openReview(rv.key)), 400); }
+  },
+  'accept-rest': async () => {
+    const n = S.scans.pages.filter((p) => p.to_check).length;
+    const ok = await confirmDialog({ title: `Accept ${n} pages as detected?`, body: '<p>The uncertain boxes on these pages count as AMC detected them. You can still open any page later and change it.</p>', ok: 'Accept as detected', icon: 'check-circle' });
+    if (ok) socket_emit('ui-accept-detected', {});
+  },
+  'delete-page': async (el) => {
+    const [student, page, copy] = el.dataset.key.split('/').map(Number);
+    const ok = await confirmDialog({ title: `Delete the scan of ${pageName({ student, page, copy })}?`, body: '<p>What was read on this page is removed. Upload the page again if you need it.</p>', ok: 'Delete', danger: true, icon: 'trash' });
+    if (ok) { socket_emit('delete-scans', [{ student, page, copy }]); if (S.review && S.review.key === el.dataset.key) S.review = null; }
+  },
   'mark-printed': () => markPrinted(),
   'guide-toggle': (el) => { const k = el.dataset.step; S.guide[k] = !S.guide[k]; store.set('guide', S.guide); const g = el.closest('.guide'); g.classList.toggle('is-collapsed', S.guide[k]); el.setAttribute('aria-expanded', !S.guide[k]); resizeEditor(); },
   'new-exam': () => newExam(),
@@ -1230,6 +1524,12 @@ document.addEventListener('click', (e) => {
     e.preventDefault();
     if (nav.closest('#layer')) closeDialog(false);
     navigate(nav.getAttribute('href'));
+    return;
+  }
+  const svgBox = e.target.closest && e.target.closest('#page-svg [id^="box1_"]');
+  if (svgBox && S.review && !S.review.loading) {
+    const i = S.review.boxes.findIndex((b) => `box1_${b.question}_${b.answer}` === svgBox.id);
+    if (i >= 0) reviewSet(i, !S.review.decisions[boxKey(S.review.boxes[i])]);
     return;
   }
   const el = e.target.closest('[data-act]');
@@ -1262,6 +1562,15 @@ document.addEventListener('change', async (e) => {
     toast('Saved.');
   }
   if (/^score-[SM]-preset$/.test(t.id)) $(`#score-${t.id[6]}-custom-field`).classList.toggle('hidden', t.value !== 'custom');
+  if (t.id === 'scan-files' && t.files.length) { uploadScans(t.files); t.value = ''; }
+  if (t.id === 'scan-photocopy') { socket_emit('scans-mode-change', t.checked ? 1 : 0); if (S.scans) S.scans.photocopy = t.checked; renderMain(true); }
+  if (t.id === 'seuil' || t.id === 'seuil_up') {
+    const v = parseFloat(t.value);
+    if (!(v >= 0 && v <= 1)) { toast('Use a value between 0 and 1.', 'warning-triangle'); return; }
+    socket_emit('set-config', [t.id, String(v)]);
+    toast('Saved. Pages to check are updated.');
+    setTimeout(() => { loadScans(); refreshStatus(); }, 300);
+  }
   if (t.id === 'copies') {
     const n = t.value.trim() === '' ? 0 : parseInt(t.value, 10); // 0: as in the source
     if (!(n >= 0)) { toast('Enter a number of copies, or leave it empty.', 'warning-triangle'); return; }
@@ -1276,8 +1585,26 @@ document.addEventListener('keydown', (e) => {
     if ($('#layer').innerHTML && !$('#layer .server-dialog')) closeDialog(false);
     else if (S.menu) { S.menu = null; renderTop(); if (S.route.kind === 'exams') renderMain(true); }
   }
+  const typingNow = e.target instanceof Element && e.target.closest('input, textarea, select, .ace_editor');
+  if (S.route.step === 'check-scans' && S.review && !S.review.loading && !typingNow && !$('#layer').innerHTML && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const k = e.key.toLowerCase();
+    if (k === 't' || k === 'n') { e.preventDefault(); reviewSet(S.review.cursor, k === 't'); reviewMove(1); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); reviewMove(1); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); reviewMove(-1); return; }
+    if (e.key === 'Enter' && !(e.target instanceof Element && e.target.closest('button, a'))) { e.preventDefault(); reviewDone(); return; }
+  }
   // The editor handles its own Ctrl/Cmd+S.
   if ((e.metaKey || e.ctrlKey) && e.key === 's' && S.route.step === 'questions' && !(e.target.closest && e.target.closest('.ace_editor'))) { e.preventDefault(); saveSource(); }
+});
+
+/* Drag and drop scans onto the upload area */
+document.addEventListener('dragover', (e) => { const z = e.target.closest && e.target.closest('#scan-drop'); if (z) { e.preventDefault(); z.classList.add('is-over'); } });
+document.addEventListener('dragleave', (e) => { const z = e.target.closest && e.target.closest('#scan-drop'); if (z) z.classList.remove('is-over'); });
+document.addEventListener('drop', (e) => {
+  const z = e.target.closest && e.target.closest('#scan-drop');
+  if (!z) return;
+  e.preventDefault(); z.classList.remove('is-over');
+  if (e.dataTransfer && e.dataTransfer.files.length) uploadScans(e.dataTransfer.files);
 });
 
 /* Preview panel resizing */

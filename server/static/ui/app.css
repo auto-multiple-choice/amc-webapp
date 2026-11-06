@@ -129,3 +129,34 @@
 .layout-legend .sw { width: 12px; height: 12px; border-radius: 3px; border: 2.5px solid; display: inline-block; }
 .layout-svg { display: block; width: 100%; max-width: 640px; margin: 0 auto; background: #fff; box-shadow: var(--shadow-1); }
 .preview-tabs .spacer { flex: 1; }
+
+/* ---------- Scans ---------- */
+
+.dropzone.is-over { border-color: var(--brand); background: var(--accent-softer); }
+.review { display: grid; grid-template-columns: 240px minmax(0, 1fr); }
+.review-list { max-height: 520px; overflow: auto; border-right: 1px solid var(--border); }
+.review-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 0; border-top: 1px solid var(--border);
+  background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.review-item:first-child { border-top: 0; }
+.review-item:hover { background: var(--surface-2); }
+.review-item[aria-current="true"] { background: var(--accent-soft); }
+.ri-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); flex: none; }
+.zoom-list { display: grid; gap: 6px; }
+.zoom-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; }
+.zoom-row.is-uncertain { border-color: var(--warning-border); background: var(--warning-soft); }
+.zoom-row.is-current { box-shadow: 0 0 0 2px var(--brand); }
+.zoom-img { width: 56px; height: 56px; object-fit: contain; background: #fff; border: 1px solid var(--border); border-radius: 6px; flex: none; image-rendering: pixelated; }
+.zoom-info { flex: 1; min-width: 0; }
+.page-svg svg { width: 100%; height: auto; display: block; background: #fff; box-shadow: var(--shadow-1); }
+.page-svg [id^="box1_"] { cursor: pointer; fill: transparent; }
+.page-svg [id^="box1_"].ticked { fill: rgb(20 160 80 / .35); stroke: #14a050 !important; }
+.page-svg [id^="box1_"].uncertain { stroke: #f08c00 !important; stroke-width: 14 !important; }
+.page-svg [id^="box1_"].current { stroke: var(--brand) !important; stroke-width: 18 !important; }
+@media (max-width: 1279px) { .review { grid-template-columns: 1fr; } .review-list { max-height: 200px; border-right: 0; border-bottom: 1px solid var(--border); } }
+/* AMC's page SVG relies on static/svg.css, which doesn't apply inside the
+   page: without these, shapes get SVG's default black fill. */
+.page-svg svg :is(rect, circle, ellipse, polygon, path):not([id^="box1_"]) { fill: none; }
+.page-svg .box1 { stroke: #00b84f; stroke-width: 6; }
+.page-svg .box2 { stroke: #ff7c00; stroke-width: 6; }
+.page-svg .namefield { stroke: #eb0cf9; stroke-width: 6; }
+.page-svg .corner-mark { stroke: #21c9c0; stroke-width: 6; }
