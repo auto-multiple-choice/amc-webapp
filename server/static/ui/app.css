@@ -197,3 +197,25 @@
   border: 1px solid var(--border); box-shadow: var(--shadow-2); font-size: 12.5px; white-space: nowrap; z-index: 2; }
 .segmented.full { display: flex; width: 100%; }
 .segmented.full button { flex: 1; min-width: 0; white-space: normal; height: auto; min-height: 28px; padding: 4px 8px; line-height: 1.25; }
+
+/* ---------- Marking scheme: questions ---------- */
+
+.q-table td.q-cell { white-space: normal; vertical-align: top; }
+.q-table td { vertical-align: top; }
+.q-table tr.is-muted td { color: var(--text-3); }
+.q-text { margin-top: 3px; max-width: 360px; }
+.q-total { white-space: nowrap; }
+.ans-row { display: flex; flex-wrap: wrap; gap: 6px; max-width: 460px; }
+.ans { display: inline-flex; align-items: center; gap: 4px; max-width: 220px; height: 26px; padding: 0 10px; border-radius: 999px;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; cursor: pointer; }
+.ans span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ans:hover:not(:disabled) { border-color: var(--brand); }
+.ans.is-correct { background: var(--success-soft); border-color: var(--success-border); font-weight: 600; }
+.ans.is-correct [class*="iconoir-"] { color: var(--success); }
+.ans:disabled { cursor: default; }
+.ans:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus); }
+.q-choices .check + .check { margin-top: 8px; }
+.q-actions { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0 -10px; }
+.q-points { min-width: 120px; }
+.q-rule { font-size: 12px; overflow-wrap: anywhere; margin-top: 2px; }
+.q-problem { color: var(--text-2); }

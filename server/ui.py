@@ -20,6 +20,8 @@ import sqlite3
 import time
 import uuid
 
+import ui_scale as scale
+
 from flask import Blueprint, Response, abort, jsonify, make_response, render_template, request, send_file
 from flask import g as flask_g
 
@@ -299,6 +301,8 @@ def read_record(pdir):
 
 
 def _update_record(pdir, change):
+    if not os.path.isdir(pdir):
+        return {}  # the exam was deleted meanwhile: don't bring its folder back
     path = _record_file(pdir)
     with core.FileLock(path + ".lock"):
         rec = read_record(pdir)
@@ -434,6 +438,8 @@ CHOICE_COMMAND = re.compile(r"\\(?:correctchoice|wrongchoice|bonne|mauvaise)(?![
 COMMENT = re.compile(r"(?<!\\)%.*$")
 TXT_DEFAULT_LINE = re.compile(r"^\s*DefaultScoring[SM]\s*:", re.I)
 TXT_ANSWER = re.compile(r"^(\s*)[+-]")
+TXT_Q_SCORING = re.compile(r"^(\s*\*{1,2}(?:<[^>]*>)?(?:\[[^\]]*\])?)\{[^}]*\}")
+TXT_A_SCORING = re.compile(r"^(\s*[+-](?:\[[^\]]*\])?)\{[^}]*\}")
 
 
 def _normalized_lines(text, latex):
@@ -449,7 +455,9 @@ def _normalized_lines(text, latex):
         else:
             if TXT_DEFAULT_LINE.match(raw):
                 continue
-            line = TXT_ANSWER.sub(r"\1±", raw)
+            line = TXT_Q_SCORING.sub(r"\1", raw)
+            line = TXT_A_SCORING.sub(r"\1", line)
+            line = TXT_ANSWER.sub(r"\1±", line)
         line = re.sub(r"[ \t]+", " ", line).strip()
         if line:
             lines.append(line)          # lines left empty (comments,
@@ -832,18 +840,33 @@ def _db_for(pdir, *modules):
     return db
 
 
+def _source_files(pdir):
+    """The main source and the other LaTeX files next to it (\\input).
+    For AMC-TXT only the main source: AMC writes LaTeX files of its own
+    next to it each time it reads it."""
+    main = core.main_source_file()
+    if core.get_option("filter") == "plain":
+        return [main] if main and os.path.isfile(os.path.join(pdir, main)) else []
+    return [f for f in sorted(os.listdir(pdir))
+            if (f == main or f.rsplit(".", 1)[-1].lower() in ("tex", "latex"))
+            and os.path.isfile(os.path.join(pdir, f))]
+
+
+def source_digest(pdir):
+    h = hashlib.sha256()
+    for f in _source_files(pdir):
+        with open(os.path.join(pdir, f), "rb") as fh:
+            h.update(f.encode() + b"\0" + hashlib.sha256(fh.read()).digest())
+    return h.hexdigest()[:32]
+
+
 def marking_inputs(pdir):
     """A fingerprint of what the marks depend on: the LaTeX or AMC-TXT
     sources (scoring and answer key), the final mark settings, the
     detection thresholds, and the scanned pages with every decision made in
     Check scans. Marks computed from different inputs are out of date."""
     h = hashlib.sha256()
-    main = core.main_source_file()
-    for f in sorted(os.listdir(pdir)):
-        path = os.path.join(pdir, f)
-        if (f == main or f.rsplit(".", 1)[-1].lower() in ("tex", "latex")) and os.path.isfile(path):
-            with open(path, "rb") as fh:
-                h.update(f.encode() + b"\0" + hashlib.sha256(fh.read()).digest())
+    h.update(source_digest(pdir).encode())
     h.update(json.dumps(core.get_options(list(MARK_OPTIONS)), sort_keys=True).encode())
     db = _db_for(pdir, "capture")
     if db:
@@ -1086,11 +1109,16 @@ def on_mark(data=None):
     key (as upstream's do-mark with "update the scale" ticked)."""
     pdir = core.project_dir()
     inputs = marking_inputs(pdir)
+    sources = source_digest(pdir)
     messages, variables = {}, {}
     core.emit_msg("begin-command")
     core.emit_msg("t", "Reading the marking scheme")
     core.amc_command("prepare", "--mode", "b", "--progression-id", "MAJ", "--progression", "1",
                      messages=messages, variables=variables)
+    scale_entry = {"inputs": sources, "at": int(time.time()),
+                   "error": "The questions can't be read: the source doesn't compile. Fix it in Questions."
+                   if messages.get("ERR") else None}
+    _update_record(pdir, lambda rec: rec.__setitem__("scale", scale_entry))
     core.u_exports_available()
     core.emit_msg("t", "Computing the marks")
     core.amc_command("note", "--progression-id", "GRD", "--progression", "1",
@@ -1362,6 +1390,258 @@ def class_list_refusal(filename):
     return None
 
 
+# ---------------------------------------------------------------- marking scheme panel
+#
+# Questions come from AMC's extracted scale (scoring.sqlite, written by
+# "prepare --mode b"), so what the panel shows is what AMC will compute.
+# A question is editable when the source has it in a form the panel
+# understands and that agrees with AMC's data (ui_scale.py). Changes are
+# written to the source (scoring and which answers are correct only, so
+# they pass the lock), then the scale is extracted again in the
+# background.
+
+QUESTION_SIMPLE, QUESTION_MULT = 1, 2
+_scale_jobs = {}  # exam folder -> {"pending": bool}: one extraction at a time
+
+
+def extracted_scale(pdir):
+    """AMC's extracted scale: per question (first copy that has it) its
+    title, type and answers, with the rules for computing maxima."""
+    db = _db_for(pdir, "scoring")
+    if not db:
+        return None
+    q = db.db.execute
+    titles = dict(_query(lambda: q("SELECT question, title FROM scoring.scoring_title").fetchall(), []))
+    defaults = dict(_query(lambda: q("SELECT type, strategy FROM scoring.scoring_default").fetchall(), []))
+    main = dict(_query(lambda: q("SELECT student, strategy FROM scoring.scoring_main").fetchall(), []))
+    answers = {}
+    for st, qn, an, correct, rule in _query(lambda: q(
+            "SELECT student, question, answer, correct, strategy FROM scoring.scoring_answer"
+            " ORDER BY student, question, answer").fetchall(), []):
+        answers.setdefault((st, qn), []).append((an, bool(correct), rule or ""))
+    per_student, first = {}, {}
+    for st, qn, qtype, indicative, rule in _query(lambda: q(
+            "SELECT student, question, type, indicative, strategy FROM scoring.scoring_question"
+            " ORDER BY student, question").fetchall(), []):
+        item = {"question": qn, "title": titles.get(qn, str(qn)), "multiple": qtype == QUESTION_MULT,
+                "indicative": bool(indicative), "rule": rule or "",
+                "answers": answers.get((st, qn), []),
+                "rules": [scale.BASE_RULES, main.get(st, ""), defaults.get(qtype, ""), rule or ""]}
+        per_student.setdefault(st, []).append(item)
+        first.setdefault(qn, item)
+    return {"first": first, "per_student": per_student}
+
+
+def _code_digit(title, pdir):
+    db = _db_for(pdir, "layout")
+    pattern = (_query(db.code_digit_pattern) if db else None) or r"\.(\d+)$"
+    return bool(re.search(pattern, title or ""))
+
+
+def source_questions(pdir):
+    """Questions found in the sources, by id; ids found twice are kept as
+    a list so they can be refused."""
+    fmt, _ = _main_source()
+    found = {}
+    files = [core.main_source_file()] if fmt == "plain" else _source_files(pdir)
+    for f in files:
+        try:
+            with open(os.path.join(pdir, f), encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except (OSError, TypeError):
+            continue
+        for item in (scale.read_txt(text, f) if fmt == "plain" else scale.read_latex(text, f)):
+            found.setdefault(item["id"], []).append(item)
+    return found
+
+
+def _agrees(src, amc, fresh):
+    """Whether the source question and AMC's data describe the same thing."""
+    plain = [a for a in amc["answers"] if a[0] != 0]
+    if src["multiple"] != amc["multiple"] or len(src["answers"]) != len(plain):
+        return False
+    return not fresh or all(s["correct"] == a[1] for s, a in zip(src["answers"], plain))
+
+
+def _max(item):
+    try:
+        return scale.question_max(item["multiple"], item["answers"], item["rules"])
+    except scale.Unknown:
+        return None
+
+
+@bp.route("/ui/api/questions")
+def api_questions():
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    rec = read_record(pdir)
+    sc = rec.get("scale") or {}
+    fresh = bool(sc.get("inputs")) and sc["inputs"] == source_digest(pdir) and _has_db(pdir, "scoring")
+    out = {"project": name, "format": _main_source()[0], "fresh": fresh,
+           "updating": pdir in _scale_jobs, "error": sc.get("error") if fresh else None,
+           "questions": [], "totals": None, "neutral": rec.get("neutral") or {}}
+    data = extracted_scale(pdir)
+    if not data or not data["first"]:
+        return jsonify(out)
+    src = source_questions(pdir)
+    # AMC's own maxima, when the marks are up to date
+    amc_max = {}
+    if rec.get("marks", {}).get("inputs") == marking_inputs(pdir):
+        db = _db_for(pdir, "scoring")
+        amc_max = {qn: mx for qn, mx in _query(lambda: db.db.execute(
+            "SELECT question, max FROM scoring.scoring_score GROUP BY question").fetchall(), [])}
+    for qn in sorted(data["first"]):
+        amc = data["first"][qn]
+        if _code_digit(amc["title"], pdir):
+            continue  # a digit of a student code grid
+        found = src.get(amc["title"], [])
+        s = found[0] if len(found) == 1 else None
+        problem = None
+        if not found:
+            problem = "This question isn't written in a way the panel can read (for example it comes from a macro)."
+        elif len(found) > 1:
+            problem = "Two questions have this name in the source."
+        elif s["problem"]:
+            problem = s["problem"]
+        elif not _agrees(s, amc, fresh):
+            problem = "The source and AMC's reading of it don't agree for this question."
+        rule = s["scoring"]["rule"] if s and s["scoring"] else ""
+        neutral = scale.neutral_kind(rule)
+        texts = [a["text"] for a in s["answers"]] if s else []
+        mx = amc_max.get(qn)
+        out["questions"].append({
+            "question": qn, "title": amc["title"], "multiple": amc["multiple"],
+            "indicative": amc["indicative"], "text": s["text"] if s else "",
+            "answers": [{"answer": no, "correct": (s["answers"][no - 1]["correct"] if s and not problem and no else c),
+                         "text": "None of these" if no == 0 else (texts[no - 1] if no - 1 < len(texts) else f"Answer {no}")}
+                        for no, c, _ in amc["answers"]],
+            "rule": rule, "kind": "none" if neutral == "none" else "full" if neutral else "custom" if rule else "default",
+            "max": mx if mx is not None else _max(amc), "max_from": "amc" if mx is not None else "rules",
+            "rules_max": _max(amc),
+            "answer_rules": any(rule for _, _, rule in amc["answers"]),
+            "editable": problem is None, "problem": problem,
+            "file": s["file"] if s else (found[0]["file"] if found else None),
+            "line": s["line"] if s else (found[0]["line"] if found else None)})
+    # Total per copy, from the rules (questions can differ between copies)
+    totals, unknown = [], False
+    for st, items in data["per_student"].items():
+        t = 0.0
+        for item in items:
+            if item["indicative"]:
+                continue
+            m = _max(item)
+            if m is None:
+                unknown = True
+            else:
+                t += m
+        totals.append(t)
+    if totals:
+        out["totals"] = {"min": min(totals), "max": max(totals), "unknown": unknown}
+    return jsonify(out)
+
+
+def refresh_scale(pdir, report_errors=False):
+    """Extract the scale again (AMC's prepare --mode b). A request while
+    one runs makes it run once more afterwards."""
+    if pdir in _scale_jobs:
+        _scale_jobs[pdir]["pending"] = True
+        return
+    _scale_jobs[pdir] = {"pending": False}
+    try:
+        while True:
+            inputs = source_digest(pdir)
+            core.emit_msg("ui-scale", "updating")
+            messages, variables = {}, {}
+            core.amc_command("prepare", "--mode", "b", "--progression-id", "MAJ", "--progression", "1",
+                             messages=messages, variables=variables)
+            if not os.path.isdir(pdir):
+                break  # deleted meanwhile
+            errors = [m.lstrip(":>") for m in messages.get("ERR", [])]
+            entry = {"inputs": inputs, "at": int(time.time()),
+                     "error": ("The questions can't be read: the source doesn't compile. "
+                               "Fix it in Questions.") if errors else None}
+            _update_record(pdir, lambda rec: rec.__setitem__("scale", entry))
+            if errors and report_errors:
+                core.show_messages(messages, variables)
+            if not _scale_jobs[pdir]["pending"]:
+                break
+            _scale_jobs[pdir]["pending"] = False
+    finally:
+        _scale_jobs.pop(pdir, None)
+    core.emit_msg("ui-scale", "done")
+
+
+def on_scale_refresh(data=None):
+    refresh_scale(core.project_dir(), report_errors=True)
+
+
+def on_question_edit(data):
+    """Change one question: which answers are correct, its own scoring
+    rule, or neutralise it (full marks for everyone, or not counted)."""
+    data = data if isinstance(data, dict) else {}
+    title, action = str(data.get("title", "")), data.get("action")
+    pdir = core.project_dir()
+    found = source_questions(pdir).get(title, [])
+    if len(found) != 1 or found[0]["problem"]:
+        core.dialog_msg(warn="This question can't be changed here. Edit it in Questions.")
+        return
+    q = found[0]
+    path = os.path.join(pdir, q["file"])
+    with open(path, encoding="utf-8") as f:
+        old = f.read()
+    rec = read_record(pdir)
+    neutral = dict(rec.get("neutral") or {})
+    try:
+        if action == "correct":
+            new = scale.set_correct(old, q, int(data["answer"]), bool(data.get("correct")))
+            what = f"Answer key changed: {title}"
+        elif action == "rule":
+            rule = str(data.get("rule") or "").strip()
+            if not STRATEGY.match(rule):
+                raise ValueError(f"The scoring rule '{rule}' contains characters AMC doesn't accept here.")
+            new = scale.set_scoring(old, q, rule)
+            neutral.pop(title, None)
+            what = f"Scoring of {title}: " + (rule or "default")
+        elif action == "neutral":
+            how = data.get("how")
+            current = q["scoring"]["rule"] if q["scoring"] else ""
+            if how in ("full", "none"):
+                if not scale.neutral_kind(current):
+                    neutral[title] = current
+                points = 1
+                if how == "full":
+                    amc = (extracted_scale(pdir) or {"first": {}})["first"]
+                    item = next((x for x in amc.values() if x["title"] == title), None)
+                    points = (_max(dict(item, rules=item["rules"][:3] + [neutral.get(title, "")])) if item else None) or 1
+                new = scale.set_scoring(old, q, scale.neutral_rule(how, points))
+                what = f"{title} neutralised: " + ("full marks for everyone" if how == "full" else "not counted")
+            else:
+                new = scale.set_scoring(old, q, neutral.pop(title, ""))
+                what = f"{title} counted normally again"
+        else:
+            raise ValueError("Unknown change.")
+    except (KeyError, TypeError, ValueError) as e:
+        core.dialog_msg(warn=html.escape(str(e)) if isinstance(e, ValueError) else "This change couldn't be made.")
+        return
+    if new == old:
+        return
+    ext = q["file"].rsplit(".", 1)[-1].lower()
+    if exam_lock(pdir) and not same_layout(old, new, ext):
+        core.dialog_msg(warn=ONLY_SCORING)
+        return
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(new)
+    os.replace(tmp, path)
+    _update_record(pdir, lambda r: r.__setitem__("neutral", neutral))
+    add_activity(pdir, what)
+    core.emit_msg("ui-changed", "questions")
+    refresh_scale(pdir)
+    core.emit_msg("ui-changed", "questions")
+
+
 SOCKET_EVENTS = {
     "ui-layout-ok": on_layout_ok,
     "ui-mark-printed": on_mark_printed,
@@ -1379,4 +1659,6 @@ SOCKET_EVENTS = {
     "ui-export": on_export,
     "ui-annotate": on_annotate,
     "ui-annotate-preview": on_annotate_preview,
+    "ui-scale-refresh": on_scale_refresh,
+    "ui-question-edit": on_question_edit,
 }

@@ -219,19 +219,14 @@ async function main() {
   check('...and the copies are unchanged', (await js(`fetch('/ui/api/config', {headers: {'AMC-project': S.project}}).then(r => r.json()).then(c => c.options.nombre_copies)`)) === '6');
 
   await click('.step[href$="/questions"]');
-  check('Questions explains what can still change', await waitFor(`typeof editor !== 'undefined' && editor && editor.getValue().length > 0 && document.querySelector('#main').textContent.includes('only answer key and scoring')`, 20000));
+  check('Questions are read-only once printed, pointing to the marking scheme', await waitFor(`typeof editor !== 'undefined' && editor && editor.getValue().length > 0 && editor.getReadOnly() && !document.querySelector('[data-act="save"]') && !!document.querySelector('#main a.btn-primary[href$="/marking-scheme"]')`, 20000));
   check('Building the preview is not offered', await js(`!document.querySelector('[data-act="build"]')`));
-  await js(`editor.session.insert({row: 0, column: 0}, 'Changed text\\n'); true`);
-  await click('[data-act="save"]');
-  check('Saving a text change is refused', await waitFor(`document.querySelector('#layer').textContent.includes('Not saved')`, 10000));
-  await click('[data-act="dialog-ok"]');
-  await js(`setEditorText(S.source.text); true`);
-  const swapped = await js(`(() => { const t = editor.getValue(); const i = t.indexOf('\\\\correctchoice'); const j = t.indexOf('\\\\wrongchoice'); if (i < 0 || j < 0) return null; return t.replace('\\\\correctchoice', '\\\\TMPCHOICE').replace('\\\\wrongchoice', '\\\\correctchoice').replace('\\\\TMPCHOICE', '\\\\wrongchoice'); })()`);
-  if (swapped) {
-    await js(`editor.setValue(${JSON.stringify(swapped)}, -1); true`);
-    await click('[data-act="save"]');
-    check('Saving an answer key correction is allowed', await waitFor(`!S.source.dirty && !document.querySelector('#layer').innerHTML`, 10000));
-  } else check('Saving an answer key correction is allowed', false, 'no \\correctchoice in the template');
+  // The server itself still refuses changes that move things, whatever sends them
+  const uploadSource = (t) => js(`(async (t) => { const f = new FormData(); f.append('file', new Blob([t], {type: 'text/plain'}), S.source.name); const r = await fetch('/upload/source', {method: 'POST', headers: {'AMC-project': S.project, 'AMC-sid': socket.id}, body: f}); return r.json(); })(${JSON.stringify(t)})`);
+  const original = await js('S.source.text');
+  check('The server refuses a text change', !!(await uploadSource('Changed text\n' + original)).error);
+  const swapped = original.replace('\\correctchoice', '\\TMPCHOICE').replace('\\wrongchoice', '\\correctchoice').replace('\\TMPCHOICE', '\\wrongchoice');
+  check('The server accepts an answer key correction', swapped !== original && (await uploadSource(swapped)).ok === true);
 
   // Unlock
   await click('[data-act="unlock"]');

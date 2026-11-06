@@ -115,6 +115,8 @@ const S = {
   matchCursor: 0,
   marksSort: { col: 'copy', dir: 1 },
   marksQuery: '',
+  questions: null,        // questions with answer key and scoring (/ui/api/questions)
+  scaleUpdating: false,   // AMC is reading the scale from the source
 };
 let editor = null;
 
@@ -199,7 +201,11 @@ socket.on('end-command', () => {
     }, 500);
   }
 });
-socket.on('dialog', (html) => { if (/msg-err/.test(html)) S.buildError = true; showServerDialog(html); });
+socket.on('dialog', (html) => {
+  if (/msg-err/.test(html)) S.buildError = true;
+  showServerDialog(html);
+  if (S.route.step === 'marking-scheme') loadQuestions(); // a refused change: show what is really saved
+});
 socket.on('dialog-disconnect', (html) => { showServerDialog(html); socket.disconnect(); });
 socket.on('u-projects-list', () => { if (S.route.kind === 'exams') loadProjects(); });
 socket.on('menu', () => refreshStatus());
@@ -213,9 +219,15 @@ socket.on('ui-changed', (what) => {
   if (what === 'lock') S.printing = null;
   if (what === 'review') { loadScans().then(() => { if (S.route.step === 'check-scans') openNextReview(); }); }
   if (['marks', 'students', 'matches', 'exports', 'annotated'].includes(what)) loadStepData();
+  if (what === 'questions' && S.route.step === 'marking-scheme') loadQuestions();
   refreshStatus().then(() => { if (S.route.step === 'questions') renderMain(); });
 });
 socket.on('ui-toast', (text) => toast(text));
+socket.on('ui-scale', (state) => {
+  S.scaleUpdating = state === 'updating';
+  if (S.route.step !== 'marking-scheme') return;
+  if (state === 'done') loadQuestions(); else renderMain(true);
+});
 socket.on('ui-matched', (m) => {
   if (m.freed && m.freed.length) {
     const names = m.freed.map(([s, c]) => copyName(s, c)).join(', ');
@@ -239,7 +251,7 @@ socket.on('ui-annotate-preview', (r) => {
 socket.on('ui-scoring-saved', (v) => {
   if (S.scoring) { S.scoring.S = v.S || null; S.scoring.M = v.M || null; }
   toast('Default scoring saved in the source.');
-  if (S.route.step === 'marking-scheme') renderMain(true);
+  if (S.route.step === 'marking-scheme') { renderMain(true); socket_emit('ui-scale-refresh'); }
 });
 socket.on('scans-report', () => { loadScans(); refreshStatus(); });
 socket.on('failed-report', () => loadScans());
@@ -316,7 +328,7 @@ function onRoute() {
   }
   if (r.name !== S.project) {
     S.status = null; S.files = null; S.config = null; S.scans = null;
-    S.marks = null; S.students = null; S.exportInfo = null; S.annotateInfo = null; S.matchSheet = null;
+    S.marks = null; S.students = null; S.exportInfo = null; S.annotateInfo = null; S.matchSheet = null; S.questions = null;
     render();
     openProject(r.name);
     return;
@@ -374,7 +386,7 @@ function suggestStep() {
 function enterStep() {
   if (S.route.step === 'questions') { loadFiles(); if (!S.source.loaded) loadSource(''); }
   if (S.route.step === 'settings' || S.route.step === 'marking-scheme') loadConfig();
-  if (S.route.step === 'marking-scheme') loadScoring();
+  if (S.route.step === 'marking-scheme') { loadScoring(); loadQuestions({ refresh: true }); }
   if (S.route.step === 'print') loadPrinters();
   if (S.route.step === 'upload-scans') loadScans();
   if (S.route.step === 'check-scans') {
@@ -451,6 +463,12 @@ const loadMarks = () => loadInto('marks', '/ui/api/marks', ['mark', 'export-mark
 const loadStudents = () => loadInto('students', '/ui/api/students', ['match-students']);
 const loadExport = () => loadInto('exportInfo', '/ui/api/export', ['export-marks']);
 const loadAnnotate = () => loadInto('annotateInfo', '/ui/api/annotate', ['annotate']);
+async function loadQuestions({ refresh = false } = {}) {
+  await loadInto('questions', '/ui/api/questions', ['marking-scheme']);
+  // The source changed since AMC last read it: read it again.
+  const d = S.questions;
+  if (refresh && d && !d.fresh && !d.updating && !S.scaleUpdating) socket_emit('ui-scale-refresh');
+}
 function loadStepData() {
   const step = S.route.step;
   if (step === 'mark') loadMarks();
@@ -565,6 +583,7 @@ function renderMain(keepScroll = false) {
   else html = viewSettings();
   main.classList.toggle('fill', r.kind === 'exam' && r.step === 'questions');
   if (r.step === 'questions' && editor && $('#ace-host')) { // keep the live editor
+    editor.setReadOnly(locked());
     $('#q-head').innerHTML = questionsHead();
     renderEditorBar();
     resizeEditor();
@@ -760,11 +779,12 @@ function viewQuestions() {
 function questionsHead() {
   const L = locked();
   return `
-    ${header('questions', 'Questions', L ? 'The exam is printed: only answer key and scoring changes can be saved.' : 'Write the questions and answers. Save, then build the preview to see the question paper.',
-    `${L ? '' : `<button class="btn" data-act="build" ${S.source.loaded ? '' : 'disabled'}>${ic('refresh')} Build preview</button>`}
+    ${header('questions', 'Questions', L ? 'The exam is printed, so the questions are read-only.' : 'Write the questions and answers. Save, then build the preview to see the question paper.',
+    L ? `<a class="btn btn-primary" href="${examPath(S.project, 'marking-scheme')}" data-nav>${ic('percentage-circle')} Correct the answer key</a>`
+      : `<button class="btn" data-act="build" ${S.source.loaded ? '' : 'disabled'}>${ic('refresh')} Build preview</button>
      <button class="btn btn-primary" data-act="save" id="save-btn" disabled>${ic('floppy-disk')} Save</button>`)}
     ${guideBox('questions')}
-    ${L ? lockBanner('You can still correct the answer key (switch <code>\\correctchoice</code> and <code>\\wrongchoice</code>) and change scoring (<code>\\scoring{…}</code>). The server refuses any other change, because it would move things on the printed papers.') : ''}`;
+    ${L ? lockBanner('Correct the answer key and change scoring in <b>Marking scheme</b>: those changes are still allowed, because nothing moves on the printed papers.') : ''}`;
 }
 
 function renderEditorBar() {
@@ -796,6 +816,7 @@ function mountEditor() {
   editor.setTheme('ace/theme/textmate');
   editor.setShowPrintMargin(false);
   editor.session.setUseWrapMode(true);
+  editor.setReadOnly(locked());
   editor.commands.addCommand({ name: 'save', bindKey: { win: 'Ctrl-S', mac: 'Command-S' }, exec: () => saveSource() });
   editor.session.on('change', () => {
     if (S.source.loading) return;
@@ -836,6 +857,7 @@ async function onSourceName(name, mode, url) {
 
 async function saveSource() {
   if (!editor || !S.source.name) return false;
+  if (locked()) { toast('The exam is printed: correct the answer key in Marking scheme.', 'lock'); return false; }
   try {
     await upload('/upload/source', [[new Blob([editor.getValue()], { type: 'text/plain' }), S.source.name]]);
     S.source.text = editor.getValue();
@@ -974,8 +996,106 @@ function viewMarking() {
         </div><p class="field-hint" style="margin-top:12px">Each change is saved as you make it.</p>`}</div>
       </section>
     </div>
-    <p class="subtle" style="margin-top:14px">${ic('info-circle')} Scoring and correct answers for individual questions can be changed in the source (Questions) for now; a per-question panel comes in phase 5.</p>
+    ${questionsCard()}
   </div>`;
+}
+
+/* ---------- Marking scheme: questions, answer key and per-question scoring ---------- */
+
+const KIND_LABELS = { default: 'Default', custom: 'Own rule', full: 'Full marks for everyone', none: 'Not counted' };
+const fmtPts = (x) => (x === null || x === undefined ? '?' : `${fmtNum(x)} ${x === 1 ? 'point' : 'points'}`);
+const trunc = (t, n) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
+
+function questionsCard() {
+  const d = S.questions;
+  const updating = S.scaleUpdating || (d && d.updating);
+  const head = (extra = '') => `<div class="card-header">${ic('list')}<h2>Questions</h2>${extra}<span class="spacer"></span>
+    ${updating ? `<span class="row subtle" style="gap:6px"><span class="spinner" style="width:14px;height:14px"></span>Reading the questions…</span>` : ''}</div>`;
+  if (!d) return `<section class="card" style="margin-top:16px">${head()}<div class="card-body"><div class="skeleton" style="height:120px"></div></div></section>`;
+  if (d.error) {
+    return `<section class="card" style="margin-top:16px">${head()}<div class="card-body">${banner('warning', 'warning-triangle', d.error, '', `<a class="btn btn-sm" href="${examPath(S.project, 'questions')}" data-nav>Go to Questions</a><button class="btn btn-sm btn-ghost" data-act="scale-refresh">Try again</button>`)}</div></section>`;
+  }
+  if (!d.questions.length) {
+    return `<section class="card" style="margin-top:16px">${head()}<div class="card-body"><p class="muted">${updating ? 'AMC is reading the questions from the source…' : 'No questions found yet. Write them in Questions.'}</p></div></section>`;
+  }
+  const t = d.totals;
+  const full = S.config && parseFloat(S.config.options.note_max);
+  const total = !t ? '' : `<span class="q-total">Total: <b>${t.unknown ? 'at least ' : ''}${t.min === t.max ? fmtPts(t.max) : `${fmtNum(t.min)}–${fmtPts(t.max)}`}</b>${full > 0 ? ` → final mark out of <b>${fmtNum(full)}</b>` : ''}</span>`;
+  const L = locked();
+  return `<section class="card" style="margin-top:16px">${head(`<span class="chip">${d.questions.length}</span>`)}
+    <div class="card-body" style="padding-bottom:6px"><div class="row" style="flex-wrap:wrap;gap:8px 16px">
+      <span class="muted">Click an answer to mark it correct or not. ${L ? 'The exam is printed: these changes are still allowed, because nothing moves on the paper.' : 'Changes are saved in the source.'}</span><span class="spacer"></span>${total}</div></div>
+    <div class="table-wrap" style="border:0;border-top:1px solid var(--border);border-radius:0"><table class="table q-table"><thead><tr><th>Question</th><th>Correct answers</th><th>Points</th></tr></thead>
+    <tbody>${d.questions.map(questionRow).join('')}</tbody></table></div>
+    ${t && t.min !== t.max ? '<p class="field-hint" style="padding:8px 16px">Copies get different questions, so their totals differ.</p>' : ''}
+  </section>`;
+}
+
+function questionRow(q) {
+  const chips = q.answers.map((a) => {
+    const can = q.editable && a.answer !== 0 && !q.indicative;
+    return `<button class="ans ${a.correct ? 'is-correct' : ''}" data-act="q-answer" data-title="${esc(q.title)}" data-answer="${a.answer}" aria-pressed="${a.correct}" ${can ? '' : 'disabled'} title="${esc(a.text)}${a.answer === 0 ? ' (AMC adds this box; it is correct when no other answer is)' : ''}">${a.correct ? ic('check') : ''}<span>${esc(trunc(a.text, 30))}</span></button>`;
+  }).join('');
+  const kind = q.indicative ? 'Indicative: not counted' : KIND_LABELS[q.kind];
+  const actions = q.editable && !q.indicative
+    ? `<button class="btn btn-ghost btn-sm" data-act="q-edit" data-title="${esc(q.title)}">${ic('edit-pencil')} Scoring…</button>${q.kind === 'full' || q.kind === 'none' ? `<button class="btn btn-ghost btn-sm" data-act="q-restore" data-title="${esc(q.title)}">Count normally</button>` : ''}`
+    : `<a class="btn btn-ghost btn-sm" href="${examPath(S.project, 'questions')}" data-nav>Edit in Questions</a>`;
+  return `<tr class="${q.kind === 'none' ? 'is-muted' : ''}">
+    <td class="q-cell"><div class="row" style="gap:8px;flex-wrap:wrap"><b>${esc(q.title)}</b><span class="chip">${q.multiple ? 'Multiple' : 'Single'}</span></div>
+      ${q.text ? `<div class="subtle q-text">${esc(q.text)}</div>` : ''}
+      ${q.problem ? `<div class="subtle q-text q-problem">${ic('info-circle')} ${esc(q.problem)}</div>` : ''}
+      <div class="q-actions">${actions}</div></td>
+    <td class="q-cell"><div class="ans-row">${chips}</div></td>
+    <td class="q-cell q-points"><b title="${q.max_from === 'amc' ? 'As computed by AMC when marking' : 'From the scoring rules'}">${q.max === null ? '?' : fmtPts(q.max)}</b>
+      <div class="subtle">${kind}</div>${q.kind === 'custom' ? `<div class="mono q-rule">${esc(q.rule)}</div>` : ''}
+      ${q.answer_rules ? '<div class="subtle">Some answers have their own points</div>' : ''}
+      ${q.max === null ? '<div class="subtle">AMC works it out when marking</div>' : ''}</td></tr>`;
+}
+
+function questionByTitle(title) { return S.questions && S.questions.questions.find((x) => x.title === title); }
+
+function toggleAnswer(title, answer) {
+  const q = questionByTitle(title);
+  if (!q || !q.editable) return;
+  const a = q.answers.find((x) => x.answer === answer);
+  if (!q.multiple && a.correct) { toast('A single-answer question needs one correct answer: click the answer that should be correct instead.', 'info-circle'); return; }
+  const correct = !a.correct;
+  q.answers.forEach((x) => { if (x.answer === answer) x.correct = correct; else if (!q.multiple && correct) x.correct = false; });
+  S.questions.fresh = false; // until the server has written it and AMC has read it again
+  renderMain(true);
+  socket_emit('ui-question-edit', { title, action: 'correct', answer, correct });
+  if (S.status && S.status.marked) toast('Answer key changed. Compute the marks again to apply it.', 'info-circle');
+}
+
+async function editQuestion(title) {
+  const q = questionByTitle(title);
+  if (!q) return;
+  // In AMC a default haut= wins over a question's mz=, so "all or nothing" on a question also says haut=0.
+  const presets = (q.multiple ? PRESETS_M : PRESETS_S).filter(([v]) => v).map(([v, l]) => [q.multiple && /^mz=/.test(v) ? 'haut=0,' + v : v, l]);
+  const current = q.kind === 'full' || q.kind === 'none' ? q.kind : q.kind === 'default' ? 'default'
+    : presets.some(([v]) => v === q.rule) ? 'preset:' + q.rule : 'custom';
+  const radio = (value, title2, hint = '') => `<label class="check"><input type="radio" name="choice" value="${esc(value)}" ${current === value ? 'checked' : ''}><span>${title2}${hint ? `<br><span class="subtle">${hint}</span>` : ''}</span></label>`;
+  const def = S.scoring && (q.multiple ? S.scoring.M : S.scoring.S);
+  const data = await formDialog({
+    title: `Scoring of ${esc(q.title)}`, ok: 'Save', icon: 'percentage-circle',
+    body: `<div class="q-choices">
+      ${radio('default', 'The default scoring', def ? `<code>${esc(def)}</code>, as set above` : `AMC's default for ${q.multiple ? 'multiple' : 'single'}-answer questions`)}
+      ${presets.map(([v, l]) => radio('preset:' + v, esc(l), `<code>${esc(v)}</code>`)).join('')}
+      ${radio('custom', 'Own AMC rule')}
+      <input class="input mono" name="custom" style="margin:-2px 0 6px 24px;width:calc(100% - 24px)" value="${esc(current === 'custom' ? q.rule : '')}" placeholder="b=2,m=-1" autocomplete="off">
+      <div class="menu-sep" style="margin:10px 0"></div><div class="field-label" style="margin-bottom:6px">Neutralise the question</div>
+      ${radio('full', 'Full marks for everyone', `Every copy gets the question's ${q.max ? fmtPts(q.max) : 'points'}, whatever was ticked.`)}
+      ${radio('none', 'Not counted', 'The question gives no points and isn\'t part of the total.')}
+    </div>`,
+    validate: (v) => {
+      if (!v.choice) return 'Choose how the question is scored.';
+      if (v.choice === 'custom' && !/^[A-Za-z0-9=.,+\-*/() ]{1,200}$/.test((v.custom || '').trim())) return 'Write an AMC rule, for example b=2,m=-1.';
+      return '';
+    },
+  });
+  if (!data) return;
+  if (data.choice === 'full' || data.choice === 'none') socket_emit('ui-question-edit', { title, action: 'neutral', how: data.choice });
+  else socket_emit('ui-question-edit', { title, action: 'rule', rule: data.choice === 'default' ? '' : data.choice === 'custom' ? data.custom.trim() : data.choice.slice(7) });
 }
 
 /* ---------- View: papers ---------- */
@@ -2044,6 +2164,10 @@ const ACTIONS = {
   },
   'mark-printed': () => markPrinted(),
   mark: () => socket_emit('ui-mark', {}),
+  'q-answer': (el) => toggleAnswer(el.dataset.title, +el.dataset.answer),
+  'q-edit': (el) => editQuestion(el.dataset.title),
+  'q-restore': (el) => socket_emit('ui-question-edit', { title: el.dataset.title, action: 'neutral', how: 'off' }),
+  'scale-refresh': () => socket_emit('ui-scale-refresh'),
   'mark-anyway': () => markAnyway(),
   'open-page': (el) => { S.pendingReview = el.dataset.key; navigate(examPath(S.project, 'check-scans')); },
   'list-preview': () => { const f = S.students.list.file; showFile(f, `Class list · ${f}`); },
