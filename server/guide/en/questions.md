@@ -2,17 +2,27 @@
 
 ## What to do here
 
-- Write each question with its answers, and mark which answers are correct.
-- Save, then build the preview to see the question paper on the right.
-- If the build fails, the message explains why and links to the LaTeX log.
+- Pick a question on the left and change it in the form: its text, answers, which answers are correct, scoring. Changes are saved as you type.
+- Add, move and delete questions with the buttons. Build the preview to see the question paper on the right.
+- Prefer LaTeX? The **LaTeX** tab edits the source itself; **Edit in LaTeX** jumps to the question.
 
 ## What this step is for
 
-The questions live in a source file, written in LaTeX or in AMC's plain-text format (AMC-TXT). AMC turns it into the question paper, with a box beside each answer.
+The questions live in a source file, written in LaTeX or in AMC's plain-text format (AMC-TXT). AMC turns it into the question paper, with a box beside each answer. The form reads and writes that file, so the desktop app and the LaTeX tab always see the same questions.
 
-## How to do it
+## The form
 
-In **LaTeX**, a question with one correct answer looks like this:
+- **Type:** single answer (one box to tick), multiple answers (any number), or numeric (students write a number in digit boxes).
+- **Question** and **answers** are LaTeX: write maths between `$` signs, for example `$x^2 + 1$`; the preview under the text shows it as students will read it. Tick the correct answer (single) or answers (multiple).
+- **Numeric:** the correct number, and AMC's options for the boxes: `digits=3` (three digits), `decimals=1` (one decimal place), `sign=true` (a sign box), `scoreexact=2` (points for the exact answer).
+- **Explanation:** printed on the answer key only.
+- **Figure:** insert an image file; it goes under the question text.
+- **Name:** how the question is called in the marks (letters, digits, `.`, `_`, `-`). **Scoring:** the question's own rule, if it shouldn't follow the default from [Marking scheme](guide:marking-scheme).
+- A question written in a way the form can't read (a macro, two `\scoring` commands) is listed with a warning: open it with **Edit in LaTeX**.
+
+## In LaTeX
+
+A question with one correct answer looks like this:
 
 ```
 \begin{question}{capital}
@@ -27,14 +37,14 @@ In **LaTeX**, a question with one correct answer looks like this:
 
 For a question that can have several correct answers, use `questionmult` instead of `question`. Each question needs its own name (here `capital`).
 
-In **plain text**, start a single-answer question with `*`, a multiple-answer one with `**`, a correct answer with `+` and a wrong one with `-`.
+In **plain text** (AMC-TXT), start a single-answer question with `*`, a multiple-answer one with `**`, a correct answer with `+` and a wrong one with `-`. AMC-TXT exams use the LaTeX tab only.
 
 1. Edit the source in the editor.
 2. Save with the button or Ctrl+S (Cmd+S on a Mac).
 3. Press **Build preview**: the question paper appears in the preview panel.
 4. To use an image or another file, add it with **Add a file**, then refer to it by its exact name.
 
-Once the exam is printed, the questions are read-only. Correct the answer key and scoring in [Marking scheme](guide:marking-scheme).
+Once the exam is printed, the questions are read-only: only the correct answers and scoring can still change, here or in [Marking scheme](guide:marking-scheme).
 
 ## Earlier versions
 

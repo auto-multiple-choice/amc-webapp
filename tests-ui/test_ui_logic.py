@@ -386,6 +386,121 @@ try:
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
+# the question editor (ui_scale.read_latex spans and ui_questions edits)
+import ui_questions as qe
+rj = r"""\documentclass{article}
+\usepackage{automultiplechoice}
+\begin{document}
+
+\element{sectionI}{
+  \begin{question}{q01}\scoring{\scoringDefaultS}
+    Consider $g(x)=\prod_{i=1}^{7}(1+x^{i!})$. Then the coefficient of $x^{2025}$ is
+    \begin{choiceshoriz}[o]
+      \wrongchoice{0}
+      \correctchoice{1}
+      \wrongchoice{2025}
+    \end{choiceshoriz}
+    \explain{Expand and count.}
+  \end{question}
+}
+
+\element{numerical}{
+  \begin{questionmultx}{nq1}
+    Let $AB=5$ and $BC=12$. Compute $780\sin^2(\alpha)$.
+    \includegraphics[width=4cm]{figure.png}
+
+    \AMCnumericChoices{390}{digits=3,decimals=0,sign=false}
+  \end{questionmultx}
+}
+
+\onecopy{4}{
+%%% end of the header
+\shufflegroup{sectionI}
+\insertgroup[1]{sectionI}
+\insertgroup{numerical}
+}
+\end{document}
+"""
+qs = scale_mod = None
+import ui_scale as sc
+qs = sc.read_latex(rj, "x.tex")
+q1, nq = qs[0], qs[1]
+check("editor: questions, groups, kinds and lines are read", [q["id"] for q in qs] == ["q01", "nq1"] and q1["group"] == "sectionI" and nq["group"] == "numerical" and q1["kind"] == "single" and nq["kind"] == "numeric" and q1["line"] == 6)
+check("editor: the text span excludes the \\scoring and the answers", rj[slice(*q1["text_span"])] == "Consider $g(x)=\\prod_{i=1}^{7}(1+x^{i!})$. Then the coefficient of $x^{2025}$ is" and q1["text_latex"].startswith("Consider"))
+check("editor: the choices environment and its options", q1["choices"]["kind"] == "choiceshoriz" and q1["choices"]["opts"] == "[o]" and rj[slice(*q1["choices"]["inner"])].strip().startswith("\\wrongchoice{0}"))
+check("editor: answers with their LaTeX and spans", [a["latex"] for a in q1["answers"]] == ["0", "1", "2025"] and rj[slice(*q1["answers"][1]["full_span"])] == "\\correctchoice{1}" and q1["answers"][1]["correct"])
+check("editor: the explanation", q1["explain"]["latex"] == "Expand and count." and rj[slice(*q1["explain"]["span"])] == "\\explain{Expand and count.}")
+check("editor: the \\element wrapper is the block", rj[slice(*q1["block_span"])].startswith("\\element{sectionI}{") and rj[slice(*q1["block_span"])].endswith("}") and q1["indent"] == "  ")
+check("editor: a numeric question's value, options and figure", nq["numeric"]["value"] == "390" and nq["numeric"]["options"] == "digits=3,decimals=0,sign=false" and nq["figure"]["file"] == "figure.png" and nq["problem"] is None and nq["text_latex"].endswith("{figure.png}"))
+check("editor: the marking panel still reads the simple sources", [q["id"] for q in sc.read_latex(src)] == ["q1", "q2"] and sc.read_latex(src)[0]["kind"] == "single" and sc.read_latex(src)[1]["kind"] == "multiple")
+
+def rq(text, qid):
+    return next(q for q in sc.read_latex(text) if q["id"] == qid)
+t2, what = qe.apply(rj, [{"op": "text", "id": "q01", "latex": "New text with $x^2$."}])
+check("editor: text edit replaces only the text", rq(t2, "q01")["text_latex"] == "New text with $x^2$." and "\\scoring{\\scoringDefaultS}" in t2 and t2.count("\\explain{Expand and count.}") == 1 and what == "Question q01: text")
+t2, _ = qe.apply(rj, [{"op": "answer_text", "id": "q01", "i": 2, "latex": "$2025$"}, {"op": "answer_correct", "id": "q01", "i": 2, "correct": True}])
+a = rq(t2, "q01")["answers"]
+check("editor: answer text and answer key edits", [x["latex"] for x in a] == ["0", "1", "$2025$"] and [x["correct"] for x in a] == [False, False, True])
+t2, _ = qe.apply(rj, [{"op": "answer_add", "id": "q01", "latex": "4049"}])
+a = rq(t2, "q01")["answers"]
+check("editor: an added answer follows the last one, indented alike", [x["latex"] for x in a] == ["0", "1", "2025", "4049"] and "\n      \\wrongchoice{2025}\n      \\wrongchoice{4049}\n" in t2)
+t3, _ = qe.apply(t2, [{"op": "answer_remove", "id": "q01", "i": 0}])
+check("editor: a removed answer takes its line with it", [x["latex"] for x in rq(t3, "q01")["answers"]] == ["1", "2025", "4049"] and "\\wrongchoice{0}" not in t3 and "[o]\n      \\correctchoice{1}" in t3)
+t3, _ = qe.apply(t2, [{"op": "answer_move", "id": "q01", "i": 3, "j": 0}])
+check("editor: answers can be reordered", [x["latex"] for x in rq(t3, "q01")["answers"]] == ["4049", "0", "1", "2025"] and rq(t3, "q01")["answers"][2]["correct"])
+try:
+    qe.apply(rj, [{"op": "answer_remove", "id": "nq1", "i": 0}]); check("editor: no answer to remove is an error", False)
+except qe.EditError:
+    check("editor: no answer to remove is an error", True)
+t2, _ = qe.apply(rj, [{"op": "explain", "id": "q01", "latex": "Because."}])
+check("editor: the explanation is changed in place", rq(t2, "q01")["explain"]["latex"] == "Because." and t2.count("\\explain") == 1)
+t2, _ = qe.apply(rj, [{"op": "explain", "id": "q01", "latex": ""}])
+check("editor: an empty explanation removes the line", rq(t2, "q01")["explain"] is None and "\\explain" not in t2 and "\\end{choiceshoriz}\n  \\end{question}" in t2)
+t2, _ = qe.apply(rj, [{"op": "explain", "id": "nq1", "latex": "Use the tangent."}])
+check("editor: an explanation is added before \\end", rq(t2, "nq1")["explain"]["latex"] == "Use the tangent." and "{figure.png}\n\n    \\AMCnumericChoices{390}{digits=3,decimals=0,sign=false}\n    \\explain{Use the tangent.}\n  \\end{questionmultx}" in t2)
+t2, _ = qe.apply(rj, [{"op": "numeric", "id": "nq1", "value": "391", "options": "digits=4,decimals=0,sign=false"}])
+check("editor: numeric value and options", rq(t2, "nq1")["numeric"] and rq(t2, "nq1")["numeric"]["value"] == "391" and "digits=4" in t2)
+t2, _ = qe.apply(rj, [{"op": "type", "id": "q01", "kind": "multiple"}])
+check("editor: single to multiple renames the environment only", rq(t2, "q01")["env"] == "questionmult" and rq(t2, "q01")["kind"] == "multiple" and "\\begin{questionmult}{q01}\\scoring" in t2 and "\\end{questionmult}" in t2 and t2.count("choiceshoriz") == 2)
+t2, _ = qe.apply(rj, [{"op": "type", "id": "q01", "kind": "numeric"}])
+q = rq(t2, "q01")
+check("editor: to numeric replaces the answers by \\AMCnumericChoices", q["kind"] == "numeric" and q["env"] == "questionmultx" and not q["answers"] and q["numeric"]["value"] == "0" and "choiceshoriz" not in t2 and q["explain"]["latex"] == "Expand and count.")
+t3, _ = qe.apply(t2, [{"op": "type", "id": "q01", "kind": "single"}])
+q = rq(t3, "q01")
+check("editor: back to choices gives two answers to fill in", q["kind"] == "single" and [x["latex"] for x in q["answers"]] == ["Answer 1", "Answer 2"] and q["answers"][0]["correct"])
+t2, _ = qe.apply(rj, [{"op": "rename", "id": "q01", "new_id": "alg-1"}])
+check("editor: renaming", [q["id"] for q in sc.read_latex(t2)] == ["alg-1", "nq1"])
+for bad in ("nq1", "a b", "", "x{y}"):
+    try:
+        qe.apply(rj, [{"op": "rename", "id": "q01", "new_id": bad}]); check(f"editor: bad name {bad!r} refused", False)
+    except qe.EditError:
+        check(f"editor: bad name {bad!r} refused", True)
+t2, what = qe.apply(rj, [{"op": "add", "after": "q01"}])
+qs2 = sc.read_latex(t2)
+check("editor: a question added after another joins its group", [q["id"] for q in qs2] == ["q01", "q3", "nq1"] and qs2[1]["group"] == "sectionI" and qs2[1]["kind"] == "single" and qs2[1]["indent"] == "  " and what == "Question q3: added" and "\\element{sectionI}{\n  \\begin{question}{q3}" in t2)
+t2, _ = qe.apply(rj, [{"op": "add", "kind": "numeric", "group": "numerical"}])
+qs2 = sc.read_latex(t2)
+check("editor: a numeric question added at the end of its group", [q["id"] for q in qs2] == ["q01", "nq1", "nq2"] and qs2[2]["kind"] == "numeric" and qs2[2]["group"] == "numerical")
+t2, _ = qe.apply(rj, [{"op": "add", "kind": "multiple", "qid": "extra"}])
+check("editor: added at the end with a chosen name, in the last group", [q["id"] for q in sc.read_latex(t2)] == ["q01", "nq1", "extra"] and sc.read_latex(t2)[2]["group"] == "numerical")
+empty = "\\documentclass{article}\n\\begin{document}\n\\onecopy{5}{\n%%% end of the header\n}\n\\end{document}\n"
+t2, _ = qe.apply(empty, [{"op": "add"}])
+check("editor: the first question goes after the header marker", [q["id"] for q in sc.read_latex(t2)] == ["q1"] and "%%% end of the header\n\n\\begin{question}{q1}" in t2)
+t2, _ = qe.apply(rj, [{"op": "delete", "id": "q01"}])
+check("editor: deleting takes the whole \\element block", [q["id"] for q in sc.read_latex(t2)] == ["nq1"] and "sectionI}{" not in t2 and "\\begin{document}\n\n\\element{numerical}" in t2)
+t2, _ = qe.apply(rj, [{"op": "move", "id": "nq1", "before": "q01"}])
+qs2 = sc.read_latex(t2)
+check("editor: moving a question before another", [q["id"] for q in qs2] == ["nq1", "q01"] and qs2[0]["group"] == "numerical" and "\\begin{document}\n\n\\element{numerical}{\n  \\begin{questionmultx}{nq1}" in t2 and t2.count("\n\n\n") == 0)
+t3, _ = qe.apply(t2, [{"op": "move", "id": "nq1"}])
+check("editor: moving to the end", [q["id"] for q in sc.read_latex(t3)] == ["q01", "nq1"] and t3.count("\n\n\n") == 0)
+t2, _ = qe.apply(src, [{"op": "answer_add", "id": "q2", "latex": "6"}, {"op": "text", "id": "q1", "latex": "What is 2+3?"}])
+check("editor: inline answers and the simple source", [a["latex"] for a in rq(t2, "q2")["answers"]] == ["2", "3", "6"] and rq(t2, "q1")["text_latex"] == "What is 2+3?")
+try:
+    qe.apply(rj, [{"op": "text", "id": "q01", "latex": "unbalanced {"}]); check("editor: unbalanced braces are refused", False)
+except qe.EditError:
+    check("editor: unbalanced braces are refused", True)
+check("editor: the lock still allows answer key edits but not text", same(rj, qe.apply(rj, [{"op": "answer_correct", "id": "q01", "i": 0, "correct": True}])[0]) and not same(rj, qe.apply(rj, [{"op": "text", "id": "q01", "latex": "Other"}])[0]))
+
 
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

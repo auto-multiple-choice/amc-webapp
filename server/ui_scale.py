@@ -166,7 +166,11 @@ def question_max(multiple, answers, rules):
 
 # ---------------------------------------------------------------- LaTeX sources
 
-_BEGIN_Q = re.compile(r"\\begin\s*\{(questionmult|question)\}\s*\{([^{}]*)\}")
+_BEGIN_Q = re.compile(r"\\begin\s*\{(questionmultx|questionmult|question)\}\s*\{([^{}]*)\}")
+_NUMERIC = re.compile(r"\\AMCnumericChoices(?![A-Za-z])\s*")
+_EXPLAIN = re.compile(r"\\explain(?![A-Za-z])\s*")
+_FIGURE = re.compile(r"\\includegraphics\s*(\[[^\]]*\])?\s*\{([^{}]*)\}")
+_ELEMENT_BEFORE = re.compile(r"\\element\s*\{([^{}]*)\}\s*\{\s*$")
 _CHOICE = re.compile(r"\\(correctchoice|wrongchoice|bonne|mauvaise)(?![A-Za-z])")
 _CHOICES_ENV = re.compile(r"\\(begin|end)\s*\{(choices|choiceshoriz|choicescustom|reponses|reponseshoriz)\}")
 _SCORING = re.compile(r"\\(scoring|bareme)(?![A-Za-z])\s*")
@@ -220,9 +224,11 @@ def _plain_text(latex, limit=160):
 
 
 def read_latex(text, filename=""):
-    """The questions of a LaTeX source: id, file, line, type, answers
-    (text, correct, where the command is) and the question's own
-    \\scoring (rule and where it is)."""
+    """The questions of a LaTeX source, each with the spans the marking
+    panel and the question editor edit: the block (and its \\element{}{}
+    wrapper), the text, the answers (text, correct, where the command
+    is), the choices environment, a numeric answer, the explanation, a
+    figure, and the question's own \\scoring."""
     questions = []
     for m in _BEGIN_Q.finditer(text):
         if _in_comment(text, m.start()):
@@ -231,22 +237,38 @@ def read_latex(text, filename=""):
         end = re.compile(r"\\end\s*\{" + env + r"\}").search(text, m.end())
         if not end:
             continue
-        q = {"id": qid, "file": filename, "format": "latex", "multiple": env == "questionmult",
-             "line": text.count("\n", 0, m.start()) + 1, "begin_end": m.end(),
-             "answers": [], "scoring": None, "problem": None}
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        before = text[line_start:m.start()]
+        q = {"id": qid, "file": filename, "format": "latex", "env": env, "multiple": env != "question",
+             "line": text.count("\n", 0, m.start()) + 1, "begin_end": m.end(), "end_start": end.start(),
+             "span": (m.start(), end.end()), "block_span": (m.start(), end.end()), "group": None,
+             "indent": before if before.strip() == "" else "",
+             "answers": [], "scoring": None, "problem": None,
+             "choices": None, "numeric": None, "explain": None, "figure": None}
+        em = _ELEMENT_BEFORE.search(text, max(0, m.start() - 200), m.start())
+        if em and not _in_comment(text, em.start()):
+            close = re.compile(r"\s*\}").match(text, end.end())
+            if close:
+                q["group"] = em.group(1).strip()
+                q["block_span"] = (em.start(), close.end())
         lo, hi = m.end(), end.start()
-        spans, depth, start = [], 0, None
+        spans, depth, start, first = [], 0, None, None
         for e in _CHOICES_ENV.finditer(text, lo, hi):
             if _in_comment(text, e.start()):
                 continue
             if e.group(1) == "begin":
                 depth += 1
                 if depth == 1:
-                    start = e.start()
+                    start, begin_end, kind = e.start(), e.end(), e.group(2)
             elif depth:
                 depth -= 1
                 if depth == 0:
                     spans.append((start, e.end()))
+                    if first is None:
+                        opts = re.match(r"\s*\[[^\]]*\]", text[begin_end:e.start()])
+                        first = {"kind": kind, "span": (start, e.end()), "opts": opts.group(0).strip() if opts else "",
+                                 "inner": (begin_end + (opts.end() if opts else 0), e.start())}
+        q["choices"] = first
         inside = lambda pos: any(a <= pos < b for a, b in spans)
         for c in _CHOICE.finditer(text, lo, hi):
             if _in_comment(text, c.start()):
@@ -258,7 +280,10 @@ def read_latex(text, filename=""):
             g = _braced(text, j)
             q["answers"].append({"cmd": c.group(1), "at": (c.start() + 1, c.end()),
                                  "correct": _CORRECT[c.group(1)],
-                                 "text": _plain_text(g[0], 80) if g else ""})
+                                 "text": _plain_text(g[0], 80) if g else "", "latex": g[0] if g else "",
+                                 "text_span": (g[1] + 1, g[2] - 1) if g else None,
+                                 "full_span": (c.start(), g[2] if g else j),
+                                 "opts": opt.group(0).strip() if opt else ""})
         own = []
         for s in _SCORING.finditer(text, lo, hi):
             if _in_comment(text, s.start()) or inside(s.start()):
@@ -269,9 +294,47 @@ def read_latex(text, filename=""):
         if len(own) > 1:
             q["problem"] = "The question has more than one \\scoring command."
         q["scoring"] = own[0] if own else None
-        first_choices = spans[0][0] if spans else hi
-        q["text"] = _plain_text(text[lo:first_choices])
-        if not q["answers"]:
+        nm = _NUMERIC.search(text, lo, hi)
+        while nm and _in_comment(text, nm.start()):
+            nm = _NUMERIC.search(text, nm.end(), hi)
+        if nm:
+            g1 = _braced(text, nm.end())
+            g2 = _braced(text, g1[2]) if g1 else None
+            if g1:
+                q["numeric"] = {"value": g1[0].strip(), "value_span": (g1[1] + 1, g1[2] - 1),
+                                "options": g2[0].strip() if g2 else "",
+                                "options_span": (g2[1] + 1, g2[2] - 1) if g2 else None,
+                                "span": (nm.start(), (g2 or g1)[2])}
+        xm = _EXPLAIN.search(text, lo, hi)
+        while xm and _in_comment(text, xm.start()):
+            xm = _EXPLAIN.search(text, xm.end(), hi)
+        if xm:
+            g = _braced(text, xm.end())
+            if g:
+                q["explain"] = {"latex": g[0].strip(), "inner": (g[1] + 1, g[2] - 1), "span": (xm.start(), g[2])}
+        # The text: after the opening (and a \scoring that follows at once),
+        # up to the answers, the numeric answer or the explanation.
+        tstart = m.end()
+        if q["scoring"] and text[tstart:q["scoring"]["at"][0]].strip() == "":
+            tstart = q["scoring"]["at"][1]
+        tend = min(x for x in (first["span"][0] if first else None,
+                               q["numeric"]["span"][0] if q["numeric"] else None,
+                               q["explain"]["span"][0] if q["explain"] else None, hi) if x is not None)
+        raw = text[tstart:tend]
+        if raw.strip():
+            lead = len(raw) - len(raw.lstrip())
+            q["text_span"] = (tstart + lead, tend - (len(raw) - len(raw.rstrip())))
+        else:
+            q["text_span"] = (tstart, tstart)
+        q["text_latex"] = raw.strip()
+        q["text"] = _plain_text(raw)
+        fm = _FIGURE.search(text, q["text_span"][0], q["text_span"][1])
+        while fm and _in_comment(text, fm.start()):
+            fm = _FIGURE.search(text, fm.end(), q["text_span"][1])
+        if fm:
+            q["figure"] = {"file": fm.group(2).strip(), "opts": fm.group(1) or "", "span": (fm.start(), fm.end())}
+        q["kind"] = "numeric" if q["numeric"] else ("multiple" if q["multiple"] else "single")
+        if not q["answers"] and not q["numeric"]:
             q["problem"] = q["problem"] or "No \\correctchoice or \\wrongchoice found."
         questions.append(q)
     return questions

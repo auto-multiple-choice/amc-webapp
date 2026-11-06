@@ -20,6 +20,7 @@ The app's icon file only keeps icons named in `server/templates/*.html`, so icon
 - the marking scheme panel (`server/ui_scale.py`): question maximums the way AMC computes them, reading questions from LaTeX and AMC-TXT, and answer key and scoring edits;
 - branding: the contrast-checked palette, logo file types, and the starters' school header.
 - the source history (`server/ui_source.py`): versions kept and read back, the "changed meanwhile" check, deleted files, "built OK", restore and pruning.
+- the question editor (`server/ui_questions.py`): the spans the parser finds (text, answers, choices, numeric, explanation, figure, `\element` groups) and every edit operation, including where new questions go.
 
 It runs with the app's image:
 
@@ -99,6 +100,14 @@ With `AMC_E2E_KEEP=1`, the test exam is kept afterwards, to look at it.
 
 ```
 node tests-ui/e2e-history.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
+```
+
+### Question editor
+
+`e2e-editor.mjs` tests the form in the Questions step: reading the template's questions; editing the text (with the KaTeX preview), answers, the answer key, scoring, explanation, name and type; adding (numeric), moving and deleting questions; a question the form can't read; "Edit in LaTeX" and back; a stale edit after another tab changed the source; what stays editable after printing; and an AMC-TXT exam, which keeps the LaTeX tab only. The other browser tests open the LaTeX tab (`qtab: 'latex'` in `cdp.mjs`).
+
+```
+node tests-ui/e2e-editor.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 ```
 
 ### Marking scheme panel
