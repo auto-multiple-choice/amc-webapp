@@ -16,10 +16,13 @@ import html
 import json
 import os
 import re
+import shutil
 import sqlite3
+import tarfile
 import time
 import uuid
 
+import ui_gallery as gallery
 import ui_scale as scale
 
 from flask import Blueprint, Response, abort, jsonify, make_response, render_template, request, send_file
@@ -52,6 +55,7 @@ def init_app(app, server_module):
 
 @bp.route("/")
 @bp.route("/exams")
+@bp.route("/new")
 @bp.route("/exam/<name>")
 @bp.route("/exam/<name>/<step>")
 def page(name=None, step=None):
@@ -139,8 +143,13 @@ def api_projects():
             modified = os.path.getmtime(f"{pdir}/options.xml")
         except OSError:
             modified = None
-        projects.append({"name": name, "modified": modified,
-                         "state": _summary(pdir)})
+        item = {"name": name, "modified": modified}
+        try:
+            item.update(exam_progress(pdir, name))
+        except Exception as e:  # one broken exam mustn't hide the others
+            core.app.logger.error(f"Progress of {name}: {e}")
+            item.update(state=_summary(pdir), next=None, done=0, meta={}, archived=False)
+        projects.append(item)
     return jsonify(projects=projects)
 
 
@@ -209,6 +218,7 @@ def api_status():
     out["layout_ok"] = layout_confirmation(pdir, rec)
     out["format"] = "plain" if core.get_option("filter") == "plain" else "latex"
     out["activity"] = list(reversed(rec.get("activity", [])[-30:]))
+    out["meta"] = rec.get("meta") or {}
     return jsonify(out)
 
 
@@ -1642,6 +1652,258 @@ def on_question_edit(data):
     core.emit_msg("ui-changed", "questions")
 
 
+# ---------------------------------------------------------------- dashboard and new-exam wizard
+
+GALLERY_DIR = os.environ.get("AMC_UI_GALLERY", "/amc-web/gallery")
+STARTERS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "school_templates")
+STARTER_GROUP = gallery.STARTER_GROUP
+# Starters shown in the gallery; "blank" has a separate-answer-sheet variant.
+STARTERS = ("blank", "blank-txt")
+STARTER_VARIANTS = {("blank", "separate"): "blank-separate"}
+META_FIELDS = ("class", "subject", "date")
+
+
+def branding():
+    """School name and logo (Appearance); empty until set."""
+    return {}
+
+
+def _gallery_index():
+    try:
+        with open(os.path.join(GALLERY_DIR, "index.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def gallery_templates():
+    """Starters first, then AMC's templates, with what the gallery has
+    compiled for them."""
+    index = _gallery_index()
+    out = []
+    for tid in STARTERS:
+        info = gallery.read_description(os.path.join(STARTERS_DIR, tid))
+        if info:
+            out.append(dict(info, gid=STARTER_GROUP, id=tid, starter=True,
+                            format="plain" if tid.endswith("-txt") else "latex"))
+    for t in core.templates:
+        out.append(dict(t, starter=False, format="plain" if "txt" in t["id"].lower() else "latex"))
+    for t in out:
+        built = index.get(f"{t['gid']}/{t['id']}")
+        t["preview"] = bool(built)
+        t["pages"] = built.get("pages") if built else None
+    variant = index.get(f"{STARTER_GROUP}/blank-separate")
+    for t in out:
+        if t["gid"] == STARTER_GROUP and t["id"] == "blank" and variant:
+            t["variants"] = {"separate": "blank-separate"}
+    return out
+
+
+@bp.route("/ui/api/gallery")
+def api_gallery():
+    core.headers_info()
+    groups = [{"id": STARTER_GROUP, "title": "Starters", "text": "Clean starting points"}]
+    languages = {"en": "English", "fr": "French", "other": "Other"}  # AMC titles both "Documentation"
+    groups += [dict(g, title=languages.get(g["id"]) or re.sub(r"^\[[A-Z]+\]\s*", "", g.get("title") or g["id"]))
+               for g in core.template_groups]
+    return jsonify(groups=groups, templates=gallery_templates())
+
+
+@bp.route("/ui/gallery/<gid>/<tid>/<any(thumb, paper):kind>")
+def gallery_file(gid, tid, kind):
+    core.headers_info()
+    known = {(STARTER_GROUP, "blank-separate")} | {(t["gid"], t["id"]) for t in gallery_templates()}
+    if (gid, tid) not in known:
+        abort(404)
+    path = os.path.join(GALLERY_DIR, gid, tid, "thumb.png" if kind == "thumb" else "paper.pdf")
+    if not os.path.isfile(path):
+        abort(404)
+    return send_file(path, max_age=86400)
+
+
+def _install_starter(tid, rep, style, code_digits):
+    src = os.path.join(STARTERS_DIR, STARTER_VARIANTS.get((tid, style), tid))
+    shutil.copytree(src, rep, dirs_exist_ok=True)
+    school = branding()
+    logo = ""
+    if school.get("logo_path") and school.get("logo_path").lower().endswith((".png", ".jpg", ".jpeg")):
+        logo = "school-logo" + os.path.splitext(school["logo_path"])[1].lower()
+        shutil.copyfile(school["logo_path"], os.path.join(rep, logo))
+    for f in os.listdir(rep):
+        if f.endswith((".tex", ".txt")) and f not in ("README.txt",):
+            path = os.path.join(rep, f)
+            fmt = "plain" if f.endswith(".txt") else "latex"
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(gallery.starter_source(text, fmt, school.get("name", ""), logo, code_digits,
+                                                separate=(style == "separate")))
+    try:
+        os.unlink(os.path.join(rep, "description.xml"))
+    except OSError:
+        pass
+
+
+def on_create_exam(data):
+    """The new-exam wizard: details, a template (a starter or one of
+    AMC's), the answer sheet style, student code boxes and copies."""
+    data = data if isinstance(data, dict) else {}
+    name = str(data.get("name") or "").strip()
+    gid, tid = str(data.get("gid") or ""), str(data.get("id") or "")
+    try:
+        core.check_dir_name(name, "project")
+        rep = core.check_unused_name(name)
+    except ValueError:
+        core.dialog_msg(warn="This exam name can't be used.")
+        return
+    if not rep:
+        return  # upstream has said the name is taken
+    try:
+        copies = max(0, min(int(data.get("copies") or 0), 9999))
+        code_digits = max(0, min(int(data.get("code") or 0), 12))
+    except (TypeError, ValueError):
+        copies = code_digits = 0
+    style = "separate" if data.get("style") == "separate" else "paper"
+    if gid == STARTER_GROUP:
+        if tid not in STARTERS:
+            core.dialog_msg(warn="Unknown template.")
+            return
+        _install_starter(tid, rep, style, code_digits)
+        title = gallery.read_description(os.path.join(STARTERS_DIR, tid)).get("title", tid)
+    else:
+        if not any(t["gid"] == gid and t["id"] == tid for t in core.templates):
+            core.dialog_msg(warn="Unknown template.")
+            return
+        tpath = core.template_path(f"{gid}/{tid}")
+        with tarfile.open(tpath + ".tgz") as tarf:
+            if not core.tar_extract_options_siblings(tarf, rep):
+                return
+        title = next((t.get("title") for t in core.templates if t["gid"] == gid and t["id"] == tid), tid)
+    core.create_project_dirs(rep)
+    name, _ = core.set_project(name)
+    core.amc_command("db", "upgrade")
+    core.remove_uuid(name)
+    if copies:
+        core.change_option("nombre_copies", copies)
+    meta = {k: str(data.get(k) or "").strip()[:120] for k in META_FIELDS}
+    _update_record(rep, lambda rec: rec.__setitem__("meta", meta))
+    add_activity(rep, f"Exam created from the template \"{title}\"")
+    core.emit_msg("project-open", [name, True])
+
+
+def _named_exam(data):
+    """For dashboard actions on an exam other than the open one."""
+    name = data.get("exam") if isinstance(data, dict) else None
+    try:
+        if not name or not core.project_exists(name):
+            return None
+    except ValueError:
+        return None
+    return core.project_dir(p=name)
+
+
+def on_exam_meta(data):
+    pdir = _named_exam(data)
+    if not pdir:
+        return
+    meta = {k: str(data.get(k) or "").strip()[:120] for k in META_FIELDS}
+    _update_record(pdir, lambda rec: rec.__setitem__("meta", meta))
+    core.emit_msg("u-projects-list")
+    core.emit_msg("ui-changed", "meta")
+
+
+def on_exam_archive(data):
+    pdir = _named_exam(data)
+    if not pdir:
+        return
+    archived = bool(data.get("archived"))
+    _update_record(pdir, lambda rec: rec.__setitem__("archived", archived))
+    add_activity(pdir, "Archived" if archived else "Taken out of the archive")
+    core.emit_msg("u-projects-list")
+
+
+def exam_progress(pdir, name):
+    """Where an exam stands, for its dashboard card: a state, the steps
+    done, and the next thing to do."""
+    rec = read_record(pdir)
+    db = core.Amcdb(pdir)
+    has = lambda m: _has_db(pdir, m)
+    layout = _query(db.layout_npages, 0) if has("layout") else 0
+    lock = exam_lock(pdir, rec)
+    layout_ok = layout_confirmation(pdir, rec)
+    scans = _query(db.capture_npages, 0) if has("capture") else 0
+    problems = 0
+    if scans:
+        problems += _query(db.n_failed, 0)
+        counts = _query(db.counts)
+        problems += counts[1] if counts else 0
+        try:
+            low = float(core.get_option("seuil", p=name) or 0.15)
+            high = float(core.get_option("seuil_up", p=name) or 1.0)
+        except (TypeError, ValueError):
+            low, high = 0.15, 1.0
+        problems += sum(1 for p in _query(lambda: db.capture_pages(low, high), [])
+                        if (p.get("sensitivity") or 0) >= SENSITIVITY_TO_CHECK
+                        and not (p.get("timestamp_manual") or 0) > 0)
+    marked = _query(db.n_graded_students, 0) if has("scoring") else 0
+    unmatched = sum(1 for s in _query(lambda: sheet_rows(pdir), []) if s["state"] == "unmatched") if marked else 0
+    exports = _files(f"{pdir}/exports")
+    annotated = _files(_annotated_dir(pdir))
+    marks = rec.get("marks") or {}
+    stale = bool(marks.get("inputs")) and marks["inputs"] != marking_inputs_for(pdir, name)
+    built = os.path.isfile(f"{pdir}/DOC-sujet.pdf")
+    order = [s for s in STEPS if s != "settings"]
+    if not layout:
+        nxt = ("papers", "Build the papers") if built else ("questions", "Write the questions")
+    elif not lock and not layout_ok:
+        nxt = ("papers", "Check the layout")
+    elif not lock:
+        nxt = ("print", "Print the papers")
+    elif not scans:
+        nxt = ("upload-scans", "Upload the scans")
+    elif problems:
+        nxt = ("check-scans", f"Check {problems} scan problem{'' if problems == 1 else 's'}")
+    elif not marked or stale:
+        nxt = ("mark", "Compute the marks" if not marked else "Recompute the marks")
+    elif unmatched:
+        nxt = ("match-students", f"Match {unmatched} sheet{'' if unmatched == 1 else 's'} to students")
+    elif not exports:
+        nxt = ("export-marks", "Export the marks")
+    elif not annotated:
+        nxt = ("annotate", "Annotate the sheets")
+    else:
+        nxt = (None, "Done")
+    done = len(order) if nxt[0] is None else order.index(nxt[0])
+    if rec.get("archived"):
+        state = "archived"
+    elif exports:
+        state = "exported"
+    elif marked:
+        state = "marked"
+    elif scans:
+        state = "checking" if problems else "scanned"
+    elif lock:
+        state = "printed"
+    elif layout_ok:
+        state = "ready"
+    elif layout:
+        state = "tocheck"
+    else:
+        state = "draft"
+    return {"state": state, "problems": problems, "done": done, "next": {"step": nxt[0], "text": nxt[1]},
+            "meta": rec.get("meta") or {}, "archived": bool(rec.get("archived"))}
+
+
+def marking_inputs_for(pdir, name):
+    """marking_inputs() for an exam other than the open one."""
+    saved = getattr(flask_g, "project_name", None)
+    flask_g.project_name = name
+    try:
+        return marking_inputs(pdir)
+    finally:
+        flask_g.project_name = saved
+
+
 SOCKET_EVENTS = {
     "ui-layout-ok": on_layout_ok,
     "ui-mark-printed": on_mark_printed,
@@ -1661,4 +1923,7 @@ SOCKET_EVENTS = {
     "ui-annotate-preview": on_annotate_preview,
     "ui-scale-refresh": on_scale_refresh,
     "ui-question-edit": on_question_edit,
+    "ui-create-exam": on_create_exam,
+    "ui-exam-meta": on_exam_meta,
+    "ui-exam-archive": on_exam_archive,
 }

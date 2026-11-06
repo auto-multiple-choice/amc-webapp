@@ -114,15 +114,17 @@ async function main() {
   check('The connection to the server comes up', await waitFor('S.online === true'));
   await shot('01-exams-empty');
 
-  // Create an exam from AMC's "simple" template
-  await click('[data-act="new-exam"]');
-  check('New exam opens a dialog', await waitFor(`!!document.querySelector('#dlg-form')`));
-  await setValue('#dlg-form [name="name"]', EXAM);
-  const hasSimple = await js(`[...document.querySelectorAll('#dlg-form option')].some(o => o.value === 'en/simple')`);
-  check('AMC templates are offered', hasSimple);
-  await setValue('#dlg-form [name="from"]', 'en/simple');
+  // Create an exam from AMC's "simple" template, through the new-exam wizard
+  await click('#main a[href="/new"]');
+  check('New exam opens the wizard', await waitFor(`location.pathname === '/new' && !!document.querySelector('#wiz-name')`));
+  await setValue('#wiz-name', EXAM);
+  await click('[data-act="wiz-next"]');
+  check('AMC templates are offered', await waitFor(`!!S.gallery && S.gallery.templates.some(t => t.gid === 'en' && t.id === 'simple')`, 10000));
+  await click('[data-act="wiz-group"][data-v="en"]');
+  await click('[data-act="wiz-pick"][data-gid="en"][data-id="simple"]');
   await shot('02-new-exam');
-  await js(`document.querySelector('#dlg-form').requestSubmit()`);
+  await click('[data-act="wiz-next"]');
+  await click('[data-act="wiz-create"]');
   check('Creating opens the new exam at Questions', await waitFor(`decodeURIComponent(location.pathname) === '/exam/${EXAM}/questions'`, 30000), await path());
   check('The source file loads into the editor', await waitFor(`typeof editor !== 'undefined' && editor && editor.getValue().includes('documentclass')`, 20000));
   check('The main source file is selected', (await js(`document.querySelector('#file-select').value`)) !== '');

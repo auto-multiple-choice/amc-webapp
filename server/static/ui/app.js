@@ -117,6 +117,9 @@ const S = {
   marksQuery: '',
   questions: null,        // questions with answer key and scoring (/ui/api/questions)
   scaleUpdating: false,   // AMC is reading the scale from the source
+  dash: store.get('dash', { query: '', klass: '', state: '', sort: 'recent', archived: false }),
+  wizard: null,           // the new-exam wizard's answers
+  gallery: null,          // templates for the wizard (/ui/api/gallery)
 };
 let editor = null;
 
@@ -220,6 +223,7 @@ socket.on('ui-changed', (what) => {
   if (what === 'review') { loadScans().then(() => { if (S.route.step === 'check-scans') openNextReview(); }); }
   if (['marks', 'students', 'matches', 'exports', 'annotated'].includes(what)) loadStepData();
   if (what === 'questions' && S.route.step === 'marking-scheme') loadQuestions();
+  if (what === 'meta' && S.route.kind === 'exams') loadProjects();
   refreshStatus().then(() => { if (S.route.step === 'questions') renderMain(); });
 });
 socket.on('ui-toast', (text) => toast(text));
@@ -287,6 +291,7 @@ resetIdle();
 
 function parsePath(path) {
   const parts = path.split('/').filter(Boolean).map((p) => { try { return decodeURIComponent(p); } catch { return p; } });
+  if (parts[0] === 'new' && parts.length === 1) return { kind: 'new' };
   if (parts[0] === 'exam' && parts[1]) {
     const step = STEPS.some((s) => s.id === parts[2]) || parts[2] === 'settings' ? parts[2] : null;
     return { kind: 'exam', name: parts[1], step };
@@ -319,11 +324,13 @@ function onRoute() {
   S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false; S.previewMode = null;
   S.review = null; S.previewImage = null; S.previewList = null;
   if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) dropEditor();
-  if (r.kind === 'exams') {
+  if (r.kind === 'exams' || r.kind === 'new') {
     S.project = null; S.status = null; S.files = null;
-    document.title = 'Exams · AMC';
+    document.title = r.kind === 'new' ? 'New exam · AMC' : 'Exams · AMC';
+    if (r.kind === 'new' && !S.wizard) S.wizard = newWizard();
     render();
     loadProjects();
+    if (r.kind === 'new') loadGallery();
     return;
   }
   if (r.name !== S.project) {
@@ -348,6 +355,7 @@ function openProject(name) {
 async function onProjectOpen(name) {
   if (S.creating && name === S.creating) {
     S.creating = null;
+    S.wizard = null;
     S.project = name; S.opening = null;
     toast(`Exam "${name}" created.`);
     await navigate(examPath(name, 'questions'));
@@ -422,12 +430,7 @@ async function loadProjects() {
     const r = await getJSON('/ui/api/projects');
     S.projects = r.projects;
   } catch (e) { console.error(e); S.projects = S.projects || []; toast('Couldn\'t load the exams list.', 'warning-triangle'); }
-  if (S.route.kind === 'exams') renderMain(true);
-}
-async function loadTemplates() {
-  if (S.templates) return S.templates;
-  try { S.templates = await getJSON('/ui/api/templates'); } catch { S.templates = { groups: [], templates: [] }; }
-  return S.templates;
+  if (S.route.kind === 'exams' || S.route.kind === 'new') renderMain(true);
 }
 /* Answers for an exam the page has since left (renamed, closed) are dropped. */
 async function loadFiles() {
@@ -526,6 +529,7 @@ function renderTop() {
   const themeIcon = { auto: 'half-moon', light: 'sun-light', dark: 'half-moon' }[S.theme];
   const crumbs = ['<a href="/exams" data-nav>Exams</a>'];
   if (r.kind === 'exam') crumbs.push(`<span class="current">${esc(r.name)}</span>`);
+  if (r.kind === 'new') crumbs.push('<span class="current">New exam</span>');
   const hasPreview = r.kind === 'exam';
   $('#topbar').innerHTML = `
     <a class="brandmark" href="/exams" data-nav><span class="brandmark-logo">AMC</span><span class="brandmark-name">AMC</span></a>
@@ -569,6 +573,7 @@ function renderMain(keepScroll = false) {
   const r = S.route;
   let html;
   if (r.kind === 'exams') html = viewExams();
+  else if (r.kind === 'new') html = viewNew();
   else if (!S.project || !r.step) html = `<div class="page"><div class="skeleton" style="height:40px;width:40%;margin-bottom:16px"></div><div class="skeleton"></div></div>`;
   else if (r.step === 'questions') html = viewQuestions();
   else if (r.step === 'marking-scheme') html = viewMarking();
@@ -738,31 +743,194 @@ const fmtDate = (t) => (t ? new Date(t * 1000).toLocaleDateString(undefined, { d
 
 /* ---------- View: exams ---------- */
 
+const DASH_STATES = [['draft', 'Draft'], ['tocheck', 'Layout to check'], ['ready', 'Ready to print'], ['printed', 'Printed'], ['checking', 'Checking scans'], ['scanned', 'Scans uploaded'], ['marked', 'Marked'], ['exported', 'Exported']];
+const STEP_COUNT = 10;
+
+function examChip(p) {
+  if (p.state === 'checking') return `<span class="chip chip-warning">${ic('page-search')} Checking scans: ${p.problems} to review</span>`;
+  return stateChip(p.state);
+}
+
+function dashFiltered(list) {
+  const d = S.dash;
+  const q = fold(d.query).trim();
+  let out = list.filter((p) => (d.archived ? p.archived : !p.archived));
+  if (q) out = out.filter((p) => [p.name, p.meta.class, p.meta.subject].some((x) => fold(x).includes(q)));
+  if (d.klass) out = out.filter((p) => (p.meta.class || '') === d.klass);
+  if (d.state) out = out.filter((p) => p.state === d.state);
+  const by = {
+    recent: (a, b) => (b.modified || 0) - (a.modified || 0),
+    date: (a, b) => String(b.meta.date || '').localeCompare(String(a.meta.date || '')),
+    name: (a, b) => a.name.localeCompare(b.name),
+  }[d.sort] || (() => 0);
+  return out.sort(by);
+}
+
+const fmtIsoDate = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : String(iso || '');
+};
+
+function examCard(p) {
+  const meta = [p.meta.class, p.meta.subject, p.meta.date ? fmtIsoDate(p.meta.date) : ''].filter(Boolean).map(esc).join(' · ');
+  const nxt = p.next || {};
+  const target = nxt.step ? examPath(p.name, nxt.step) : `/exam/${enc(p.name)}`;
+  return `<article class="card exam-card">
+    <div class="row-between" style="gap:8px"><h3><a href="/exam/${enc(p.name)}" data-nav>${esc(p.name)}</a></h3>
+      <div class="card-menu"><button class="btn btn-ghost btn-icon btn-sm" data-act="menu" data-menu="${esc(p.name)}" aria-haspopup="menu" aria-expanded="${S.menu === p.name}" aria-label="More actions for ${esc(p.name)}">${ic('more-horiz')}</button>
+      ${S.menu === p.name ? `<div class="menu" role="menu">
+        <button class="menu-item" role="menuitem" data-act="exam-details" data-name="${esc(p.name)}">${ic('edit-pencil')} Class, subject and date…</button>
+        <button class="menu-item" role="menuitem" data-act="rename-exam" data-name="${esc(p.name)}">${ic('edit-pencil')} Rename</button>
+        <button class="menu-item" role="menuitem" data-act="clone-exam" data-name="${esc(p.name)}">${ic('copy')} Duplicate</button>
+        <a class="menu-item" role="menuitem" href="/fs/${enc(p.name)}">${ic('download')} Download as zip</a>
+        <button class="menu-item" role="menuitem" data-act="archive-exam" data-name="${esc(p.name)}" data-v="${p.archived ? 0 : 1}">${ic('archive')} ${p.archived ? 'Take out of the archive' : 'Archive'}</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" role="menuitem" data-act="delete-exam" data-name="${esc(p.name)}" style="color:var(--danger)">${ic('trash')} Delete</button></div>` : ''}</div></div>
+    <div class="subtle exam-meta">${meta || (p.modified ? 'Changed ' + fmtDate(p.modified) : '&nbsp;')}</div>
+    <div>${examChip(p)}</div>
+    <div class="steps-bar" role="img" aria-label="${p.done} of ${STEP_COUNT} steps done" title="${p.done} of ${STEP_COUNT} steps done">${Array.from({ length: STEP_COUNT }, (_, i) => `<span class="${i < p.done ? 'on' : ''}"></span>`).join('')}</div>
+    <div class="row-between" style="gap:8px"><span class="exam-next">${nxt.step ? `Next: <b>${esc(nxt.text)}</b>` : `${ic('check-circle')} ${esc(nxt.text || '')}`}</span>
+      <a class="btn btn-sm" href="${target}" data-nav>${nxt.step ? 'Continue' : 'Open'} ${ic('arrow-right')}</a></div>
+  </article>`;
+}
+
 function viewExams() {
   const list = S.projects;
+  const d = S.dash;
   let body;
   if (list === null) body = `<div class="grid grid-3">${'<div class="skeleton"></div>'.repeat(3)}</div>`;
   else if (!list.length) {
     body = `<div class="card"><div class="empty"><div class="empty-icon">${ic('multiple-pages')}</div><h2>No exams yet</h2>
-      <p>Create your first exam from a template, or start from an empty file.</p>
-      <div class="btn-row"><button class="btn btn-primary" data-act="new-exam">${ic('plus')} New exam</button></div></div></div>`;
+      <p>Create your first exam from a template or a blank start.</p>
+      <div class="btn-row"><a class="btn btn-primary" href="/new" data-nav>${ic('plus')} New exam</a></div></div></div>`;
   } else {
-    body = `<div class="grid grid-3">${list.map((p) => `<article class="card exam-card">
-      <div class="row-between"><h3><a href="/exam/${enc(p.name)}" data-nav>${esc(p.name)}</a></h3>${stateChip(p.state)}</div>
-      <div class="subtle">${p.modified ? 'Changed ' + fmtDate(p.modified) : ''}</div>
-      <div class="row-between"><a class="btn btn-sm" href="/exam/${enc(p.name)}" data-nav>Open ${ic('arrow-right')}</a>
-        <div class="card-menu"><button class="btn btn-ghost btn-icon btn-sm" data-act="menu" data-menu="${esc(p.name)}" aria-haspopup="menu" aria-expanded="${S.menu === p.name}" aria-label="More actions for ${esc(p.name)}">${ic('more-horiz')}</button>
-        ${S.menu === p.name ? `<div class="menu" role="menu">
-          <button class="menu-item" role="menuitem" data-act="rename-exam" data-name="${esc(p.name)}">${ic('edit-pencil')} Rename</button>
-          <button class="menu-item" role="menuitem" data-act="clone-exam" data-name="${esc(p.name)}">${ic('copy')} Duplicate</button>
-          <a class="menu-item" role="menuitem" href="/fs/${enc(p.name)}">${ic('download')} Download as zip</a>
-          <div class="menu-sep"></div>
-          <button class="menu-item" role="menuitem" data-act="delete-exam" data-name="${esc(p.name)}" style="color:var(--danger)">${ic('trash')} Delete</button></div>` : ''}</div>
-      </div></article>`).join('')}</div>`;
+    const classes = [...new Set(list.map((p) => p.meta.class).filter(Boolean))].sort();
+    const shown = dashFiltered(list);
+    const archived = list.filter((p) => p.archived).length;
+    body = `<div class="dash-tools">
+        <label class="sr-only" for="dash-search">Search exams</label><input class="input" id="dash-search" placeholder="Search name, class or subject…" value="${esc(d.query)}">
+        <select class="select" id="dash-class" aria-label="Class"><option value="">All classes</option>${classes.map((c) => `<option ${c === d.klass ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
+        <select class="select" id="dash-state" aria-label="State"><option value="">Any state</option>${DASH_STATES.map(([v, l]) => `<option value="${v}" ${v === d.state ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <select class="select" id="dash-sort" aria-label="Order">${[['recent', 'Recently changed'], ['date', 'Exam date'], ['name', 'Name']].map(([v, l]) => `<option value="${v}" ${v === d.sort ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${archived || d.archived ? `<label class="check" style="align-items:center"><input type="checkbox" id="dash-archived" ${d.archived ? 'checked' : ''}><span>Archived (${archived})</span></label>` : ''}
+      </div>
+      <div class="grid grid-3" id="dash-cards">${shown.map(examCard).join('')}</div>
+      <div class="card ${shown.length ? 'hidden' : ''}" id="dash-none"><div class="empty"><p>${d.archived ? 'No archived exams match.' : 'No exams match.'}</p></div></div>`;
   }
   return `<div class="page">
-    ${header('', 'Exams', 'Your exams and where each one stands.', list && list.length ? `<button class="btn btn-primary" data-act="new-exam">${ic('plus')} New exam</button>` : '')}
+    ${header('', 'Exams', 'Your exams, where each one stands and what comes next.', list && list.length ? `<a class="btn btn-primary" href="/new" data-nav>${ic('plus')} New exam</a>` : '')}
     ${body}</div>`;
+}
+
+/* While typing in the search box: only the cards change, so the box keeps focus. */
+function renderDashCards() {
+  const host = $('#dash-cards');
+  if (!host || !S.projects) { renderMain(true); return; }
+  const shown = dashFiltered(S.projects);
+  host.innerHTML = shown.map(examCard).join('');
+  const none = $('#dash-none'); if (none) none.classList.toggle('hidden', shown.length > 0);
+}
+
+async function editExamDetails(name) {
+  const p = (S.projects || []).find((x) => x.name === name) || { meta: (S.status && S.status.meta) || {} };
+  const m = p.meta || {};
+  const data = await formDialog({
+    title: `${esc(name)}: class, subject and date`, ok: 'Save', icon: 'edit-pencil',
+    body: `<div class="form-grid"><label class="field"><span class="field-label">Class</span><input class="input" name="class" value="${esc(m.class)}" placeholder="10B"></label>
+      <label class="field"><span class="field-label">Subject</span><input class="input" name="subject" value="${esc(m.subject)}" placeholder="Physics"></label>
+      <label class="field"><span class="field-label">Date of the exam</span><input class="input" type="date" name="date" value="${esc(m.date)}"></label></div>`,
+  });
+  if (data) socket_emit('ui-exam-meta', { exam: name, class: data.class, subject: data.subject, date: data.date });
+}
+
+/* ---------- View: new exam ---------- */
+
+const todayIso = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
+const newWizard = () => ({ step: 1, name: '', class: '', subject: '', date: todayIso(), gid: 'school', id: 'blank', group: 'school', query: '', style: 'paper', code: false, digits: 8, copies: '' });
+const thumbUrl = (gid, id) => `/ui/gallery/${enc(gid)}/${enc(id)}/thumb`;
+
+async function loadGallery() {
+  if (S.gallery) return;
+  try { S.gallery = await getJSON('/ui/api/gallery'); } catch { S.gallery = { groups: [], templates: [] }; }
+  if (S.route.kind === 'new') renderMain(true);
+}
+
+function wizardTemplate() {
+  const g = S.gallery;
+  const w = S.wizard;
+  return g && w && g.templates.find((t) => t.gid === w.gid && t.id === w.id);
+}
+
+function wizardNameError() {
+  return validName((S.projects || []).map((p) => p.name))({ name: S.wizard.name.trim() });
+}
+
+function viewNew() {
+  const w = S.wizard;
+  const steps = [['Details', 1], ['Template', 2], ['Options', 3]];
+  const bar = `<ol class="wizard-steps">${steps.map(([l, n]) => `<li class="${w.step === n ? 'is-current' : w.step > n ? 'is-done' : ''}">
+    ${w.step > n ? `<button class="link-btn" data-act="wiz-go" data-step="${n}">` : '<span>'}<span class="ws-dot">${w.step > n ? ic('check') : n}</span>${l}${w.step > n ? '</button>' : '</span>'}</li>`).join('')}</ol>`;
+  let body;
+  if (w.step === 1) {
+    body = `<section class="card wizard-details"><div class="card-body"><div class="form-grid">
+      <label class="field" style="grid-column:1/-1"><span class="field-label">Name</span><input class="input" id="wiz-name" data-wiz="name" value="${esc(w.name)}" placeholder="Physics mid-term 10B" autocomplete="off"></label>
+      <label class="field"><span class="field-label">Class</span><input class="input" data-wiz="class" value="${esc(w.class)}" placeholder="10B"></label>
+      <label class="field"><span class="field-label">Subject</span><input class="input" data-wiz="subject" value="${esc(w.subject)}" placeholder="Physics"></label>
+      <label class="field"><span class="field-label">Date of the exam</span><input class="input" type="date" data-wiz="date" value="${esc(w.date)}"></label>
+      </div><p class="field-hint" id="wiz-error" style="color:var(--danger);margin-top:10px"></p></div>
+      <div class="card-foot"><a class="btn" href="/exams" data-nav>Cancel</a><button class="btn btn-primary" data-act="wiz-next">Next: choose a template ${ic('arrow-right')}</button></div></section>`;
+  } else if (w.step === 2) body = wizardGallery();
+  else body = wizardOptions();
+  return `<div class="page wide">${header('', 'New exam', 'Name it, choose where to start from, then a few options.')}${bar}${body}</div>`;
+}
+
+function wizardGallery() {
+  const g = S.gallery;
+  const w = S.wizard;
+  if (!g) return '<div class="skeleton" style="height:320px"></div>';
+  const q = fold(w.query).trim();
+  const list = g.templates.filter((t) => (q ? fold(`${t.title} ${t.text}`).includes(q) : t.gid === w.group));
+  const cur = wizardTemplate();
+  const isCur = (t) => !!(cur && t.gid === cur.gid && t.id === cur.id);
+  return `<div class="wizard-gallery">
+    <section class="card"><div class="card-header" style="flex-wrap:wrap;gap:8px">
+      <div class="segmented" role="tablist" aria-label="Template groups">${g.groups.map((x) => `<button role="tab" aria-pressed="${!q && x.id === w.group}" data-act="wiz-group" data-v="${esc(x.id)}">${esc(x.title)}</button>`).join('')}</div>
+      <span class="spacer"></span><label class="sr-only" for="wiz-search">Search templates</label><input class="input input-sm" id="wiz-search" style="max-width:220px" placeholder="Search templates…" value="${esc(w.query)}"></div>
+      <div class="card-body"><div class="tpl-grid" id="tpl-grid">${list.map((t) => `<button class="tpl-card ${isCur(t) ? 'is-selected' : ''}" data-act="wiz-pick" data-gid="${esc(t.gid)}" data-id="${esc(t.id)}" aria-pressed="${isCur(t)}">
+        <span class="tpl-thumb">${t.preview ? `<img src="${thumbUrl(t.gid, t.id)}" alt="" loading="lazy">` : ic('page')}</span>
+        <span class="tpl-title">${esc(t.title || t.id)}</span>
+        <span class="subtle">${t.format === 'plain' ? 'Plain text' : 'LaTeX'}${t.pages ? ` · ${t.pages} page${t.pages > 1 ? 's' : ''}` : ''}</span></button>`).join('') || '<p class="subtle">No template matches.</p>'}</div></div></section>
+    <section class="card tpl-preview">${cur ? `<div class="card-header"><h2>${esc(cur.title || cur.id)}</h2></div>
+      <div class="card-body"><p class="muted" style="margin:0 0 10px">${esc(cur.text || '')}</p>
+        ${cur.preview ? `<iframe class="tpl-pdf" src="/ui/gallery/${enc(cur.gid)}/${enc(cur.id)}/paper#view=FitH" title="${esc(cur.title || cur.id)}"></iframe><p class="field-hint">One copy of the question paper, as this template builds it.</p>` : '<p class="subtle">No preview for this template.</p>'}</div>` : '<div class="card-body"><p class="subtle">Choose a template.</p></div>'}
+      <div class="card-foot"><button class="btn" data-act="wiz-go" data-step="1">${ic('arrow-left')} Back</button><button class="btn btn-primary" data-act="wiz-next" ${cur ? '' : 'disabled'}>Next: options ${ic('arrow-right')}</button></div></section>
+  </div>`;
+}
+
+function wizardOptions() {
+  const w = S.wizard;
+  const t = wizardTemplate();
+  if (!t) return '';
+  const styleCard = (v, title, hint, thumb) => `<button class="choice style-choice" role="radio" aria-checked="${w.style === v}" data-act="wiz-style" data-v="${v}">
+    ${thumb ? `<img class="style-thumb" src="${thumb}" alt="">` : `<span class="choice-icon">${ic(v === 'paper' ? 'page' : 'multiple-pages')}</span>`}
+    <span><span class="choice-title">${title}</span><br><span class="subtle">${hint}</span></span></button>`;
+  const style = t.starter
+    ? `<div class="style-choices" role="radiogroup" aria-label="Answer sheet">
+        ${styleCard('paper', 'On the question paper', 'Students tick the boxes next to each question.', t.id === 'blank' ? thumbUrl('school', 'blank') : '')}
+        ${styleCard('separate', 'On a separate answer sheet', 'All the boxes on one sheet at the end of each copy.', t.id === 'blank' && t.variants ? thumbUrl('school', 'blank-separate') : '')}</div>`
+    : '<p class="muted">The answer sheet is laid out as in this template.</p>';
+  return `<div class="grid grid-2" style="align-items:start">
+    <section class="card"><div class="card-header"><h2>Answer sheet</h2></div><div class="card-body">${style}
+      ${t.starter ? `<label class="check" style="margin-top:14px"><input type="checkbox" id="wiz-code" ${w.code ? 'checked' : ''}><span>Students write their student number in boxes<br><span class="subtle">AMC reads it, so sheets are matched to the class list automatically.</span></span></label>
+        ${w.code ? `<label class="field" style="margin:10px 0 0 24px;max-width:220px"><span class="field-label">Digits in a student number</span><input class="input" type="number" min="1" max="12" data-wiz="digits" value="${esc(w.digits)}"></label>` : ''}` : ''}
+    </div></section>
+    <section class="card"><div class="card-header"><h2>Copies and summary</h2></div><div class="card-body">
+      <label class="field"><span class="field-label">Number of copies</span><input class="input input-num" type="number" min="1" max="9999" data-wiz="copies" value="${esc(w.copies)}" placeholder="As in the template">
+        <span class="field-hint">Print a few spares beyond the class size. You can change it until the papers are printed.</span></label>
+      <dl class="summary"><dt>Name</dt><dd>${esc(w.name)}</dd>${w.class ? `<dt>Class</dt><dd>${esc(w.class)}</dd>` : ''}${w.subject ? `<dt>Subject</dt><dd>${esc(w.subject)}</dd>` : ''}<dt>Date</dt><dd>${esc(fmtIsoDate(w.date))}</dd><dt>Template</dt><dd>${esc(t.title || t.id)}</dd></dl>
+    </div>
+    <div class="card-foot"><button class="btn" data-act="wiz-go" data-step="2">${ic('arrow-left')} Back</button><button class="btn btn-primary" data-act="wiz-create">${ic('plus')} Create exam</button></div></section>
+  </div>`;
 }
 
 /* ---------- View: questions ---------- */
@@ -892,6 +1060,7 @@ async function buildPreview() {
 
 function viewSettings() {
   const c = S.config;
+  const meta = (S.status && S.status.meta) || {};
   const o = c ? c.options : {};
   const engine = o.moteur_latex_b || '';
   const engineField = c && c.engines
@@ -905,6 +1074,13 @@ function viewSettings() {
         <label class="field"><span class="field-label">LaTeX engine</span>${c ? engineField : '<input class="input" disabled>'}
           <span class="field-hint">Used to build the papers. pdflatex suits most exams.</span></label>
       </div></div></section>
+    <section class="card"><div class="card-header"><h2>Details</h2></div><div class="card-body">
+      <div class="form-grid">
+        <label class="field"><span class="field-label">Class</span><input class="input" id="meta-class" value="${esc(meta.class)}" placeholder="10B"></label>
+        <label class="field"><span class="field-label">Subject</span><input class="input" id="meta-subject" value="${esc(meta.subject)}" placeholder="Physics"></label>
+        <label class="field"><span class="field-label">Date of the exam</span><input class="input" type="date" id="meta-date" value="${esc(meta.date)}"></label>
+      </div><p class="field-hint" style="margin-top:10px">Shown on the exams list, where you can search and filter by them.</p></div>
+      <div class="card-foot"><button class="btn btn-primary" data-act="save-meta">${ic('floppy-disk')} Save details</button></div></section>
     <section class="card"><div class="card-header"><h2>Copy or remove</h2></div><div class="list">
       <div class="list-row"><span class="list-icon">${ic('copy')}</span><div class="list-row-main"><div class="list-row-title">Duplicate</div><div class="subtle">A full copy of this exam, including any scans and marks.</div></div><button class="btn btn-sm" data-act="clone-exam" data-name="${esc(S.project)}">Duplicate</button></div>
       <div class="list-row"><span class="list-icon">${ic('download')}</span><div class="list-row-main"><div class="list-row-title">Download</div><div class="subtle">Everything in this exam as a zip file.</div></div><a class="btn btn-sm" href="/fs/${enc(S.project)}">Download</a></div>
@@ -2053,27 +2229,6 @@ const validName = (names, current = null) => (d) => {
   return '';
 };
 
-async function newExam() {
-  const t = await loadTemplates();
-  const names = (S.projects || []).map((p) => p.name);
-  const groupTitle = (gid) => (t.groups.find((g) => g.id === gid) || {}).title || gid;
-  const gids = [...new Set(t.templates.map((x) => x.gid))];
-  const options = gids.map((g) => `<optgroup label="${esc(groupTitle(g))}">${t.templates.filter((x) => x.gid === g).map((x) => `<option value="${esc(x.gid + '/' + x.id)}">${esc(x.title || x.id)}</option>`).join('')}</optgroup>`).join('');
-  const data = await formDialog({
-    title: 'New exam', ok: 'Create exam', icon: 'plus',
-    body: `<label class="field"><span class="field-label">Name</span><input class="input" name="name" autocomplete="off" placeholder="Physics mid-term 10B"></label>
-      <label class="field"><span class="field-label">Start from</span><select class="select" name="from">
-        <option value="empty:latex">An empty LaTeX file</option><option value="empty:plain">An empty plain-text file (AMC-TXT)</option>
-        ${options}</select><span class="field-hint">Templates are AMC's examples. A gallery with previews comes later.</span></label>`,
-    validate: validName(names),
-  });
-  if (!data) return;
-  const name = data.name.trim();
-  S.creating = name;
-  if (data.from.startsWith('empty:')) socket_emit('create-project-empty', [name, data.from.slice(6)]);
-  else socket_emit('create-project-template', [name, data.from]);
-}
-
 async function renameExam(old) {
   const names = (S.projects || []).map((p) => p.name);
   const data = await formDialog({
@@ -2217,7 +2372,30 @@ const ACTIONS = {
   'annotated-open': (el) => openAnnotated(+el.dataset.i),
   'plist-step': (el) => { if (S.previewList) previewListGo(S.previewList.i + parseInt(el.dataset.delta, 10)); },
   'guide-toggle': (el) => { const k = el.dataset.step; S.guide[k] = !S.guide[k]; store.set('guide', S.guide); const g = el.closest('.guide'); g.classList.toggle('is-collapsed', S.guide[k]); el.setAttribute('aria-expanded', !S.guide[k]); resizeEditor(); },
-  'new-exam': () => newExam(),
+  'new-exam': () => navigate('/new'),
+  'exam-details': (el) => { S.menu = null; editExamDetails(el.dataset.name); },
+  'save-meta': () => { socket_emit('ui-exam-meta', { exam: S.project, class: $('#meta-class').value, subject: $('#meta-subject').value, date: $('#meta-date').value }); toast('Details saved.'); },
+  'archive-exam': (el) => { S.menu = null; socket_emit('ui-exam-archive', { exam: el.dataset.name, archived: el.dataset.v === '1' }); toast(el.dataset.v === '1' ? 'Archived. Find it with the "Archived" filter.' : 'Taken out of the archive.'); },
+  'wiz-go': (el) => { S.wizard.step = +el.dataset.step; renderMain(); },
+  'wiz-next': () => {
+    const w = S.wizard;
+    if (w.step === 1) {
+      const err = wizardNameError();
+      if (err) { const e = $('#wiz-error'); if (e) e.textContent = err; const f = $('#wiz-name'); if (f) f.focus(); return; }
+    }
+    if (w.step === 2 && !wizardTemplate()) return;
+    w.step += 1; renderMain();
+  },
+  'wiz-group': (el) => { S.wizard.group = el.dataset.v; S.wizard.query = ''; renderMain(true); },
+  'wiz-pick': (el) => { S.wizard.gid = el.dataset.gid; S.wizard.id = el.dataset.id; renderMain(true); },
+  'wiz-style': (el) => { S.wizard.style = el.dataset.v; renderMain(true); },
+  'wiz-create': () => {
+    const w = S.wizard;
+    const err = wizardNameError();
+    if (err) { w.step = 1; renderMain(); toast(err, 'warning-triangle'); return; }
+    S.creating = w.name.trim();
+    socket_emit('ui-create-exam', { name: w.name.trim(), class: w.class, subject: w.subject, date: w.date, gid: w.gid, id: w.id, style: w.style, code: w.code ? w.digits : 0, copies: w.copies });
+  },
   'rename-exam': (el) => { S.menu = null; renameExam(el.dataset.name); },
   'clone-exam': (el) => { S.menu = null; socket_emit('project-clone', el.dataset.name); },
   'delete-exam': (el) => { S.menu = null; deleteExam(el.dataset.name); },
@@ -2287,6 +2465,13 @@ document.addEventListener('change', async (e) => {
   if (t.id === 'list-key' && t.value) changeListKey(t);
   if (t.id === 'assoc-code' && t.value) { socket_emit('change-acode', t.value); if (S.students) S.students.code = t.value; renderMain(true); toast('Saved.'); }
   if (t.id === 'plist-select') previewListGo(+t.value);
+  if (t.id === 'wiz-code' && S.wizard) { S.wizard.code = t.checked; renderMain(true); }
+  if (['dash-class', 'dash-state', 'dash-sort', 'dash-archived'].includes(t.id)) {
+    const key = { 'dash-class': 'klass', 'dash-state': 'state', 'dash-sort': 'sort', 'dash-archived': 'archived' }[t.id];
+    S.dash[key] = t.type === 'checkbox' ? t.checked : t.value;
+    store.set('dash', S.dash);
+    renderMain(true);
+  }
   if (/^score-[SM]-preset$/.test(t.id)) $(`#score-${t.id[6]}-custom-field`).classList.toggle('hidden', t.value !== 'custom');
   if (t.id === 'scan-files' && t.files.length) { uploadScans(t.files); t.value = ''; }
   if (t.id === 'scan-photocopy') { socket_emit('scans-mode-change', t.checked ? 1 : 0); if (S.scans) S.scans.photocopy = t.checked; renderMain(true); }
@@ -2308,11 +2493,21 @@ document.addEventListener('change', async (e) => {
 
 document.addEventListener('input', (e) => {
   const t = e.target;
+  if (t.dataset && t.dataset.wiz && S.wizard) { S.wizard[t.dataset.wiz] = t.value; if (t.dataset.wiz === 'name') { const er = $('#wiz-error'); if (er) er.textContent = ''; } }
+  if (t.id === 'wiz-search' && S.wizard) {
+    S.wizard.query = t.value;
+    renderMain(true);
+    const f = $('#wiz-search'); if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
+  }
+  if (t.id === 'dash-search') { S.dash.query = t.value; store.set('dash', S.dash); renderDashCards(); }
   if (t.id === 'match-search') { S.matchQuery = t.value; S.matchCursor = 0; renderMatchResults(); }
   if (t.id === 'marks-search') { S.marksQuery = t.value; const host = $('#marks-table'); if (host && S.marks) host.innerHTML = marksTable(S.marks.rows); }
 });
 
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && S.route.kind === 'new' && S.wizard && S.wizard.step === 1 && e.target instanceof Element && e.target.matches('[data-wiz]')) {
+    e.preventDefault(); ACTIONS['wiz-next'](); return;
+  }
   if (e.target instanceof Element && e.target.id === 'match-search' && !$('#layer').innerHTML) {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); S.matchCursor += e.key === 'ArrowDown' ? 1 : -1; renderMatchResults(); return; }
     if (e.key === 'Enter') {

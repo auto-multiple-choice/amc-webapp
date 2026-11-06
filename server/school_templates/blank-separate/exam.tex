@@ -1,0 +1,68 @@
+\documentclass[a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage[box,completemulti,separateanswersheet]{automultiplechoice}
+
+\begin{document}
+
+\def\AMCformQuestion#1{{\sc Question #1:}}
+
+% Each question goes in \element{general}{...}, so the order can be
+% shuffled for each copy.
+
+\element{general}{
+  \begin{question}{example-single}
+    Write a question that has exactly one correct answer.
+    \begin{choices}
+      \correctchoice{The correct answer}
+      \wrongchoice{A wrong answer}
+      \wrongchoice{Another wrong answer}
+    \end{choices}
+  \end{question}
+}
+
+\element{general}{
+  \begin{questionmult}{example-multiple}
+    Write a question that can have several correct answers.
+    \begin{choices}
+      \correctchoice{A correct answer}
+      \correctchoice{Another correct answer}
+      \wrongchoice{A wrong answer}
+    \end{choices}
+  \end{questionmult}
+}
+
+\onecopy{10}{
+
+%%AMCUI:SCHOOL%%
+\noindent{\large\bf Exam title}\hfill Date
+
+\begin{center}\em
+  Questions marked with \multiSymbole{} may have zero, one or several
+  correct answers. Other questions have exactly one. Tick your answers on
+  the answer sheet at the end.
+\end{center}
+\vspace{1ex}
+
+\shufflegroup{general}
+\insertgroup{general}
+
+\AMCcleardoublepage
+
+\AMCformBegin
+
+{\large\bf Answer sheet}
+
+\vspace*{3mm}
+%%AMCUI:IDENTITY%%
+
+\begin{center}
+  \bf\em Only answers ticked on this sheet are marked.
+\end{center}
+
+\AMCform
+}
+
+\end{document}
