@@ -1,6 +1,6 @@
 # Interface redesign plan
 
-Status: approved (2026-11-06), with the team's decisions on steps, the layout check, printing, languages, classic style, branding and devices. Covers issues #1 (redesign), #2 (template gallery) and #3 (marking scheme panel), plus new requests: a guided step-by-step workflow, locking an exam after printing, a side panel for PDFs and spreadsheets, and school branding.
+Status: approved (2026-11-06), with the team's decisions on steps, the layout check, printing, languages, the old interface, branding and devices. Revised the same day: the old interface is removed and every screen is built new. Covers issues #1 (redesign), #2 (template gallery) and #3 (marking scheme panel), plus new requests: a guided step-by-step workflow, locking an exam after printing, a side panel for PDFs and spreadsheets, and school branding.
 
 ## 1. Summary
 
@@ -8,9 +8,9 @@ The exam workflow becomes the backbone of the interface. A sidebar shows the ten
 
 Once an exam is printed it is locked. Questions and layout can't change without a deliberate unlock that explains what will be lost. The marking scheme and the answer key stay editable, because changing them doesn't move anything on the printed paper.
 
-Teachers choose between the new style and the current one ("Classic") until the new interface covers everything. Admins can add the school's name, logo and colours.
+The new interface replaces the AMC team's web pages completely; there is no "Classic" option. Admins can add the school's name, logo and colours.
 
-The work is split into seven phases (0–6). Each phase is one merge request that can be used on its own.
+The work is split into six phases (0–5), in exam order. Each phase is one merge request that leaves every finished step working.
 
 ## 2. Decisions so far
 
@@ -22,7 +22,7 @@ The work is split into seven phases (0–6). Each phase is one merge request tha
 | Mark anyway | Yes: marks can be computed while scan problems remain, behind a warning. |
 | Printing | Save the PDF and print elsewhere (for example from a pendrive) everywhere. Printing directly on a printer attached to the shared machine only when that machine runs Linux (section 7). |
 | Languages | English first. |
-| Classic style | Kept until phase 6 is done, as "Classic style". Each teacher can switch between Classic and the new style, and the new style is offered to Classic users. Discontinuing Classic is decided after phase 6. |
+| Old interface | Removed. Only the new style exists. The AMC team's page files stay in the repository unused, so their updates still merge cleanly. |
 | Look | Neutral by default. Admins can set the school name, logo and a colour palette, detected from the logo or chosen by hand (section 12). |
 | Devices | Laptops and desktops. Tablets later. |
 
@@ -87,7 +87,7 @@ The existing logic we build on:
   - the school logo and name, if set;
   - a breadcrumb (Exams / exam name);
   - the exam's state (Draft, Layout to check, Ready to print, Printed and locked, Marked, Results exported);
-  - the theme switch and the account menu (with "Switch to Classic style").
+  - the theme switch and the account menu.
 - **Step sidebar:** ten steps in two groups. Each shows ✓ done, ● needs attention (with a count), ○ not started, or 🔒 locked.
 - **Work area:** the current step. It always starts with a short "What to do here" box that can be collapsed, and ends with the next action.
 - **Preview panel:** section 10. It can be resized, maximised and closed, and it remembers its width.
@@ -154,7 +154,7 @@ The layout check happens only before the first print. Once locked, the layout ca
 - **Lock record:** the app's existing print time, plus our own record of who locked the exam and when, stored with the project.
 - **Banner:** a locked exam shows "Printed on 5 Nov by Priya. Questions and layout are locked. You can still change the marking scheme and correct the answer key."
 - **Read-only editor:** the LaTeX editor becomes read-only. Answer key and scoring changes go through the marking panel, which edits only the scoring and correct/wrong macros in the source.
-- **Server enforcement:** the server refuses saves, rebuilds, copy-count changes and build settings on a locked exam. A stale browser tab, a second teacher or the Classic style can't bypass the lock.
+- **Server enforcement:** the server refuses saves, rebuilds, copy-count changes and build settings on a locked exam. A stale browser tab or a second teacher can't bypass the lock.
 - **Safety check on save:** when a locked exam's source is saved, the server compares the old and new source. Any difference outside the allowed macros (`\scoring{…}`, `\scoringDefaultS/M{…}`, `\correctchoice` ↔ `\wrongchoice` and the French `\bonne` ↔ `\mauvaise`) is refused with an explanation. It's a cheap text comparison, with no compile needed.
 - **Re-marking:** after an allowed change, step 7 shows "The answer key changed. Recompute marks?", which runs Mark with "Update marking scale". The change is recorded in the exam's activity list.
 - **Unlocking:** "Unlock to edit questions" opens a dialog listing exactly what will be lost: "64 scanned pages, 30 matched students and computed marks will be removed. Printed papers will no longer match." The teacher types the exam name to confirm.
@@ -237,16 +237,7 @@ The layout check happens only before the first print. Once locked, the layout ca
 - **Short first-run tour:** points out the sidebar, preview panel and guide. It can be skipped and replayed from the Guide menu.
 - **Editable content:** the guide is written in Markdown files in this repo (`server/guide/en/`), so teachers can improve it without touching code.
 
-## 12. Classic style and branding
-
-### Classic and new style
-
-- **Choosing a style:** every teacher can pick "New style" or "Classic style". The choice is saved per teacher, and a switch sits in both styles: the account menu in the new style, a small bar in Classic.
-- **First visit:** after the new style ships, a teacher's first visit asks "Try the new style?" A Classic user sees a dismissible "Try the new style" bar.
-- **Same data underneath:** both styles work on the same exams, and switching opens the same exam where possible.
-- **Classic as upstream made it:** Classic gets no new features. The lock still applies there, because the server enforces it, and Classic shows the server's explanation.
-- **Cost:** low. Classic is upstream's page, kept at `/classic` anyway; the switch adds a per-teacher setting, a redirect and a small bar. If it causes trouble, we drop the choice and keep `/classic` as a plain fallback link.
-- **Decision:** whether to discontinue Classic is decided after phase 6.
+## 12. Branding
 
 ### Branding
 
@@ -267,7 +258,7 @@ The layout check happens only before the first print. Once locked, the layout ca
 5. **Unsaved-changes guard and autosave** of the source draft. Building the official papers stays an explicit action.
 6. **Settings split three ways:**
    - exam settings, under the exam;
-   - personal preferences (theme, style, guide boxes), under the account menu;
+   - personal preferences (theme, guide boxes), under the account menu;
    - administration (accounts, appearance, shared templates), admins only.
 7. **Keyboard support:** Ctrl/Cmd+S to save, and single-key shortcuts in the scan review and matching queues.
 8. **Accessibility:** WCAG AA contrast (also enforced for school colours), visible focus, everything reachable by keyboard, labels on icon buttons.
@@ -277,40 +268,37 @@ The layout check happens only before the first print. Once locked, the layout ca
 ## 14. Technical approach
 
 - **New code in new files:**
-  - `server/ui.py`, a Flask blueprint for the new pages, the exam status summary, lock actions, branding, the style switch and the template gallery;
-  - `server/templates/ui/`;
+  - `server/ui.py`, a Flask blueprint for the new pages, the exam status summary, lock actions, branding and the template gallery;
+  - `server/templates/ui_*.html` (a `ui_` prefix rather than a subfolder, because upstream's icon build reads every file in `server/templates`);
   - `server/static/ui/` (stylesheet with design tokens, JavaScript modules).
 - **Upstream files touched (kept small, listed in each MR):**
-  - `server/amc.py`: register the blueprint, move upstream's page to `/classic`, and add lock checks in the existing build, save, copy-count and settings handlers.
-  - `server/templates/index.html`: the Classic style's switch bar.
+  - `server/amc.py`: take upstream's page off `/` (the new interface answers there), register the blueprint, and add lock checks in the existing build, save, copy-count and settings handlers.
+  - Upstream's page files (`index.html`, `amc.js`, `amc.css`, the `tab_*.html` fragments) are left in place but unused, so merging AMC team updates never conflicts on them.
   - Translation catalogues: new strings.
 - **Our own existing files:**
   - `auth/` gets branding on the sign-in pages and passes the admin flag;
   - `caddy/Caddyfile` strips a browser-sent admin flag;
   - the launcher gets `./amc printer`.
-- **Reuse, don't rewrite, the server side:** the new interface calls the existing Socket.IO events and AMC commands. New JSON endpoints are added only where the new screens need data the old HTML fragments don't provide. The first is an exam status summary: documents built, print time and lock, pages scanned, unreadable, missing and to check, marks computed and out of date, students matched, exports and annotated files.
+- **New screens, same server actions:** every screen is new, but it calls the existing Socket.IO events and AMC commands (build, read scans, mark, export, annotate), so AMC's processing doesn't change. New read-only JSON endpoints provide the data that upstream sends as HTML fragments. The first is an exam status summary: documents built, print time and lock, pages scanned, unreadable, missing and to check, marks computed and out of date, students matched, exports and annotated files.
 - **No build step:** plain JavaScript modules and CSS custom properties, the same style as upstream. Libraries are vendored into the repo (nothing fetched at runtime), and the Docker build and `./amc start` stay as they are.
 - **Tests:**
   - Browser tests for the new screens, reusing upstream's Selenium harness, run in both modes (single user, and shared machine with sign-in).
-  - The lock and its server-side refusals get dedicated tests, including from the Classic style.
-  - Upstream's own browser tests (`tests/`) keep running against `/classic` to check the server side.
+  - The lock and its server-side refusals get dedicated tests.
+  - Upstream's own browser tests (`tests/`) drive the old pages, so they no longer apply; ours replace them.
 - **Translations:** every new string goes through the existing translation system, in English.
 
 ## 15. Phases
 
-Each phase is one branch and one merge request. Sizes are relative (S, M, L).
+Each phase is one branch and one merge request, in exam order, and leaves every finished step working. Steps not built yet show what's coming. Until phase 4 is done, the team keeps running real exams in the AMC desktop app. Sizes are relative (S, M, L).
 
 | Phase | Delivers | Issues | Size |
 |---|---|---|---|
-| **0 Design sign-off** | A clickable prototype (static HTML in `doc/design/`, opened in a browser) of the shell, a step page, the check-scans step, the locked banner, the gallery, the marking panel and the appearance page | #1 | S |
-| **1 Shell, design system, style switch** | Top bar, step sidebar with live statuses, work area, generic preview panel, light and dark themes, links per exam and step, exam status endpoint. Existing screens hosted in the new shell and restyled; Classic style at `/classic` with the per-teacher switch | #1 | L |
-| **2 Dashboard, wizard, gallery, branding** | Exam dashboard with states and filters, new-exam wizard, template gallery with cached previews, the admin Appearance page, branding on the sign-in page | #2 | M |
-| **3 Guided steps** | All ten step pages with "What to do here", empty states, next actions, the "out of date" logic, the dashboard checklist, guide content and the first-run tour | #1 | M |
-| **4 Layout check, print and lock** | Automatic layout detection and the "Check the layout" confirmation; print step with both routes and the print checklist, opened by the confirmation; lock after printing with server enforcement and source comparison; unlock flow; activity list; `./amc printer` for Linux shared machines | new | L |
-| **5 Marking scheme panel** | Marking scheme and answer key panel, final mark settings, neutralising questions, the recompute prompt | #3 | M |
-| **6 Scans, matching and results** | Check-scans review queue with shortcuts; mark checklist with "Mark anyway"; class-list import preview and manual matching queue; marks table and histogram; CSV table view; annotation settings with "Preview one student" and the annotated sheets browser | #1 | L |
-
-After phase 6: decide whether to discontinue the Classic style.
+| **0 Design sign-off** (done, !3) | The plan, the design system and the clickable prototype | #1 | S |
+| **1 Foundations, exams, questions** | The new interface at `/`, replacing the old page. Top bar, step sidebar with live statuses from the real exam, preview panel for the exam's PDFs and files, light and dark themes, links per exam and step; the exam status endpoint; progress and messages from the server's actions. Exams list (create empty or from a template, rename, duplicate, download, delete). Questions step (LaTeX editor, project files, build the preview). Exam settings | #1, #11 | L |
+| **2 Before the exam** | Marking scheme (final mark settings, default scoring presets); Papers (copies, build, automatic layout detection and "Check the layout"); Print (save PDFs everywhere, direct printing on Linux); lock after printing with server enforcement, unlock, activity list | #3 (part), #10 | L |
+| **3 Scans** | Upload scans with automatic page detection; Check scans (unreadable and missing pages, review queue for uncertain boxes, detection sensitivity) | #1 | L |
+| **4 Results** | Mark (checklist, "Mark anyway", rule-breaking answers); Match students (class list, automatic and manual matching); Export marks (table, histogram, CSV/ODS, private link); Annotate (settings, one-student preview, annotated sheets) | #1, #11 | L |
+| **5 Polish** | Dashboard with states and filters; new-exam wizard with the template gallery; branding (Appearance page, sign-in page); the full guide and first-run tour; per-question marking scheme panel with answer key corrections | #2, #3, #12, #13 | L |
 
 Later, plugging into the same steps:
 - the form question editor (#4) and question bank (#5) go in step 1;
@@ -321,13 +309,14 @@ Later, plugging into the same steps:
 
 | Risk | Mitigation |
 |---|---|
-| AMC team interface changes won't appear in the new style automatically | Review their front-end changes at each update merge; keep our changes to upstream files small; keep Classic until the decision |
+| AMC team interface improvements don't appear in the new interface automatically | Review their changes at each update merge and bring useful features across; keep our changes to upstream files small |
 | Teachers' LaTeX varies, and the marking panel can't understand everything | Support AMC's standard macros; show anything else read-only with "edit in LaTeX"; the form editor (#4) removes this problem for new exams |
-| Lock bypassed by editing LaTeX directly or from Classic | Enforced on the server, plus the source comparison on every save of a locked exam |
+| Lock bypassed by editing LaTeX directly | Enforced on the server, plus the source comparison on every save of a locked exam |
 | Direct printing needs a Linux shared machine with a working print system | Saving PDFs works everywhere; `./amc printer` checks the setup and says what's missing |
 | A school colour makes text hard to read | The palette is derived and contrast-checked; "Reset to neutral" |
 | Browsers' built-in PDF viewers differ (Safari) | Test the main browsers in phase 1; switch to bundled PDF.js if needed |
-| Phases 1, 4 and 6 are large | Each is split into smaller commits behind the Classic fallback; nothing is removed until its replacement works |
+| The web app can't run a whole exam until phase 4 | The team keeps using the AMC desktop app until then; phases complete the steps in exam order |
+| Phases are large | Each is split into smaller commits; every finished step keeps working |
 
 ## 17. Still open
 
