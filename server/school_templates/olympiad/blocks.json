@@ -1,0 +1,34 @@
+{
+  "title": "Olympiad paper",
+  "wizard": {"identity": "own", "copies": "versions", "versions": 4},
+  "params": [
+    {"id": "ExamName", "label": "Exam name", "type": "text", "wizard": true},
+    {"id": "Organiser", "label": "Organiser", "type": "text", "hint": "The second title line", "wizard": true},
+    {"id": "Level", "label": "Level", "type": "text", "hint": "Printed in the header boxes and the footer", "wizard": true},
+    {"id": "Date", "label": "Date", "type": "text", "wizard": true},
+    {"id": "Time", "label": "Time", "type": "text", "wizard": true},
+    {"id": "MaxMarks", "label": "Maximum marks", "type": "text"},
+    {"id": "RegPrefix", "label": "Registration number: fixed prefix", "type": "text", "hint": "Letters printed before the digit boxes, for example MO26; empty for none"},
+    {"id": "RegDigits", "label": "Registration number: digits", "type": "number", "min": 1, "max": 8, "hint": "Students write them in boxes and darken them on the OMR sheet, so AMC matches the sheets to the class list"},
+    {"id": "ClassDigits", "label": "Class: digits", "type": "number", "min": 1, "max": 3},
+    {"id": "LogoLeft", "label": "Left logo", "type": "file", "hint": "The school logo from Appearance, when there is one"},
+    {"id": "LogoRight", "label": "Right logo", "type": "file", "hint": "A second logo, for example the organiser's"},
+    {"id": "Pen", "label": "Pen to use", "type": "text"},
+    {"id": "RoughPages", "label": "Pages for rough work", "type": "number", "min": 0, "max": 6},
+    {"id": "FillPages", "label": "Pages per copy", "type": "number", "min": 2, "max": 40, "hint": "Blank pages are added so that every copy has this many pages before the OMR sheet"},
+    {"id": "NumericColumns", "label": "OMR: columns of numerical answers", "type": "number", "min": 1, "max": 8},
+    {"id": "McqColumns", "label": "OMR: columns of objective answers", "type": "number", "min": 1, "max": 6}
+  ],
+  "blocks": [
+    {"id": "footer", "title": "Footer", "text": "Level, paper code and page number at the foot of every page.", "params": ["Level"], "preamble": true},
+    {"id": "title", "title": "Title lines", "text": "The exam name and the organiser between the logos.", "params": ["ExamName", "Organiser", "LogoLeft", "LogoRight"]},
+    {"id": "header-boxes", "title": "Header boxes", "text": "Name and registration number, the paper code, level, date, maximum marks and time.", "params": ["RegPrefix", "RegDigits", "Level", "Date", "MaxMarks", "Time"]},
+    {"id": "instructions", "title": "Instructions page", "text": "General instructions, with one line per section made from the sections.", "params": ["Pen"], "summary": true},
+    {"id": "notation", "title": "Notation", "text": "The notation used in the paper; edit the list in the LaTeX tab."},
+    {"id": "values", "title": "Table of values", "text": "Constants the students may need; edit the table in the LaTeX tab."},
+    {"id": "sections", "title": "Sections", "text": "The questions, section by section (see the left column).", "fixed": true, "required": true},
+    {"id": "rough", "title": "Rough-work pages", "text": "“End of question paper”, then pages for rough work.", "params": ["RoughPages"]},
+    {"id": "fill", "title": "Same number of pages in every copy", "text": "Blank pages are added so that the OMR sheet is always the last sheet.", "params": ["FillPages"]},
+    {"id": "omr", "title": "OMR sheet", "text": "Name and signatures, the class and registration grids, and the answer boxes. Always last.", "params": ["ClassDigits", "RegDigits", "NumericColumns", "McqColumns"], "fixed": true, "required": true}
+  ]
+}

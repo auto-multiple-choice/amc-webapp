@@ -64,7 +64,7 @@ async function main() {
   await fill('[data-wiz="date"]', '2026-12-01');
   await b.js(`document.querySelector('[data-wiz="date"]').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})); true`);
   b.check('Enter goes to the template gallery', await b.waitFor(`S.wizard.step === 2 && !!S.gallery`, 10000));
-  b.check('Starters come first, with thumbnails', await b.waitFor(`(() => { const c = [...document.querySelectorAll('.tpl-card')]; const i = c[0] && c[0].querySelector('img'); return c.length === 2 && c[0].textContent.includes('Blank exam') && !!i && i.complete && i.naturalWidth > 0; })()`, 10000));
+  b.check('Starters come first, with thumbnails', await b.waitFor(`(() => { const c = [...document.querySelectorAll('.tpl-card')]; const i = c[0] && c[0].querySelector('img'); return c.length === 3 && c[0].textContent.includes('Blank exam') && c.some(x => x.textContent.includes('Olympiad paper')) && !!i && i.complete && i.naturalWidth > 0; })()`, 10000));
   b.check('The chosen template\'s question paper is shown', await b.js(`!!document.querySelector('.tpl-preview iframe.tpl-pdf') && document.querySelector('.tpl-card.is-selected').textContent.includes('Blank exam')`));
   await b.shot('d1-gallery');
   await b.click('[data-act="wiz-group"][data-v="en"]');

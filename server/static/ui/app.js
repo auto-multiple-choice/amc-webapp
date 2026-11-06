@@ -48,7 +48,7 @@ const STEPS = [
   { id: 'annotate', n: 10, label: 'Annotate', group: 'after', phase: 4, built: true },
 ];
 const GUIDES = {
-  questions: ['Pick a question on the left and change it in the form: its text, answers, which answers are correct, scoring. Changes are saved as you type.', 'Add, move and delete questions with the buttons. Build the preview to see the question paper on the right.', 'Prefer LaTeX? The LaTeX tab edits the source itself; Edit in LaTeX jumps to the question.'],
+  questions: ['Pick a question on the left and change it in the form: its text, answers, which answers are correct, scoring. Changes are saved as you type.', 'Add, move and delete questions with the buttons. Build the preview to see the question paper on the right.', 'Paper design sets the sections: which questions are printed, how many per copy, shuffled or not, and their headings. On an Olympiad paper it also switches parts of the paper on and off.', 'Prefer LaTeX? The LaTeX tab edits the source itself; Edit in LaTeX jumps to the question.'],
   'marking-scheme': ['Choose how single- and multiple-answer questions are scored by default.', 'Set what the final mark is out of, and how it is rounded.', 'All of this can still change after printing.'],
   papers: ['Choose how many copies to print. Add a few spares.', 'Build the papers. The layout is detected automatically.', 'Check the layout in the preview, then confirm it looks correct. Printing opens after that.'],
   print: ['Save the PDFs and print them anywhere, or print directly when the shared machine runs Linux.', 'Print on A4 at 100% (actual size), never "fit to page".', 'The exam locks after printing: questions and layout can no longer change.'],
@@ -92,6 +92,8 @@ const S = {
   qdata: null,            // the questions as the form reads them (/ui/api/editor)
   qform: null,            // the question being edited: file, id, edits waiting to be saved
   gotoLine: null,         // line to show when the LaTeX editor opens next
+  design: null,           // the paper's structure for Paper design (/ui/api/structure)
+  dform: null,            // Paper design: edits waiting to be saved, the open section or block
   theme: store.get('theme', 'auto'),
   previewOpen: store.get('previewOpen', window.innerWidth >= 1280),
   previewMax: false,
@@ -250,7 +252,7 @@ socket.on('project-files-list', () => {
 socket.on('ui-history-restored', (r) => {
   toast(`${r.file} restored.`, 'undo');
   if (S.source.name === r.file) { S.source.dirty = false; S.source.loaded = false; loadSource(r.file); } else if (S.history) loadHistory();
-  if (S.route.step === 'questions') loadFiles();
+  if (S.route.step === 'questions') { loadFiles(); if (useForm()) loadEditor(); else if (useDesign()) loadDesign(); } // the form shows the restored file
 });
 socket.on('ui-changed', (what) => {
   if (what === 'unlock') { toast('Exam unlocked. Rebuild the papers, then check the layout again.', 'lock-slash'); S.previewMode = null; }
@@ -342,7 +344,7 @@ const leavesEditor = (r) => S.source.dirty && !(r.kind === 'exam' && r.name === 
 
 async function navigate(path, { replace = false } = {}) {
   if (leavesEditor(parsePath(path)) && !(await confirmLeave())) return;
-  flushQ();
+  flushQ(); flushD();
   history[replace ? 'replaceState' : 'pushState']({}, '', path);
   onRoute();
 }
@@ -359,6 +361,7 @@ window.addEventListener('popstate', async () => {
 });
 window.addEventListener('beforeunload', (e) => {
   if (S.qform && S.qform.pending.length) { flushQ(); e.preventDefault(); e.returnValue = ''; }
+  if (S.dform && S.dform.pending.length) { flushD(); e.preventDefault(); e.returnValue = ''; }
   if (S.source.dirty) { saveDraft(); e.preventDefault(); e.returnValue = ''; }
 });
 
@@ -370,7 +373,7 @@ function onRoute() {
   S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false;
   S.previewMode = keepGuide ? 'guide' : null;
   S.review = null; S.previewImage = null; S.previewList = null;
-  if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) { dropEditor(); S.history = null; S.qdata = null; S.qform = null; }
+  if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) { dropEditor(); S.history = null; S.qdata = null; S.qform = null; S.design = null; S.dform = null; }
   if (r.kind === 'exams' || r.kind === 'new' || r.kind === 'appearance') {
     S.project = null; S.status = null; S.files = null;
     document.title = `${{ new: 'New exam', appearance: 'Appearance' }[r.kind] || 'Exams'} · ${BRAND}`;
@@ -650,14 +653,19 @@ function renderMain(keepScroll = false) {
   else if (r.step === 'export-marks') html = viewExport();
   else if (r.step === 'annotate') html = viewAnnotate();
   else html = viewSettings();
-  main.classList.toggle('fill', r.kind === 'exam' && r.step === 'questions' && !useForm());
+  main.classList.toggle('fill', r.kind === 'exam' && r.step === 'questions' && !useForm() && !useDesign());
   if (r.step === 'questions' && useForm() && $('#q-editor')) { // keep the form and what is being typed in it
     $('#q-head').innerHTML = questionsHead();
     renderQList();
     if (S.qform && S.qform.locked !== locked()) renderQForm(); // printed meanwhile: fields go read-only
     return;
   }
-  if (r.step === 'questions' && !useForm() && editor && $('#ace-host')) { // keep the live editor
+  if (r.step === 'questions' && useDesign() && $('#d-panel')) { // keep the design panel and its open form
+    $('#q-head').innerHTML = questionsHead();
+    if (S.dform && S.dform.locked !== locked()) renderDesign(); // printed meanwhile: controls go read-only
+    return;
+  }
+  if (r.step === 'questions' && !useForm() && !useDesign() && editor && $('#ace-host')) { // keep the live editor
     editor.setReadOnly(locked());
     $('#q-head').innerHTML = questionsHead();
     renderEditorBar();
@@ -683,7 +691,7 @@ function renderMain(keepScroll = false) {
   }
   if (keepScroll) main.scrollTop = top;
   if (r.step === 'questions' && S.project && S.status) {
-    if (useForm()) { if (editor) dropEditor(); renderQuestionsForm(); } else mountEditor();
+    if (useForm()) { if (editor) dropEditor(); renderQuestionsForm(); } else if (useDesign()) { if (editor) dropEditor(); renderDesign(); } else mountEditor();
   }
   if (r.step === 'match-students' && S.matchFocus) { S.matchFocus = false; const f = $('#match-search'); if (f) f.focus(); }
 }
@@ -950,7 +958,7 @@ async function editExamDetails(name) {
 /* ---------- View: new exam ---------- */
 
 const todayIso = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
-const newWizard = () => ({ step: 1, name: '', class: '', subject: '', date: todayIso(), gid: 'school', id: 'blank', group: 'school', query: '', style: 'paper', code: false, digits: 8, copies: '' });
+const newWizard = () => ({ step: 1, name: '', class: '', subject: '', date: todayIso(), gid: 'school', id: 'blank', group: 'school', query: '', style: 'paper', code: false, digits: 8, copies: '', design: null });
 const thumbUrl = (gid, id) => `/ui/gallery/${enc(gid)}/${enc(id)}/thumb`;
 
 async function loadGallery() {
@@ -1015,6 +1023,14 @@ function wizardOptions() {
   const w = S.wizard;
   const t = wizardTemplate();
   if (!t) return '';
+  const dz = t.design || null; // a starter with parts to switch on and off (blocks.json)
+  if (dz && (!w.design || w.design.id !== t.id)) {
+    const params = Object.fromEntries(dz.params.map((p) => [p.id, p.value ?? '']));
+    if ('ExamName' in params && w.name.trim()) params.ExamName = w.name.trim();
+    if ('Date' in params && w.date) params.Date = fmtIsoDate(w.date);
+    w.design = { id: t.id, params, blocks: Object.fromEntries(dz.blocks.map((b) => [b.id, true])), versions: dz.wizard.versions || 4 };
+  }
+  if (!dz) w.design = null;
   const styleCard = (v, title, hint, thumb) => `<button class="choice style-choice" role="radio" aria-checked="${w.style === v}" data-act="wiz-style" data-v="${v}">
     ${thumb ? `<img class="style-thumb" src="${thumb}" alt="">` : `<span class="choice-icon">${ic(v === 'paper' ? 'page' : 'multiple-pages')}</span>`}
     <span><span class="choice-title">${title}</span><br><span class="subtle">${hint}</span></span></button>`;
@@ -1023,14 +1039,26 @@ function wizardOptions() {
         ${styleCard('paper', 'On the question paper', 'Students tick the boxes next to each question.', t.id === 'blank' ? thumbUrl('school', 'blank') : '')}
         ${styleCard('separate', 'On a separate answer sheet', 'All the boxes on one sheet at the end of each copy.', t.id === 'blank' && t.variants ? thumbUrl('school', 'blank-separate') : '')}</div>`
     : '<p class="muted">The answer sheet is laid out as in this template.</p>';
-  return `<div class="grid grid-2" style="align-items:start">
-    <section class="card"><div class="card-header"><h2>Answer sheet</h2></div><div class="card-body">${style}
+  const first = dz
+    ? `<section class="card"><div class="card-header"><h2>The paper</h2></div><div class="card-body wiz-paper">
+        <div class="form-grid">${dz.params.map((p) => `<label class="field"><span class="field-label">${esc(p.label)}</span><input class="input" data-wizp="${esc(p.id)}" value="${esc(w.design.params[p.id] ?? '')}">${p.hint ? `<span class="field-hint">${esc(p.hint)}</span>` : ''}</label>`).join('')}</div>
+        <div class="field-label" style="margin:14px 0 6px">Parts of the paper</div>
+        <div class="wiz-blocks">${dz.blocks.map((b) => `<label class="check"><input type="checkbox" data-wizb="${esc(b.id)}" ${w.design.blocks[b.id] ? 'checked' : ''} ${b.required ? 'disabled' : ''}><span>${esc(b.title)}${b.text ? `<br><span class="subtle">${esc(b.text)}</span>` : ''}</span></label>`).join('')}</div>
+        <p class="field-hint" style="margin-top:10px">The answers go on a separate OMR sheet. Everything here can be changed later in Questions › Paper design.</p>
+      </div></section>`
+    : `<section class="card"><div class="card-header"><h2>Answer sheet</h2></div><div class="card-body">${style}
       ${t.starter ? `<label class="check" style="margin-top:14px"><input type="checkbox" id="wiz-code" ${w.code ? 'checked' : ''}><span>Students write their student number in boxes<br><span class="subtle">AMC reads it, so sheets are matched to the class list automatically.</span></span></label>
         ${w.code ? `<label class="field" style="margin:10px 0 0 24px;max-width:220px"><span class="field-label">Digits in a student number</span><input class="input" type="number" min="1" max="12" data-wiz="digits" value="${esc(w.digits)}"></label>` : ''}` : ''}
-    </div></section>
-    <section class="card"><div class="card-header"><h2>Copies and summary</h2></div><div class="card-body">
-      <label class="field"><span class="field-label">Number of copies</span><input class="input input-num" type="number" min="1" max="9999" data-wiz="copies" value="${esc(w.copies)}" placeholder="As in the template">
-        <span class="field-hint">Print a few spares beyond the class size. You can change it until the papers are printed.</span></label>
+    </div></section>`;
+  const copies = dz && dz.wizard.copies === 'versions'
+    ? `<label class="field"><span class="field-label">Versions of the paper (A, B, C…)</span><input class="input input-num" type="number" min="1" max="26" data-wizv="1" value="${esc(w.design.versions)}">
+        <span class="field-hint">Each version draws its own questions from the sections. Copies are photocopied from the versions; when uploading scans, say that the sheets were photocopied.</span></label>`
+    : `<label class="field"><span class="field-label">Number of copies</span><input class="input input-num" type="number" min="1" max="9999" data-wiz="copies" value="${esc(w.copies)}" placeholder="As in the template">
+        <span class="field-hint">Print a few spares beyond the class size. You can change it until the papers are printed.</span></label>`;
+  return `<div class="grid grid-2" style="align-items:start">
+    ${first}
+    <section class="card"><div class="card-header"><h2>${dz ? 'Versions' : 'Copies'} and summary</h2></div><div class="card-body">
+      ${copies}
       <dl class="summary"><dt>Name</dt><dd>${esc(w.name)}</dd>${w.class ? `<dt>Class</dt><dd>${esc(w.class)}</dd>` : ''}${w.subject ? `<dt>Subject</dt><dd>${esc(w.subject)}</dd>` : ''}<dt>Date</dt><dd>${esc(fmtIsoDate(w.date))}</dd><dt>Template</dt><dd>${esc(t.title || t.id)}</dd></dl>
     </div>
     <div class="card-foot"><button class="btn" data-act="wiz-go" data-step="2">${ic('arrow-left')} Back</button><button class="btn btn-primary" data-act="wiz-create" ${S.creating ? 'disabled' : ''}>${ic('plus')} ${S.creating ? 'Creating…' : 'Create exam'}</button></div></section>
@@ -1044,6 +1072,7 @@ function viewQuestions() {
   return `<div class="page wide">
     <div id="q-head">${questionsHead()}</div>
     ${useForm() ? '<div class="q-editor" id="q-editor"><div class="q-list" id="q-list"></div><div class="q-form" id="q-form"></div></div>'
+    : useDesign() ? '<div class="design" id="d-panel"></div>'
     : `<div class="editor-bar" id="editor-bar"></div>
     <div id="draft-bar"></div>
     <div class="editor-frame grow" id="editor-frame"><div id="ace-host"></div></div>`}
@@ -1054,13 +1083,17 @@ function viewQuestions() {
 function questionsHead() {
   const L = locked();
   const form = useForm();
-  const tabs = canForm() ? `<div class="segmented q-tabs" role="tablist" aria-label="How to edit"><button role="tab" aria-pressed="${form}" data-act="qtab" data-v="form">${ic('list')} Questions</button><button role="tab" aria-pressed="${!form}" data-act="qtab" data-v="latex">${ic('code')} LaTeX</button></div>` : '';
-  const sub = L ? 'The exam is printed, so the questions are read-only: only the correct answers and scoring can change.'
+  const design = useDesign();
+  const tabs = canForm() ? `<div class="segmented q-tabs" role="tablist" aria-label="How to edit"><button role="tab" aria-pressed="${form}" data-act="qtab" data-v="form">${ic('list')} Questions</button><button role="tab" aria-pressed="${design}" data-act="qtab" data-v="design">${ic('page')} Paper design</button><button role="tab" aria-pressed="${!form && !design}" data-act="qtab" data-v="latex">${ic('code')} LaTeX</button></div>` : '';
+  const sub = L ? 'The exam is printed, so the questions and the paper are read-only: only the correct answers and scoring can change.'
     : form ? 'Pick a question and change it in the form; changes are saved as you type. Build the preview to see the question paper.'
-      : 'Write the questions and answers. Save, then build the preview to see the question paper.';
-  const build = `<button class="btn ${form ? 'btn-primary' : ''}" data-act="build" ${(form ? S.qdata : S.source.loaded) ? '' : 'disabled'}>${ic('refresh')} Build preview</button>`;
+      : design ? 'Sections: which questions are printed, how many per copy, shuffled or not. Parts of the paper: switch them on and off, change their settings.'
+        : 'Write the questions and answers. Save, then build the preview to see the question paper.';
+  const build = `<button class="btn ${form || design ? 'btn-primary' : ''}" data-act="build" ${(form ? S.qdata : design ? S.design && !S.design.error : S.source.loaded) ? '' : 'disabled'}>${ic('refresh')} Build preview</button>`;
+  const marking = `<a class="btn btn-primary" href="${examPath(S.project, 'marking-scheme')}" data-nav>${ic('percentage-circle')} Marking scheme</a>`;
   const actions = form
-    ? `<button class="btn btn-ghost" data-act="qf-history" ${S.qdata ? '' : 'disabled'}>${ic('clock-rotate-right')} History</button>${L ? `<a class="btn btn-primary" href="${examPath(S.project, 'marking-scheme')}" data-nav>${ic('percentage-circle')} Marking scheme</a>` : build}`
+    ? `<button class="btn btn-ghost" data-act="qf-history" ${S.qdata ? '' : 'disabled'}>${ic('clock-rotate-right')} History</button>${L ? marking : build}`
+    : design ? `<button class="btn btn-ghost" data-act="d-history" ${S.design && S.design.file ? '' : 'disabled'}>${ic('clock-rotate-right')} History</button>${L ? marking : build}`
     : L ? `<a class="btn btn-primary" href="${examPath(S.project, 'marking-scheme')}" data-nav>${ic('percentage-circle')} Correct the answer key</a>`
       : `${build}<button class="btn btn-primary" data-act="save" id="save-btn" disabled>${ic('floppy-disk')} Save</button>`;
   return `
@@ -1343,7 +1376,7 @@ function diffHtml(a, b) {
 }
 
 async function buildPreview() {
-  await flushQ();
+  await flushQ(); await flushD();
   if (S.source.dirty && !(await saveSource())) return;
   const st = S.status || {};
   if (st.printed || st.scans) {
@@ -1582,6 +1615,7 @@ async function editQuestion(title) {
 
 const canForm = () => !!(S.status && S.status.format === 'latex');
 const useForm = () => canForm() && S.qtab === 'form';
+const useDesign = () => canForm() && S.qtab === 'design';
 const qfile = (name) => S.qdata && S.qdata.files.find((f) => f.file === name);
 const qsel = () => { const f = S.qform; const fl = f && qfile(f.file); return (fl && fl.questions.find((q) => q.id === f.id)) || null; };
 const KIND_NAMES = { single: 'Single answer', multiple: 'Multiple answers', numeric: 'Numeric answer' };
@@ -1590,6 +1624,7 @@ function enterQuestions() {
   if (!S.status) { refreshStatus().then(() => { if (S.route.step === 'questions' && S.status) { renderMain(); enterQuestions(); } }); return; }
   loadFiles();
   if (useForm()) loadEditor();
+  else if (useDesign()) loadDesign();
   else if (!S.source.loaded) loadSource('');
 }
 
@@ -1619,7 +1654,8 @@ function renderQList() {
   if (!d) { host.innerHTML = '<div class="skeleton" style="height:200px;margin:12px"></div>'; return; }
   const L = locked();
   const total = d.files.reduce((n, f) => n + f.questions.length, 0);
-  const files = d.files.filter((f) => f.questions.length || f.file === d.main);
+  let files = d.files.filter((f) => f.questions.length);
+  if (!files.length) files = d.files.filter((f) => f.file === d.main);
   let html = `<div class="q-list-head"><b>Questions</b><span class="chip">${total}</span><span class="spacer"></span>${L || d.error ? '' : `<button class="btn btn-sm" data-act="q-add" title="Add a question after the selected one">${ic('plus')} Add</button>`}</div>`;
   files.forEach((f) => {
     if (files.length > 1) html += `<div class="q-file">${esc(f.file)}</div>`;
@@ -1847,22 +1883,258 @@ async function insertFigure(file) {
   renderQPreview();
   qop({ op: 'text', latex }, { now: true });
 }
-async function switchQTab(v) {
-  if (v === S.qtab) return;
-  if (v === 'form') {
-    if (S.source.dirty && !(await saveSource())) return;
-    dropEditor();
-    S.qtab = 'form'; store.set('qtab', 'form');
-    renderMain(); loadEditor();
-  } else {
-    await flushQ();
-    S.qtab = 'latex'; store.set('qtab', 'latex');
-    renderMain();
-    if (!S.source.loaded) loadSource('');
+/* ---------- View: questions, Paper design (sections and parts of the paper) ---------- */
+
+async function loadDesign() {
+  const project = S.project;
+  let r;
+  try { r = await getJSON('/ui/api/structure'); } catch (e) {
+    console.error(e);
+    if (S.project === project) { S.design = { error: 'The paper couldn\'t be read.' }; renderDesign(); }
+    return;
   }
+  if (S.project !== project || r.project !== project) return;
+  S.design = r;
+  if (!S.dform) S.dform = { pending: [], saving: false, open: null };
+  renderDesign();
+  const h = $('#q-head'); if (h) h.innerHTML = questionsHead();
+}
+const dsec = (name) => S.design && (S.design.sections || []).find((s) => s.name === name);
+const dparam = (id) => S.design && (S.design.params || []).find((p) => p.id === id);
+const plainLatex = (t) => String(t || '').replace(/\\[a-zA-Z]+\*?(\[[^\]]*\])?/g, ' ').replace(/[{}$~]/g, '').replace(/\s+/g, ' ').trim();
+
+function renderDesign() {
+  const host = $('#d-panel');
+  if (!host) return;
+  const d = S.design;
+  if (!d) { host.innerHTML = '<div class="skeleton" style="height:220px"></div><div class="skeleton" style="height:220px"></div>'; return; }
+  if (d.error) { host.innerHTML = banner('warning', 'warning-triangle', d.error, '', `<button class="btn btn-sm" data-act="d-reload">Try again</button>`); return; }
+  const L = locked();
+  if (S.dform) S.dform.locked = L;
+  host.innerHTML = `<div class="d-card" id="d-sections">${renderDSections(d, L)}</div><div class="d-card" id="d-paper">${renderDPaper(d, L)}</div>`;
+  renderDStatus();
+}
+
+function renderDSections(d, L) {
+  const open = S.dform && S.dform.open && S.dform.open.kind === 'section' ? S.dform.open.name : null;
+  let html = `<div class="d-head"><b>Sections</b><span class="chip">${d.sections.length}</span><span class="spacer"></span>${L || !d.onecopy ? '' : `<button class="btn btn-sm" data-act="d-sec-add">${ic('plus')} Add a section</button>`}</div><div class="d-body">`;
+  if (!d.onecopy) html += banner('warning', 'warning-triangle', 'The main file has no \\onecopy{…}{…} block.', 'Sections are laid out inside it. Add one in the LaTeX tab, or start a new exam from a template.');
+  if (d.inline) html += banner('info', 'info-circle', `${d.inline} question${d.inline > 1 ? 's are' : ' is'} written directly in the paper, outside any section.`, 'Organise them into a section to count, shuffle and lay them out from here. The questions themselves don\'t change.', L ? '' : `<button class="btn btn-sm btn-primary" data-act="d-convert">Organise into a section</button>`);
+  if (!d.sections.length && !d.inline && d.onecopy) html += '<p class="muted" style="margin:0">No section yet. A section is a group of questions printed together: add one, then add questions to it.</p>';
+  d.sections.forEach((s, i) => {
+    const isOpen = s.name === open;
+    const per = s.count ? `${s.count} of ${s.pool} per copy` : `all ${s.pool}`;
+    const chips = [s.shuffle ? 'shuffled' : 'in order', s.columns > 1 ? `${s.columns} columns` : '', s.newpage ? 'new page' : '', s.markers ? '' : 'plain \\insertgroup'].filter(Boolean);
+    const marks = s.marks && s.marks.right ? ` · +${esc(s.marks.right)}${s.marks.wrong && s.marks.wrong !== '0' ? ` / ${esc(s.marks.wrong)}` : ''}` : '';
+    html += `<div class="d-sec ${isOpen ? 'is-open' : ''}" data-name="${esc(s.name)}">
+      <div class="d-row"><span class="d-name">${esc(s.name)}</span><span class="spacer"></span>
+        ${L ? '' : `<button class="btn btn-ghost btn-icon btn-sm" data-act="d-sec-move" data-name="${esc(s.name)}" data-d="-1" ${i ? '' : 'disabled'} title="Move up" aria-label="Move section up">${ic('nav-arrow-up')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="d-sec-move" data-name="${esc(s.name)}" data-d="1" ${i < d.sections.length - 1 ? '' : 'disabled'} title="Move down" aria-label="Move section down">${ic('nav-arrow-down')}</button>`}
+        <button class="btn btn-sm" data-act="${isOpen ? 'd-sec-done' : 'd-sec-edit'}" data-name="${esc(s.name)}">${isOpen ? 'Done' : (L ? 'Details' : 'Edit')}</button></div>
+      <div class="d-title">${s.heading ? esc(plainLatex(s.heading)) : '<span class="subtle">No heading</span>'}</div>
+      <div class="d-sub">${per}${chips.length ? ' · ' + chips.join(' · ') : ''}${marks}</div>
+      ${s.problem ? `<div class="d-problem">${ic('warning-triangle')} ${esc(s.problem)}</div>` : ''}
+      ${isOpen ? renderDSectionForm(s, L) : ''}
+      ${!L && !isOpen ? `<div class="d-row"><button class="btn btn-ghost btn-sm" data-act="d-sec-addq" data-name="${esc(s.name)}">${ic('plus')} Add a question</button></div>` : ''}
+    </div>`;
+  });
+  (d.unused || []).forEach((u) => { html += banner('info', 'info-circle', `${u.pool} question${u.pool > 1 ? 's' : ''} in the group "${esc(u.name)}" ${u.pool > 1 ? 'aren\'t' : 'isn\'t'} printed.`, 'No section uses this group.', L ? '' : `<button class="btn btn-sm" data-act="d-sec-adopt" data-name="${esc(u.name)}">Add a section for it</button>`); });
+  return html + '</div>';
+}
+
+function renderDSectionForm(s, L) {
+  const dis = L ? 'disabled' : '';
+  const n = esc(s.name);
+  return `<div class="d-form">
+    ${s.markers ? '' : '<p class="field-hint" style="margin:0">This section was written by hand in the LaTeX: a heading printed above it there stays as it is. A heading set here is printed in addition.</p>'}
+    <label class="field"><span class="field-label">Heading</span><input class="input" data-df="heading" data-name="${n}" value="${esc(s.heading || '')}" ${dis} placeholder="Section 1: Objective Questions"></label>
+    <label class="field"><span class="field-label">Instructions under the heading</span><textarea class="input" rows="2" data-df="text" data-name="${n}" ${dis}>${esc(s.text || '')}</textarea><span class="field-hint">LaTeX, like a question's text.</span></label>
+    <div class="form-grid">
+      <div class="field"><span class="field-label">Questions per copy</span><div class="row" style="gap:10px;flex-wrap:wrap"><input class="input input-num" type="number" min="1" max="999" data-df="count" data-name="${n}" value="${s.count || ''}" ${s.count ? '' : 'disabled'} ${dis} aria-label="Questions per copy"><label class="check" style="margin:0"><input type="checkbox" data-df="all" data-name="${n}" ${s.count ? '' : 'checked'} ${dis}><span>All of them (${s.pool})</span></label></div><span class="field-hint">Fewer than the pool: each copy gets its own draw.</span></div>
+      <label class="field"><span class="field-label">Columns</span><select class="select" data-df="columns" data-name="${n}" ${dis}>${[1, 2, 3, 4].map((c) => `<option value="${c}" ${(s.columns || 1) === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+    </div>
+    <div class="row" style="gap:16px;flex-wrap:wrap">
+      <label class="check"><input type="checkbox" data-df="shuffle" data-name="${n}" ${s.shuffle ? 'checked' : ''} ${dis}><span>Shuffle the questions in each copy</span></label>
+      <label class="check"><input type="checkbox" data-df="newpage" data-name="${n}" ${s.newpage ? 'checked' : ''} ${dis}><span>Start on a new page</span></label>
+    </div>
+    ${L ? '' : `<div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><label class="field" style="margin:0"><span class="field-label">Name (the group)</span><input class="input mono" id="df-rename" value="${n}" autocomplete="off"></label><button class="btn btn-sm" data-act="d-sec-rename" data-name="${n}">Rename</button><span class="spacer"></span><button class="btn btn-ghost btn-sm" data-act="d-latex" data-line="${s.line}">${ic('code')} In LaTeX</button><button class="btn btn-ghost btn-sm" data-act="d-sec-delete" data-name="${n}">${ic('trash')} Remove section</button></div>`}
+  </div>`;
+}
+
+function renderDPaper(d, L) {
+  const open = S.dform && S.dform.open && S.dform.open.kind === 'block' ? S.dform.open.id : null;
+  let html = `<div class="d-head"><b>${esc(d.title || 'The paper')}</b><span class="spacer"></span><span class="subtle" id="d-status"></span></div><div class="d-body">`;
+  if (!d.blocks.length) {
+    html += '<p class="muted" style="margin:0">This paper has no parts to switch on and off; its layout is edited in the <b>LaTeX</b> tab. The sections on the left still work. The <b>Olympiad paper</b> starter comes with switchable parts.</p>';
+    return html + '</div>';
+  }
+  html += `<p class="subtle" style="margin:0">Untick a part to leave it out of the paper; its text stays in the file. ${ic('lock')} marks parts that stay where they are.</p>`;
+  const body = d.blocks.filter((b) => b.in_body); const pre = d.blocks.filter((b) => !b.in_body);
+  const dis = L ? 'disabled' : '';
+  const row = (b, movable) => {
+    const i = body.indexOf(b);
+    const isOpen = b.id === open;
+    return `<div class="d-block ${b.on ? '' : 'is-off'} ${isOpen ? 'is-open' : ''}" data-id="${esc(b.id)}">
+      <div class="d-row"><label class="check" style="margin:0"><input type="checkbox" class="d-block-on" data-id="${esc(b.id)}" ${b.on ? 'checked' : ''} ${b.required || L ? 'disabled' : ''}><span><b>${esc(b.title)}</b></span></label>${b.fixed ? ic('lock') : ''}<span class="spacer"></span>
+        ${movable && !L ? `<button class="btn btn-ghost btn-icon btn-sm" data-act="d-block-move" data-id="${esc(b.id)}" data-d="-1" ${i > 0 ? '' : 'disabled'} title="Move up" aria-label="Move part up">${ic('nav-arrow-up')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="d-block-move" data-id="${esc(b.id)}" data-d="1" ${i >= 0 && i < body.length - 1 && !(i + 1 === body.length - 1 && body[i + 1].fixed) ? '' : 'disabled'} title="Move down" aria-label="Move part down">${ic('nav-arrow-down')}</button>` : ''}
+        ${b.params.length ? `<button class="btn btn-sm" data-act="${isOpen ? 'd-block-done' : 'd-block-settings'}" data-id="${esc(b.id)}">${isOpen ? 'Done' : 'Settings'}</button>` : ''}</div>
+      <div class="d-sub">${esc(b.text)}</div>
+      ${b.summary && !L ? `<div class="d-row"><button class="btn btn-ghost btn-sm" data-act="d-summary" title="Rewrite the line per section from the sections' counts and marks">${ic('refresh')} Update the line per section</button></div>` : ''}
+      ${isOpen ? `<div class="d-form">${b.params.map((pid) => renderDParam(dparam(pid), L)).join('')}</div>` : ''}
+    </div>`;
+  };
+  html += body.map((b) => row(b, !b.fixed)).join('') + pre.map((b) => row(b, false)).join('');
+  const used = new Set(d.blocks.flatMap((b) => b.params));
+  const rest = (d.params || []).filter((p) => !used.has(p.id));
+  html += `<div class="d-block"><div class="d-row"><b>Versions</b></div>
+    <label class="field"><span class="field-label">Versions of the paper (A, B, C…)</span><input class="input input-num" type="number" min="1" max="26" id="d-copies" value="${esc(d.copies || '')}" ${dis}><span class="field-hint">Each version draws its own questions from the sections; the app's number of copies follows. Copies are photocopied from the versions: when uploading scans, say that the sheets were photocopied.</span></label>
+    ${rest.length ? `<div class="d-form">${rest.map((p) => renderDParam(p, L)).join('')}</div>` : ''}</div>`;
+  return html + '</div>';
+}
+
+function renderDParam(p, L) {
+  if (!p) return '';
+  const dis = L ? 'disabled' : '';
+  const id = esc(p.id);
+  const hint = p.hint ? `<span class="field-hint">${esc(p.hint)}</span>` : '';
+  if (p.type === 'bool') return `<label class="check"><input type="checkbox" data-dp="${id}" data-type="bool" ${p.value ? 'checked' : ''} ${dis}><span>${esc(p.label)}</span></label>`;
+  if (p.type === 'number') return `<label class="field"><span class="field-label">${esc(p.label)}</span><input class="input input-num" type="number" data-dp="${id}" data-type="number" min="${p.min ?? 0}" max="${p.max ?? 9999}" value="${esc(p.value ?? '')}" ${dis}>${hint}</label>`;
+  if (p.type === 'choice') return `<label class="field"><span class="field-label">${esc(p.label)}</span><select class="select" data-dp="${id}" data-type="choice" ${dis}>${(p.choices || []).map((c) => `<option ${String(c) === String(p.value) ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>${hint}</label>`;
+  if (p.type === 'file') return `<div class="field"><span class="field-label">${esc(p.label)}</span><div class="row" style="gap:8px;flex-wrap:wrap">${p.value ? `<code>${esc(p.value)}</code>${L ? '' : `<button class="btn btn-ghost btn-sm" data-act="d-file-remove" data-id="${id}">Remove</button>`}` : '<span class="subtle">none</span>'}${L ? '' : `<label class="btn btn-sm">${ic('upload')} Choose an image<input type="file" data-dp-file="${id}" accept="image/png,image/jpeg" hidden></label>`}</div>${hint}</div>`;
+  return `<label class="field"><span class="field-label">${esc(p.label)}</span><input class="input ${p.type === 'latex' ? 'mono' : ''}" data-dp="${id}" data-type="${esc(p.type || 'text')}" value="${esc(p.value ?? '')}" ${dis}>${hint}</label>`;
+}
+
+function renderDStatus(state) {
+  const el = $('#d-status'); if (!el) return;
+  const f = S.dform;
+  if (state === 'error') { el.innerHTML = `${ic('warning-triangle')} Not saved`; return; }
+  if (f && (f.saving || f.pending.length)) { el.textContent = 'Saving…'; return; }
+  el.textContent = f && f.lastSaved ? 'Saved' : '';
+}
+
+/* Edits are sent as operations; typing in a field is coalesced and sent 0.9 s after the last keystroke. */
+let dflushTimer = null;
+function dop(op, { now = false } = {}) {
+  const f = S.dform;
+  if (!f) return Promise.resolve(null);
+  const key = (o) => `${o.op}|${o.name || o.id || ''}`;
+  const last = f.pending[f.pending.length - 1];
+  if (last && key(last) === key(op) && ['section_set', 'param_set'].includes(op.op)) f.pending[f.pending.length - 1] = { ...last, ...op };
+  else f.pending.push(op);
+  renderDStatus();
+  if (now) return flushD();
+  clearTimeout(dflushTimer); dflushTimer = setTimeout(flushD, 900);
+  return Promise.resolve(null);
+}
+async function flushD() {
+  clearTimeout(dflushTimer);
+  const f = S.dform;
+  if (!f) return null;
+  if (f.saving) { await f.inflight; if (S.dform !== f) return null; }
+  if (!f.pending.length) return null;
+  f.inflight = sendD(f);
+  return f.inflight;
+}
+async function sendD(f) {
+  const ops = f.pending; f.pending = []; f.saving = true;
+  renderDStatus();
+  const project = S.project;
+  let r;
+  try {
+    const resp = await fetch('/ui/api/structure', { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ based_on: S.design ? S.design.digest : '', ops }) });
+    r = await resp.json();
+  } catch { r = { error: 'The server couldn\'t be reached, so the change isn\'t saved.' }; }
+  f.saving = false;
+  if (S.project !== project || !S.design || S.dform !== f) return r;
+  // Text typed in a field: saved without redrawing, so the field stays under the teacher's fingers.
+  const typing = ops.every((o) => (o.op === 'section_set' && !['count', 'shuffle', 'columns', 'newpage'].some((k) => k in o))
+    || (o.op === 'param_set' && ['text', 'latex'].includes((dparam(o.id) || {}).type || 'text')));
+  if (!r.ok) {
+    f.pending = [];
+    toast(r.error || 'Not saved.', 'warning-triangle');
+    if (r.conflict || r.locked) loadDesign(); // show the paper as it is
+    else if (!typing) renderDesign(); // a refused value goes back to the saved one
+    renderDStatus('error');
+    return r;
+  }
+  S.design = { ...S.design, ...r.structure, digest: r.digest };
+  const rename = ops.filter((o) => o.op === 'section_rename').pop();
+  if (rename && f.open && f.open.kind === 'section' && f.open.name === rename.name) f.open.name = rename.new;
+  f.lastSaved = Date.now();
+  const inPanel = document.activeElement && $('#d-panel') && $('#d-panel').contains(document.activeElement) && document.activeElement.matches('input, textarea');
+  if (typing && inPanel) renderDStatus(); else renderDesign(); // don't pull the field from under the teacher
+  if (f.pending.length) { clearTimeout(dflushTimer); dflushTimer = setTimeout(flushD, 200); }
+  return r;
+}
+
+function moveSection(name, d) {
+  const secs = S.design.sections; const i = secs.findIndex((s) => s.name === name);
+  if (i < 0 || (d < 0 && i === 0) || (d > 0 && i >= secs.length - 1)) return;
+  const before = d < 0 ? secs[i - 1].name : (secs[i + 2] ? secs[i + 2].name : null);
+  dop({ op: 'section_move', name, before }, { now: true });
+}
+async function addSection(name, fields = {}) {
+  const d = S.design;
+  const names = new Set([...d.sections.map((s) => s.name), ...(d.unused || []).map((u) => u.name)]);
+  let n = d.sections.length + 1;
+  if (!name) { name = `section${n}`; while (names.has(name)) { n += 1; name = `section${n}`; } }
+  const r = await dop({ op: 'section_add', name, heading: `Section ${n}`, ...fields }, { now: true });
+  if (r && r.ok) { S.dform.open = { kind: 'section', name }; renderDesign(); const h = $('[data-df="heading"]'); if (h) { h.focus(); h.select(); } }
+}
+async function deleteSection(name) {
+  const s = dsec(name); if (!s) return;
+  const keep = s.pool ? ` Its ${s.pool} question${s.pool > 1 ? 's stay' : ' stays'} in the source but ${s.pool > 1 ? 'are' : 'is'} no longer printed until a section uses the group again.` : '';
+  const ok = await confirmDialog({ title: `Remove the section ${esc(name)}?`, body: `<p>The section's heading and settings are removed from the paper.${keep} The file as it is now stays in History.</p>`, ok: 'Remove', danger: true, icon: 'trash' });
+  if (!ok) return;
+  if (S.dform.open && S.dform.open.name === name) S.dform.open = null;
+  dop({ op: 'section_delete', name }, { now: true });
+}
+function moveBlock(id, d) {
+  const body = S.design.blocks.filter((b) => b.in_body); const i = body.findIndex((b) => b.id === id);
+  if (i < 0 || (d < 0 && i === 0) || (d > 0 && i >= body.length - 1)) return;
+  const before = d < 0 ? body[i - 1].id : (body[i + 2] ? body[i + 2].id : null);
+  dop({ op: 'block_move', id, before }, { now: true });
+}
+/* A question added from a section: into the section's file, then the form opens on it. */
+async function addQuestionTo(group) {
+  const kind = await choiceDialog({ title: `Add a question to ${esc(group)}`, icon: 'plus', body: '<p>What kind of question?</p>',
+    choices: [['numeric', 'Numeric answer', ''], ['multiple', 'Multiple answers', ''], ['single', 'Single answer', 'btn-primary']] });
+  if (!kind) return;
+  await flushD();
+  const s = dsec(group);
+  const file = (s && s.file) || S.design.file;
+  let r;
+  try {
+    const resp = await fetch('/ui/api/editor', { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' }, body: JSON.stringify({ file, based_on: '', ops: [{ op: 'add', kind, group }] }) });
+    r = await resp.json();
+  } catch { r = { error: 'The server couldn\'t be reached.' }; }
+  if (!r.ok) { toast(r.error || 'Not added.', 'warning-triangle'); return; }
+  const inGroup = r.file.questions.filter((q) => q.group === group);
+  const added = inGroup[inGroup.length - 1];
+  S.qdata = null; S.qform = added ? { file, id: added.id, pending: [], saving: false } : null;
+  S.qtab = 'form'; store.set('qtab', 'form');
+  renderMain(); loadEditor();
+}
+async function setParamFile(pid, file) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(file.name)) { toast('Rename the file first: letters, digits, . _ and - only.', 'warning-triangle'); return; }
+  try { await upload('/upload/project', [[file, file.name]]); } catch (err) { toast(err.message, 'warning-triangle'); return; }
+  loadFiles();
+  dop({ op: 'param_set', id: pid, value: file.name }, { now: true });
+}
+
+async function switchQTab(v) {
+  if (v === S.qtab || !['form', 'design', 'latex'].includes(v)) return;
+  if (S.qtab === 'latex' && S.source.dirty && !(await saveSource())) return;
+  await flushQ(); await flushD();
+  if (editor) dropEditor();
+  S.qtab = v; store.set('qtab', v);
+  renderMain();
+  if (v === 'form') loadEditor();
+  else if (v === 'design') loadDesign();
+  else if (!S.source.loaded) loadSource('');
 }
 async function editInLatex(file, line) {
-  await flushQ();
+  await flushQ(); await flushD();
   S.qtab = 'latex'; store.set('qtab', 'latex');
   S.gotoLine = line || null;
   renderMain();
@@ -3306,7 +3578,7 @@ const ACTIONS = {
     if (S.creating) return;
     S.creating = w.name.trim();
     renderMain(true);
-    socket_emit('ui-create-exam', { name: w.name.trim(), class: w.class, subject: w.subject, date: w.date, gid: w.gid, id: w.id, style: w.style, code: w.code ? w.digits : 0, copies: w.copies });
+    socket_emit('ui-create-exam', { name: w.name.trim(), class: w.class, subject: w.subject, date: w.date, gid: w.gid, id: w.id, style: w.style, code: w.code ? w.digits : 0, copies: w.copies, design: w.design ? { params: w.design.params, blocks: w.design.blocks, versions: w.design.versions } : undefined });
   },
   'rename-exam': (el) => { S.menu = null; renameExam(el.dataset.name); },
   'clone-exam': (el) => { S.menu = null; socket_emit('project-clone', el.dataset.name); },
@@ -3335,6 +3607,23 @@ const ACTIONS = {
   'q-move': (el) => moveQuestion(+el.dataset.d),
   'q-latex': (el) => editInLatex(el.dataset.file, +el.dataset.line),
   'q-reload': () => loadEditor(),
+  'd-reload': () => loadDesign(),
+  'd-history': () => { if (S.design && S.design.file) openHistory(S.design.file); },
+  'd-sec-edit': (el) => { S.dform.open = { kind: 'section', name: el.dataset.name }; renderDesign(); },
+  'd-sec-done': () => { flushD(); S.dform.open = null; renderDesign(); },
+  'd-sec-move': (el) => moveSection(el.dataset.name, +el.dataset.d),
+  'd-sec-delete': (el) => deleteSection(el.dataset.name),
+  'd-sec-add': () => addSection(),
+  'd-sec-adopt': (el) => addSection(el.dataset.name, { heading: el.dataset.name }),
+  'd-sec-addq': (el) => addQuestionTo(el.dataset.name),
+  'd-sec-rename': (el) => { const v = (($('#df-rename') || {}).value || '').trim(); if (v && v !== el.dataset.name) dop({ op: 'section_rename', name: el.dataset.name, new: v }, { now: true }); },
+  'd-convert': () => dop({ op: 'convert' }, { now: true }),
+  'd-block-move': (el) => moveBlock(el.dataset.id, +el.dataset.d),
+  'd-block-settings': (el) => { S.dform.open = { kind: 'block', id: el.dataset.id }; renderDesign(); },
+  'd-block-done': () => { flushD(); S.dform.open = null; renderDesign(); },
+  'd-summary': () => dop({ op: 'summary' }, { now: true }),
+  'd-file-remove': (el) => dop({ op: 'param_set', id: el.dataset.id, value: '' }, { now: true }),
+  'd-latex': (el) => editInLatex(S.design.file, +el.dataset.line),
   'qf-history': () => openHistory(S.qform ? S.qform.file : S.qdata.main),
   'qf-ans-add': () => qop({ op: 'answer_add', latex: 'New answer' }, { now: true }).then(() => { const inputs = [...document.querySelectorAll('.qf-ans-text')]; const last = inputs[inputs.length - 1]; if (last) { last.focus(); last.select(); } }),
   'qf-ans-remove': (el) => qop({ op: 'answer_remove', i: +el.dataset.i }, { now: true }),
@@ -3380,6 +3669,18 @@ document.addEventListener('change', async (e) => {
   }
   if (t.id === 'hist-file' && S.history && t.value !== S.history.file) openHistory(t.value);
   if (t.id === 'qf-kind' && S.qform) qop({ op: 'type', kind: t.value }, { now: true });
+  if (t.classList.contains('d-block-on') && S.dform) dop({ op: 'block_set', id: t.dataset.id, on: t.checked }, { now: true });
+  if (t.dataset.df && S.dform) {
+    const name = t.dataset.name; const k = t.dataset.df;
+    if (k === 'count') dop({ op: 'section_set', name, count: +t.value || null }, { now: true });
+    else if (k === 'all') { const s = dsec(name); dop({ op: 'section_set', name, count: t.checked ? null : (s && s.pool ? s.pool : 1) }, { now: true }); }
+    else if (k === 'shuffle' || k === 'newpage') dop({ op: 'section_set', name, [k]: t.checked }, { now: true });
+    else if (k === 'columns') dop({ op: 'section_set', name, columns: +t.value }, { now: true });
+  }
+  if (t.dataset.dp && S.dform && ['number', 'choice', 'bool'].includes(t.dataset.type)) dop({ op: 'param_set', id: t.dataset.dp, value: t.dataset.type === 'bool' ? t.checked : t.value }, { now: true });
+  if (t.dataset.dpFile && t.files[0]) { setParamFile(t.dataset.dpFile, t.files[0]); t.value = ''; }
+  if (t.id === 'd-copies' && S.dform) dop({ op: 'copies', n: +t.value }, { now: true });
+  if (t.dataset.wizb && S.wizard && S.wizard.design) S.wizard.design.blocks[t.dataset.wizb] = t.checked;
   if (t.id === 'qf-id' && S.qform) { const v = t.value.trim(); if (v && v !== S.qform.id) qop({ op: 'rename', new_id: v }, { now: true }); }
   if (t.classList.contains('qf-ans-correct') && S.qform) qop({ op: 'answer_correct', i: +t.dataset.i, correct: t.checked }, { now: true });
   if (t.id === 'qf-figure-file' && t.files[0]) { insertFigure(t.files[0]); t.value = ''; }
@@ -3448,6 +3749,10 @@ document.addEventListener('change', async (e) => {
 document.addEventListener('input', (e) => {
   const t = e.target;
   if (t.id === 'qf-text' && S.qform) { qop({ op: 'text', latex: t.value }); scheduleQPreview(); }
+  if (t.dataset.df && S.dform && (t.dataset.df === 'heading' || t.dataset.df === 'text')) dop({ op: 'section_set', name: t.dataset.name, [t.dataset.df]: t.value });
+  if (t.dataset.dp && S.dform && ['text', 'latex'].includes(t.dataset.type)) dop({ op: 'param_set', id: t.dataset.dp, value: t.value });
+  if (t.dataset.wizp && S.wizard && S.wizard.design) S.wizard.design.params[t.dataset.wizp] = t.value;
+  if (t.dataset.wizv && S.wizard && S.wizard.design) S.wizard.design.versions = +t.value;
   if (t.id === 'qf-explain' && S.qform) qop({ op: 'explain', latex: t.value });
   if (t.classList && t.classList.contains('qf-ans-text') && S.qform) qop({ op: 'answer_text', i: +t.dataset.i, latex: t.value });
   if ((t.id === 'qf-num-value' || t.id === 'qf-num-options') && S.qform) qop({ op: 'numeric', value: $('#qf-num-value').value, options: $('#qf-num-options').value });

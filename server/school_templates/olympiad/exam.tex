@@ -1,0 +1,176 @@
+\documentclass[a4paper,11pt]{article}
+% Olympiad paper: an RJ-style question paper with a separate OMR sheet.
+%
+% The parts between %%AMCUI:BLOCK ... and %%AMCUI:END BLOCK%% are switched
+% on and off in Questions > Paper design (off: the lines are kept, commented
+% with "%|"). The values between the PARAMS markers are the paper's
+% settings, also changed there. The sections between SECTION markers are
+% rewritten by the panel. Everything else is yours to edit.
+
+% pdflatex by default; XeLaTeX when the school name needs it (set by the app).
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+\else
+  \usepackage{fontspec}
+  \setmainfont{Linux Libertine O}
+\fi
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{multicol,enumitem,xcolor,graphicx,dashbox,xstring,ifthen}
+\usepackage[box,completemulti,separateanswersheet,automarks,noshuffle]{automultiplechoice}
+
+%%AMCUI:PARAMS%%
+\def\amcuiExamName{Mathematics Olympiad 2026}
+\def\amcuiOrganiser{Mathematics Association, Your school}
+\def\amcuiLevel{I}
+\def\amcuiRegPrefix{MO26}
+\def\amcuiRegDigits{3}
+\def\amcuiClassDigits{2}
+\def\amcuiDate{9 February 2026}
+\def\amcuiTime{09:30 to 11:30}
+\def\amcuiMaxMarks{100}
+\def\amcuiLogoLeft{}
+\def\amcuiLogoRight{}
+\def\amcuiRoughPages{2}
+\def\amcuiFillPages{10}
+\def\amcuiNumericColumns{6}
+\def\amcuiMcqColumns{3}
+\def\amcuiPen{blue or black ball pen}
+%%AMCUI:END PARAMS%%
+
+% ------ Scoring defaults (Marking scheme changes them) ------
+\scoringDefaultS{e=-0.75,v=0,b=3,m=-0.75}
+\scoringDefaultM{e=-1.25,v=0,b=5,m=-1.25}
+\AMCnumericOpts{scoreexact=5,scoreapprox=0,decimals=0,sign=false,scoring=true,vspace=.5ex,vertical=true,vhead=false,borderwidth=0pt,backgroundcol=black!15,approx=1,Tpoint={\bf \LARGE .\tiny (decimal separator)}}
+
+% ------ Icons: FontAwesome when the image has it, Zapf Dingbats otherwise ------
+\IfFileExists{fontawesome5.sty}{%
+  \usepackage{fontawesome5}%
+  \newcommand{\amcuiItem}{\faArrowAltCircleRight[regular]\ }%
+  \newcommand{\amcuiIconDate}{\faCalendar*\ }%
+  \newcommand{\amcuiIconMarks}{\faNewspaper[regular]\ }%
+  \newcommand{\amcuiIconTime}{\faClock[regular]\ }%
+}{%
+  \usepackage{pifont}%
+  \newcommand{\amcuiItem}{\ding{228}\ }%
+  \newcommand{\amcuiIconDate}{\ding{117}\ }%
+  \newcommand{\amcuiIconMarks}{\ding{51}\ }%
+  \newcommand{\amcuiIconTime}{\ding{108}\ }%
+}
+
+% The layout of the header, the OMR sheet and the rough-work pages.
+\input{paper-design}
+
+%%AMCUI:BLOCK footer%%
+\AMCsetFoot{\dbox{\texttt{Level \amcuiLevel\ // Code \paperCode\ // Page \thepage}}}
+%%AMCUI:END BLOCK%%
+
+\begin{document}
+\AMCrandomseed{1237893}
+\AMCsetScoreZoneAnswerSheet{width=1.5em, height=2ex, depth=.5ex, position=question}
+
+% The questions, one \element{section}{...} each.
+\input{questions}
+
+\onecopy{4}{
+
+%%AMCUI:BLOCK title%%
+\amcuiTitle
+%%AMCUI:END BLOCK%%
+
+%%AMCUI:BLOCK header-boxes%%
+\amcuiHeaderBoxes
+%%AMCUI:END BLOCK%%
+
+%%% end of the header
+
+%%AMCUI:BLOCK instructions%%
+\begin{center}\scshape Read the following instructions carefully before attempting the question paper.\end{center}
+\amcuiPoint{Do not open this booklet until the invigilators say so.}
+\amcuiPoint{Answer on the \textbf{O}ptical \textbf{M}ark \textbf{R}ecognition sheet (\textbf{OMR}) by darkening the appropriate squares (marked A, B, C, D or $0$--$9$) with a \amcuiPen.}
+\amcuiPoint{Write your registration number, your name and the question paper code (the letter printed at the top of this paper) in the space provided on the OMR sheet.}
+%%AMCUI:SUMMARY%%
+\amcuiPoint{\textbf{Section 1 (Section 1: Objective Questions):} 3 questions, each with exactly one correct answer. A correct answer scores \(\mathbf{+3}\) and a wrong one \(\mathbf{-0.75}\); an unanswered question scores 0.}
+\amcuiPoint{\textbf{Section 2 (Section 2: Objective Questions):} 2 questions, each with exactly one correct answer. A correct answer scores \(\mathbf{+5}\) and a wrong one \(\mathbf{-1.25}\); an unanswered question scores 0.}
+\amcuiPoint{\textbf{Section 3 (Section 3: Numerical Answer Type Questions):} 2 questions, each answered with a whole number of 3 digits, between 000 and 999. A correct answer scores \(\mathbf{+5}\); there is no negative marking.}
+%%AMCUI:END SUMMARY%%
+\amcuiPoint{You won't be allowed to leave the examination hall during the exam.}
+\vspace{2ex}\hrule\vspace{2ex}
+%%AMCUI:END BLOCK%%
+
+%%AMCUI:BLOCK notation%%
+\clearpage
+\centerline{\bfseries\Large Notation}
+\begin{itemize}
+  \item For a set $A$, $x\in A$ means ``$x$ is an element of $A$''; $|A|$ is the number of elements of $A$.
+  \item $A \setminus B$ is the set of elements of $A$ that are not in $B$.
+  \item $\mathbb{N}=\{1,2,3,\ldots\}$ is the set of natural numbers, $\mathbb{Z}$ the set of integers and $\mathbb{R}$ the set of real numbers.
+  \item For $a,b\in\mathbb{R}$: $[a,b]=\{x\in\mathbb{R}\mid a\le x\le b\}$ and $(a,b)=\{x\in\mathbb{R}\mid a<x<b\}$; $a\mid b$ means ``$a$ divides $b$''.
+  \item $n!=n\cdot(n-1)\cdots 2\cdot 1$, and $\lfloor x\rfloor$ is the largest integer not greater than $x$.
+  \item $[ABC]$ is the area of triangle $ABC$.
+\end{itemize}
+\vspace{2ex}\hrule\vspace{2ex}
+%%AMCUI:END BLOCK%%
+
+%%AMCUI:BLOCK values%%
+\centerline{\bfseries\Large Table of values}
+\begin{center}\renewcommand{\arraystretch}{1.4}
+  \begin{tabular}{|l|c|}\hline
+    Constant & Value \\\hline
+    $e$ & 2.718 \\\hline
+    $\pi$ & 3.142 \\\hline
+    $\ln 2$ & 0.693 \\\hline
+    $\ln 3$ & 1.099 \\\hline
+  \end{tabular}
+\end{center}
+%%AMCUI:END BLOCK%%
+
+%%AMCUI:BLOCK sections%%
+\setlength{\columnsep}{7ex}
+\setlength{\columnseprule}{0.5pt}
+%%AMCUI:SECTION sectionI%%
+\clearpage
+\amcuiSectionHeading{Section 1: Objective Questions}
+\amcuiSectionText{Each question has exactly one correct answer. Darken exactly one square per question on the OMR sheet.}
+\shufflegroup{sectionI}
+\insertgroup[3]{sectionI}
+%%AMCUI:END SECTION%%
+%%AMCUI:SECTION sectionII%%
+\clearpage
+\amcuiSectionHeading{Section 2: Objective Questions}
+\amcuiSectionText{Each question has exactly one correct answer and carries more marks. Darken exactly one square per question on the OMR sheet.}
+\shufflegroup{sectionII}
+\insertgroup{sectionII}
+%%AMCUI:END SECTION%%
+%%AMCUI:SECTION numerical%%
+\clearpage
+\amcuiSectionHeading{Section 3: Numerical Answer Type Questions}
+\amcuiSectionText{The answer to each question is a whole number between 000 and 999. Darken one square in each of the three columns on the OMR sheet: for example, 9 is marked as 009 and 10 as 010.}
+\shufflegroup{numerical}
+\insertgroup{numerical}
+%%AMCUI:END SECTION%%
+%%AMCUI:END BLOCK%%
+
+%%AMCUI:BLOCK rough%%
+\amcuiEndOfPaper
+\amcuiRoughWork{\amcuiRoughPages}
+%%AMCUI:END BLOCK%%
+
+%%AMCUI:BLOCK fill%%
+\expandafter\AMCaddpagesto\expandafter{\amcuiFillPages}
+%%AMCUI:END BLOCK%%
+
+%%AMCUI:BLOCK omr%%
+\AMCformBegin
+\amcuiOmrHeader
+\amcuiOmrBoxes
+\vspace{\baselineskip}
+%%% end of OMR header
+\amcuiOmrGrids
+\vfill
+\amcuiOmrAnswers
+%%AMCUI:END BLOCK%%
+
+}
+\end{document}

@@ -26,6 +26,7 @@ import time
 import uuid
 
 import ui_gallery as gallery
+import ui_structure as paper_structure
 import ui_questions as questions_edit
 import ui_scale as scale
 import ui_source as source_history
@@ -2040,13 +2041,145 @@ def api_editor_edit():
     return jsonify(ok=True, digest=dg, what=what, file=_editor_file(pdir, fn))
 
 
+# ---------------------------------------------------------------- paper design: sections and blocks
+
+def _design_meta(pdir):
+    """blocks.json of a starter with blocks (copied into the exam), or None."""
+    try:
+        with open(os.path.join(pdir, "blocks.json"), encoding="utf-8") as f:
+            meta = json.load(f)
+        return meta if isinstance(meta, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _starter_params(folder):
+    """The parameter values written in a starter's sources."""
+    for f in sorted(os.listdir(folder)):
+        if f.endswith(".tex"):
+            try:
+                with open(os.path.join(folder, f), encoding="utf-8") as fh:
+                    values, region = paper_structure.read_params(fh.read())
+            except (OSError, UnicodeDecodeError):
+                continue
+            if region:
+                return values
+    return {}
+
+
+def _all_questions(pdir, files):
+    out = []
+    for fn in files:
+        try:
+            with open(os.path.join(pdir, fn), encoding="utf-8") as f:
+                out += scale.read_latex(f.read(), fn)
+        except (OSError, UnicodeDecodeError):
+            continue
+    return out
+
+
+def _structure(pdir):
+    """The paper's structure (ui_structure.read) from the main source,
+    with the questions of every source file, or None."""
+    fmt, path = _main_source()
+    main = core.main_source_file()
+    if fmt != "latex" or not path or not os.path.isfile(path):
+        return None
+    with open(path, "rb") as f:
+        raw = f.read()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    files = _source_files(pdir)
+    out = paper_structure.read(text, main, _all_questions(pdir, files), _design_meta(pdir))
+    out.update(file=main, digest=source_history.digest(raw), files=[fn for fn in files if fn != main])
+    return out
+
+
+@bp.route("/ui/api/structure")
+def api_structure():
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    fmt, _ = _main_source()
+    out = {"project": name, "format": fmt, "lock": bool(exam_lock(pdir)),
+           "copies_setting": core.get_option("nombre_copies")}
+    st = _structure(pdir)
+    if st:
+        out.update(st)
+    else:
+        out["error"] = ("Paper design works with LaTeX exams." if fmt != "latex"
+                        else "The main source file can't be read.")
+    return jsonify(out)
+
+
+@bp.route("/ui/api/structure", methods=["POST"])
+def api_structure_edit():
+    """Edits from the Paper design panel (ui_structure.apply) on the main
+    source, written through the history with the digest it was read at.
+    A renamed section renames the \\element wrappers in the other files."""
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    data = request.get_json(silent=True) or {}
+    pdir = core.project_dir()
+    fmt, path = _main_source()
+    main = core.main_source_file()
+    if fmt != "latex" or not path or not os.path.isfile(path):
+        return jsonify(error="Paper design works with LaTeX exams.")
+    with open(path, "rb") as f:
+        raw = f.read()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return jsonify(error="The main source isn't UTF-8 text, so it can't be changed here.")
+    based_on = str(data.get("based_on") or "") or None
+    if based_on and based_on != source_history.digest(raw):
+        return jsonify(error="The paper was changed since it was read. Reload to see the changes.", conflict=True)
+    files = _source_files(pdir)
+    ops = data.get("ops")
+    try:
+        new, what, renames = paper_structure.apply(text, ops, _design_meta(pdir),
+                                                   _all_questions(pdir, [fn for fn in files if fn != main]))
+    except questions_edit.EditError as e:
+        return jsonify(error=str(e))
+    out = new.encode("utf-8")
+    if refusal := write_refusal_bytes(path, out):
+        return jsonify(error=refusal, locked=True)
+    try:
+        dg = save_source(pdir, main, out, what, based_on=based_on)
+    except source_history.Conflict:
+        return jsonify(error="The paper was changed since it was read. Reload to see the changes.", conflict=True)
+    for old, new_name in renames:
+        for fn in files:
+            if fn == main:
+                continue
+            p2 = os.path.join(pdir, fn)
+            try:
+                with open(p2, "rb") as f:
+                    t2 = f.read().decode("utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            t3 = paper_structure.rename_elements(t2, old, new_name)
+            if t3 != t2 and not write_refusal_bytes(p2, t3.encode("utf-8")):
+                save_source(pdir, fn, t3.encode("utf-8"), f"Section {old} renamed to {new_name}")
+    copies = next((o.get("n") for o in ops if isinstance(o, dict) and o.get("op") == "copies"), None)
+    if copies is not None:
+        core.change_option("nombre_copies", int(copies))  # the app's copies follow the versions
+    add_activity(pdir, what)
+    core.emit_msg("ui-changed", "questions")
+    return jsonify(ok=True, digest=dg, what=what, structure=_structure(pdir))
+
+
 # ---------------------------------------------------------------- dashboard and new-exam wizard
 
 GALLERY_DIR = os.environ.get("AMC_UI_GALLERY", "/amc-web/gallery")
 STARTERS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "school_templates")
 STARTER_GROUP = gallery.STARTER_GROUP
 # Starters shown in the gallery; "blank" has a separate-answer-sheet variant.
-STARTERS = ("blank", "blank-txt")
+STARTERS = ("blank", "olympiad", "blank-txt")
 STARTER_VARIANTS = {("blank", "separate"): "blank-separate"}
 META_FIELDS = ("class", "subject", "date")
 
@@ -2278,8 +2411,16 @@ def gallery_templates():
     for tid in STARTERS:
         info = gallery.read_description(os.path.join(STARTERS_DIR, tid))
         if info:
-            out.append(dict(info, gid=STARTER_GROUP, id=tid, starter=True,
-                            format="plain" if tid.endswith("-txt") else "latex"))
+            t = dict(info, gid=STARTER_GROUP, id=tid, starter=True, format="plain" if tid.endswith("-txt") else "latex")
+            meta = _design_meta(os.path.join(STARTERS_DIR, tid))
+            if meta:  # a starter with blocks: what the wizard's Options step offers
+                values = _starter_params(os.path.join(STARTERS_DIR, tid))
+                t["design"] = {"wizard": meta.get("wizard") or {},
+                               "params": [dict(p, value=paper_structure.param_display(p, values[p["id"]]) if p["id"] in values else "")
+                                          for p in meta.get("params", []) if p.get("wizard")],
+                               "blocks": [{"id": b["id"], "title": b.get("title"), "text": b.get("text"),
+                                           "required": bool(b.get("required"))} for b in meta.get("blocks", []) if b.get("id")]}
+            out.append(t)
     for t in core.templates:
         out.append(dict(t, starter=False, format="plain" if "txt" in t["id"].lower() else "latex"))
     for t in out:
@@ -2315,7 +2456,48 @@ def gallery_file(gid, tid, kind):
     return send_file(path, max_age=86400)
 
 
-def _install_starter(tid, rep, style, code_digits):
+def _apply_design(rep, design, logo):
+    """The wizard's choices for a starter with blocks (blocks.json): the
+    school logo, parameters, blocks switched off, versions, and the
+    instructions summary from the sections."""
+    meta = _design_meta(rep)
+    if not meta:
+        return
+    texs = [f for f in os.listdir(rep) if f.endswith(".tex")]
+    main = text = None
+    for f in texs:
+        with open(os.path.join(rep, f), encoding="utf-8") as fh:
+            t = fh.read()
+        if "%%AMCUI:PARAMS%%" in t:
+            main, text = f, t
+            break
+    if not main:
+        return
+    others = _all_questions(rep, [f for f in texs if f != main])
+    ops = []
+    if logo:
+        ops.append({"op": "param_set", "id": "LogoLeft", "value": logo})
+    params = design.get("params") if isinstance(design.get("params"), dict) else {}
+    for pid, v in params.items():
+        if any(p.get("id") == pid and p.get("wizard") for p in meta.get("params", [])):
+            ops.append({"op": "param_set", "id": pid, "value": v})
+    blocks = design.get("blocks") if isinstance(design.get("blocks"), dict) else {}
+    for bid, on in blocks.items():
+        if not on:
+            ops.append({"op": "block_set", "id": bid, "on": False})
+    if design.get("versions"):
+        ops.append({"op": "copies", "n": design["versions"]})
+    ops.append({"op": "summary"})
+    for op in ops:  # one at a time: a bad value from the wizard skips that one only
+        try:
+            text, _, _ = paper_structure.apply(text, [op], meta, others)
+        except questions_edit.EditError:
+            continue
+    with open(os.path.join(rep, main), "w", encoding="utf-8") as fh:
+        fh.write(text)
+
+
+def _install_starter(tid, rep, style, code_digits, design=None):
     src = os.path.join(STARTERS_DIR, STARTER_VARIANTS.get((tid, style), tid))
     shutil.copytree(src, rep, dirs_exist_ok=True)
     school = branding()
@@ -2332,6 +2514,7 @@ def _install_starter(tid, rep, style, code_digits):
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(gallery.starter_source(text, fmt, school.get("name", ""), logo, code_digits,
                                                 separate=(style == "separate")))
+    _apply_design(rep, design or {}, logo)
     try:
         os.unlink(os.path.join(rep, "description.xml"))
     except OSError:
@@ -2359,11 +2542,14 @@ def on_create_exam(data):
             return 0
     copies, code_digits = number(data.get("copies"), 9999), number(data.get("code"), 12)
     style = "separate" if data.get("style") == "separate" else "paper"
+    design = data.get("design") if isinstance(data.get("design"), dict) else None
+    if design and design.get("versions"):  # a paper whose copies are its versions (A, B, C...)
+        copies = number(design.get("versions"), 26)
     if gid == STARTER_GROUP:
         if tid not in STARTERS:
             core.dialog_msg(warn="Unknown template.")
             return
-        _install_starter(tid, rep, style, code_digits)
+        _install_starter(tid, rep, style, code_digits, design)
         title = gallery.read_description(os.path.join(STARTERS_DIR, tid)).get("title", tid)
     else:
         if not any(t["gid"] == gid and t["id"] == tid for t in core.templates):
@@ -2384,7 +2570,7 @@ def on_create_exam(data):
     if gid == STARTER_GROUP and not tid.endswith("-txt") and gallery.needs_unicode_engine(branding().get("name", "")):
         core.change_option("moteur_latex_b", "xelatex")  # the starter's preamble follows the engine
     meta = {k: str(data.get(k) or "").strip()[:120] for k in META_FIELDS}
-    _update_record(rep, lambda rec: rec.__setitem__("meta", meta))
+    _update_record(rep, lambda rec: rec.update({"meta": meta, "starter": tid if gid == STARTER_GROUP else None}))
     add_activity(rep, f"Exam created from the template \"{title}\"")
     if core.main_source_file():
         source_history.note_current(rep, core.main_source_file(), by=_who(), what=f"Created from the template \"{title}\"")

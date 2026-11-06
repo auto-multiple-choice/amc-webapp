@@ -439,6 +439,58 @@ is built with `TEXLIVE_PKGS=texmf-dist-fontsextra` (the Dockerfile
 already has that build argument). The gallery build fails if a starter
 doesn't compile, so the starter is tested on every image build.
 
+How it was built (phase 8):
+- `server/ui_structure.py` reads and edits the paper's structure. A
+  section is a marked region (`%%AMCUI:SECTION name%%` …
+  `%%AMCUI:END SECTION%%`) rewritten from its fields: heading
+  (`\amcuiSectionHeading`), instructions (`\amcuiSectionText`), new page,
+  `\shufflegroup`, `multicols`, `\insertgroup[n]`. A plain
+  `\insertgroup` without markers is read as a section too and gets its
+  markers on its first edit; the heading macros (`%%AMCUI:MACROS%%`) and
+  `multicol` are added to the preamble when first needed. Each section
+  shows its pool against the count per copy, the marks of its questions
+  (from `\scoring`, the file's `\scoringDefaultS/M` or `\AMCnumericOpts`,
+  with `\def` macros expanded) and a warning when the pool is too small or
+  empty. Removing a section keeps its questions; groups no section uses
+  are listed with "Add a section for it". Renaming renames the
+  `\element` wrappers in every source file.
+- "Organise into a section" moves questions written directly in
+  `\onecopy` into `\element{main}{...}` blocks before it and puts one
+  section in their place; the questions read the same afterwards.
+- Blocks are `%%AMCUI:BLOCK id%%` regions. Off: the opening line reads
+  `… off%%` and the lines are kept, commented with `%|`, so on again
+  gives back the same text. `blocks.json` (copied into the exam) gives
+  titles, which parameters each block has, `fixed` (can't move: sections,
+  OMR sheet, which stays last) and `required` (can't be switched off).
+  Parameters are `\def\amcuiX{...}` lines in `%%AMCUI:PARAMS%%`, typed
+  (text escaped for LaTeX, latex, number with limits, file names checked).
+  The instructions summary (`%%AMCUI:SUMMARY%%`) is regenerated on demand
+  from the sections: one `\amcuiPoint` per section with its count, kind
+  and marks.
+- The Olympiad paper starter (`school_templates/olympiad/`): `exam.tex`
+  with the blocks and parameters, `paper-design.tex` with the layout
+  macros (header boxes, OMR sheet with class and registration grids,
+  numeric and objective answer areas, rough-work pages; never rewritten
+  by the panel) and `questions.tex` with eight sample questions in three
+  sections. Icons are FontAwesome when the image has it, Zapf Dingbats
+  (`pifont`) otherwise; the image built without `texmf-dist-fontsextra`
+  compiles it. The gallery build compiles it on every image build.
+- Wizard: for a starter with blocks the Options step asks for the
+  parameters marked `wizard` (prefilled with the exam name, date and the
+  starter's values), the parts to include and the number of versions
+  (`\onecopy{n}`; the app's copies follow). The school logo from
+  Appearance becomes the left logo.
+- Paper design is a third tab in Questions (`/ui/api/structure` GET and
+  POST, operations with `based_on`, written through `save_source()` and
+  refused by the lock after printing). Typing is coalesced and saved
+  0.9 s after the last keystroke; other changes at once. "Add a question"
+  in a section adds it in the file of that section's questions and opens
+  it in the form.
+- Not done: drag-and-drop (Move up/down buttons instead); editing the
+  notation list and the table of values in a form (they are edited in
+  the LaTeX tab); a second logo upload from the wizard (it is a setting
+  of the title lines afterwards); "copies differ" in the Papers step.
+
 ## 9. Technical approach
 
 Same rules as before: new code in new files, upstream files touched in
