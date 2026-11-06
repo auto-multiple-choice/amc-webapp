@@ -48,7 +48,7 @@ const STEPS = [
   { id: 'annotate', n: 10, label: 'Annotate', group: 'after', phase: 4, built: true },
 ];
 const GUIDES = {
-  questions: ['Write each question with its answers, and mark which answers are correct.', 'Save, then build the preview to see the question paper on the right.', 'If the build fails, the message explains why and links to the LaTeX log.'],
+  questions: ['Pick a question on the left and change it in the form: its text, answers, which answers are correct, scoring. Changes are saved as you type.', 'Add, move and delete questions with the buttons. Build the preview to see the question paper on the right.', 'Prefer LaTeX? The LaTeX tab edits the source itself; Edit in LaTeX jumps to the question.'],
   'marking-scheme': ['Choose how single- and multiple-answer questions are scored by default.', 'Set what the final mark is out of, and how it is rounded.', 'All of this can still change after printing.'],
   papers: ['Choose how many copies to print. Add a few spares.', 'Build the papers. The layout is detected automatically.', 'Check the layout in the preview, then confirm it looks correct. Printing opens after that.'],
   print: ['Save the PDFs and print them anywhere, or print directly when the shared machine runs Linux.', 'Print on A4 at 100% (actual size), never "fit to page".', 'The exam locks after printing: questions and layout can no longer change.'],

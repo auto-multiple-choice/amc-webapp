@@ -1670,7 +1670,7 @@ def api_questions():
             problem = "Two questions have this name in the source."
         elif s["problem"]:
             problem = s["problem"]
-        elif s["kind"] == "numeric":
+        elif s.get("kind") == "numeric":
             problem = "A numeric question is scored by its \\AMCnumericChoices options (scoreexact, scoreapprox): change them in Questions."
         elif not _agrees(s, amc, fresh):
             problem = "The source and AMC's reading of it don't agree for this question."

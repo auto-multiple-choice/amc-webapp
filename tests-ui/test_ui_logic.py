@@ -263,6 +263,7 @@ DefaultScoringM: haut=3
 tq = sc.read_txt(txt, "source.txt")
 check("txt: ids as AMC gives them", [q["id"] for q in tq] == ["Q001", "pref", "Q002"])
 check("txt: types and answers", [q["multiple"] for q in tq] == [False, True, False] and [a["correct"] for a in tq[1]["answers"]] == [True, False, True])
+check("txt: a kind like the LaTeX reader, so the marking panel reads both", [q["kind"] for q in tq] == ["single", "multiple", "single"])
 check("txt: the question's scoring", tq[1]["scoring"]["rule"] == "mz=2" and tq[0]["scoring"] is None)
 u1 = sc.set_correct(txt, tq[0], 2, True)
 check("txt: answer key change", "- René Coty\n+ Alain Prost" in u1 and same(txt, u1, "txt"))

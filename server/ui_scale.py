@@ -380,6 +380,7 @@ def read_txt(text, filename=""):
                        "scoring": ({"rule": sc[1:-1].strip(), "at": (after, after + len(sc)), "inner": (after + 1, after + len(sc) - 1)}
                                    if sc else None),
                        "scoring_insert": after}
+            current["kind"] = "multiple" if current["multiple"] else "single"
             questions.append(current)
             continue
         a = _TXT_A.match(line)
