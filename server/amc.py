@@ -948,6 +948,8 @@ def file_upload(dest):
         rep = project_dir();
         emit_msg("end-command");
         fn, ext = upload_file_parts(request_files[0])
+        if rep and (refusal := ui.upload_refusal(request_files[0], dest)):
+            return { "error": refusal }  # printed exam (ui.py)
         if rep:
             request_files[0].save(f"{rep}/{fn}");
             if dest=="source":
@@ -1038,6 +1040,8 @@ def io_data_capture(list_path):
     
 @socketio_name('ncopies')
 def io_ncopies(n):
+    if ui.refuse_if_locked("The number of copies can't change."):
+        return
     n = re.sub(r'[^0-9]+', '', str(n))
     if n:
         n = int(n)
@@ -1152,6 +1156,8 @@ def u_defects_list():
 @socketio_name("project-delete-file")
 def io_project_delete_file(data):
     filename, all_files = data
+    if ui.delete_refused(filename):
+        return
     path = fs_path_to_local(filename, with_fs=False, current_project=True)
     if path:
         try:
@@ -1281,6 +1287,8 @@ def io_doc_update(t):
     if not t:
         return { "error": "Document type missing" }
     app.logger.info(f"Doc update: {t} for {flask_g.project_name}")
+    if t == "sujet" and ui.refuse_if_locked("Rebuilding the question paper would make the printed papers unreadable."):
+        return
     emit_msg("begin-command")
 
     if t == "sujet":
@@ -2238,6 +2246,8 @@ def set_students_list(filepath):
 
 @socketio_name('set-config')
 def io_set_config(data):
+    if ui.option_refused(data[0]):
+        return
     success, name = change_option(*data)
     if success and (name in ANNOTATION_OPTIONS):
         annotate_source_change()
