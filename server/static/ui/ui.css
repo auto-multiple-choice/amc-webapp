@@ -196,6 +196,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
 
 .main {
   grid-area: main;
+  position: relative; /* keeps absolutely placed content (.sr-only labels) inside the scrolling area */
   overflow-y: auto;
   min-width: 0;
 }

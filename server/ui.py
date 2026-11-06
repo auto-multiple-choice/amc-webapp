@@ -11,6 +11,7 @@ Kept in its own file so merging AMC team updates stays easy.
 """
 
 import base64
+import hashlib
 import html
 import json
 import os
@@ -19,7 +20,7 @@ import sqlite3
 import time
 import uuid
 
-from flask import Blueprint, jsonify, make_response, render_template, request
+from flask import Blueprint, Response, abort, jsonify, make_response, render_template, request, send_file
 from flask import g as flask_g
 
 bp = Blueprint("ui", __name__)
@@ -161,11 +162,12 @@ def api_status():
         "docs": {d: os.path.isfile(f"{pdir}/DOC-{d}.pdf") for d in DOCUMENTS},
         "layout_pages": 0, "printed": None,
         "scans": 0, "failed": 0, "incomplete": 0, "to_check": 0,
-        "marked": 0, "matched": 0,
-        "students_list": bool(core.get_option("listeeleves")),
+        "marked": 0, "matched": 0, "not_in_list": 0, "unmatched": 0,
+        "students_list": bool(core.get_option("listeetudiants")),
         "exports": _files(f"{pdir}/exports"),
-        "annotated": len(_files(f"{pdir}/cr/corrections/pdf",
-                                exclude=("all-students.pdf",))),
+        "annotated": len(_files(_annotated_dir(pdir), exclude=("all-students.pdf",))),
+        "annotated_single": os.path.isfile(f"{_annotated_dir(pdir)}/all-students.pdf"),
+        "marks_info": None, "exports_stale": False, "annotated_stale": False,
     }
     if _has_db(pdir, "layout"):
         out["layout_pages"] = _query(db.layout_npages, 0)
@@ -191,9 +193,16 @@ def api_status():
                 and not (p.get("timestamp_manual") or 0) > 0)
     if _has_db(pdir, "scoring"):
         out["marked"] = _query(db.n_graded_students, 0)
-    if _has_db(pdir, "association"):
-        out["matched"] = _query(db.n_real_identifications, 0)
     rec = read_record(pdir)
+    if out["scans"]:
+        counts = {"auto": 0, "manual": 0, "none": 0, "unmatched": 0}
+        for s in _query(lambda: sheet_rows(pdir), []):
+            counts[s["state"]] += 1
+        out["matched"] = counts["auto"] + counts["manual"]
+        out["not_in_list"] = counts["none"]
+        out["unmatched"] = counts["unmatched"]
+    if out["marked"]:
+        out.update(results_freshness(pdir, rec, out))
     out["lock"] = exam_lock(pdir, rec)
     out["layout_ok"] = layout_confirmation(pdir, rec)
     out["format"] = "plain" if core.get_option("filter") == "plain" else "latex"
@@ -786,6 +795,573 @@ def on_accept_detected(data):
     core.emit_msg("ui-changed", "review")
 
 
+# ---------------------------------------------------------------- results
+#
+# Mark, Match students, Export marks, Annotate. AMC does the work
+# (prepare --mode b, note, association-auto, export, annotate); this adds
+# what the screens need: whether marks are out of date, the class list as
+# data, the sheets with their matches, and an activity entry for each run.
+
+def _annotated_dir(pdir):
+    return f"{pdir}/cr/corrections/pdf"
+
+
+PREVIEW_DIR = "cr/corrections"          # inside the exam folder
+PREVIEW_FILE = "ui-preview.pdf"         # one student's annotated sheet
+MARK_OPTIONS = ("note_max", "note_null", "note_min", "note_grain", "note_arrondi",
+                "note_max_plafond", "seuil", "seuil_up")
+EXPORT_OPTIONS = ("format_export", "export_include_abs", "export_ods_stats",
+                  "export_csv_ticked", "export_sort", "app_public_marks")
+ANNOTATE_OPTIONS = ("annote_position", "verdict", "regroupement_type",
+                    "modele_regroupement", "regroupement_compose", "add_corrected",
+                    "annotate_dont_overwrite")
+# AMC's own default header text (AMC::Config defaut_verdict)
+DEFAULT_VERDICT = "%(ID)\nMark: %s/%m (total score: %S/%M)"
+KEY_CANDIDATES = ("etud", "etu", "student", "number", "id", "ID")  # as upstream
+NOT_IN_LIST = "NONE"                    # AMC's manual match for "not in the list"
+
+
+def _db_for(pdir, *modules):
+    """An Amcdb with these modules, or None while one doesn't exist yet."""
+    if not all(_has_db(pdir, m) for m in modules):
+        return None
+    db = core.Amcdb(pdir)
+    for m in modules:
+        db.use_module(m)
+    db.db.row_factory = None
+    return db
+
+
+def marking_inputs(pdir):
+    """A fingerprint of what the marks depend on: the LaTeX or AMC-TXT
+    sources (scoring and answer key), the final mark settings, the
+    detection thresholds, and the scanned pages with every decision made in
+    Check scans. Marks computed from different inputs are out of date."""
+    h = hashlib.sha256()
+    main = core.main_source_file()
+    for f in sorted(os.listdir(pdir)):
+        path = os.path.join(pdir, f)
+        if (f == main or f.rsplit(".", 1)[-1].lower() in ("tex", "latex")) and os.path.isfile(path):
+            with open(path, "rb") as fh:
+                h.update(f.encode() + b"\0" + hashlib.sha256(fh.read()).digest())
+    h.update(json.dumps(core.get_options(list(MARK_OPTIONS)), sort_keys=True).encode())
+    db = _db_for(pdir, "capture")
+    if db:
+        for sql in ("SELECT student, page, copy, timestamp_auto, timestamp_manual"
+                    " FROM capture.capture_page ORDER BY 1, 2, 3",
+                    "SELECT student, page, copy, id_a, id_b, manual FROM capture.capture_zone"
+                    " WHERE type=4 AND manual>=0 ORDER BY 1, 2, 3, 4, 5"):
+            for row in _query(lambda sql=sql: db.db.execute(sql).fetchall(), []):
+                h.update(repr(tuple(row)).encode())
+    return h.hexdigest()[:32]
+
+
+def _newest(paths):
+    times = [os.path.getmtime(p) for p in paths if os.path.isfile(p)]
+    return max(times) if times else None
+
+
+def results_freshness(pdir, rec, status):
+    """Whether marks, exported files and annotated sheets are out of date.
+    Marks computed elsewhere (no record) count as up to date."""
+    marks = rec.get("marks") or {}
+    stale = marks["inputs"] != marking_inputs(pdir) if marks.get("inputs") else None
+    out = {"marks_info": {"at": marks.get("at"), "by": marks.get("by"), "stale": stale}}
+    since = max(marks.get("at") or 0, rec.get("matches_at") or 0)
+    newest = _newest([f"{pdir}/exports/{f}" for f in status["exports"]])
+    out["exports_stale"] = bool(newest and (stale or newest < since))
+    db = _db_for(pdir, "capture")
+    changed = _query(lambda: int(db.get_variable("capture", "annotate_source_change") or 0), 0) if db else 0
+    adir = _annotated_dir(pdir)
+    newest = _newest([f"{adir}/{f}" for f in _files(adir)])
+    out["annotated_stale"] = bool(newest and (stale or newest < max(since, changed)))
+    return out
+
+
+# ---- the class list
+
+def class_list():
+    """The exam's class list as data, or None when there is none. Uses
+    upstream's reader (comment lines, sniffed separator), so AMC and the
+    screens read the file the same way."""
+    path = core.students_list_file()
+    if not path:
+        return None
+    out = {"file": os.path.basename(path), "columns": [], "rows": [], "unique": [],
+           "key": None, "error": None}
+    try:
+        rows = [{k: (v or "").strip() for k, v in r.items() if k is not None}
+                for r in core.list_file_read(path)]
+        columns = core.list_file_headers(path)[1]
+    except Exception as e:  # unreadable, empty, or no separator found
+        core.app.logger.warning(f"Can't read class list {path}: {e}")
+        out["error"] = ("The class list can't be read. Save it as CSV with column "
+                        "names on the first line, one student per line.")
+        return out
+    out["columns"] = [c for c in columns if c]
+    out["rows"] = rows
+    out["unique"] = [c for c in out["columns"]
+                     if rows and len({r.get(c, "") for r in rows}) == len(rows)
+                     and all(r.get(c) for r in rows)]
+    key = core.get_option("liste_key")
+    if not key or key not in out["unique"]:
+        key = next((c for c in KEY_CANDIDATES if c in out["unique"]), None)
+        if key is None:  # same names, any case: "Student", "ID"
+            lower = {c.lower(): c for c in out["unique"]}
+            key = next((lower[c.lower()] for c in KEY_CANDIDATES if c.lower() in lower), None)
+        if key:
+            core.change_option("liste_key", key)
+    out["key"] = key
+    return out
+
+
+def _name_columns(columns):
+    o = core.get_options(["global:csv_name_headers", "global:csv_surname_headers"])
+    first = core.first_of(columns, "prenom", "name", "firstname", "first name",
+                          *core.headers_list(o["global:csv_name_headers"] or ""))
+    last = core.first_of(columns, "nom", "surname", "lastname", "last name",
+                         *core.headers_list(o["global:csv_surname_headers"] or ""))
+    return first, last
+
+
+def student_names(cl):
+    """id -> display name ("Surname Firstname", like upstream), from the class list."""
+    if not cl or cl.get("error") or not cl.get("key"):
+        return {}
+    first, last = _name_columns(cl["columns"])
+    other = next((c for c in cl["columns"] if c != cl["key"]), None)
+    names = {}
+    for i, r in enumerate(cl["rows"]):
+        parts = [r.get(last, ""), r.get(first, "")] if (first or last) else [r.get(other, "")]
+        names[r.get(cl["key"], "")] = " ".join(p for p in parts if p) or f"Student {i + 1}"
+    return names
+
+
+# ---- sheets and their matches
+
+def _match_state(auto, manual):
+    real = manual if manual is not None else auto
+    if real == NOT_IN_LIST:
+        return "none", None
+    if not real:
+        return "unmatched", None
+    return ("manual" if manual is not None else "auto"), real
+
+
+def sheet_rows(pdir):
+    """Every scanned answer sheet (a copy) with its match."""
+    db = _db_for(pdir, "capture")
+    if not db:
+        return []
+    assoc = _has_db(pdir, "association")
+    if assoc:
+        db.use_module("association")
+    rows = db.db.execute(
+        "SELECT p.student, p.copy, " + ("a.auto, a.manual" if assoc else "NULL, NULL")
+        + " FROM (SELECT student, copy FROM capture.capture_page GROUP BY student, copy) AS p"
+        + (" LEFT JOIN association.association_association AS a"
+           " ON a.student=p.student AND a.copy=p.copy" if assoc else "")
+        + " ORDER BY p.student, p.copy").fetchall()
+    out = []
+    for student, copy, auto, manual in rows:
+        state, real = _match_state(auto, manual)
+        out.append({"student": student, "copy": copy, "auto": auto, "manual": manual,
+                    "state": state, "id": real})
+    return out
+
+
+@bp.route("/ui/api/students")
+def api_students():
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    cl = class_list()
+    names = student_names(cl)
+    db = core.Amcdb(pdir)
+    codes = _query(db.codes_list, []) if _has_db(pdir, "scoring") else []
+    code = core.get_option("assoc_code")
+    if not code and len(codes) == 1:
+        code = codes[0]
+        core.change_option("assoc_code", code)
+    read = {}
+    if code and code != "<preassoc>" and _has_db(pdir, "scoring"):
+        sdb = _db_for(pdir, "scoring")
+        read = {(s, c): v for s, c, v in _query(lambda: sdb.db.execute(
+            "SELECT student, copy, value FROM scoring.scoring_code WHERE code=?",
+            (code,)).fetchall(), [])}
+    marked = set()
+    if _has_db(pdir, "scoring"):
+        sdb = _db_for(pdir, "scoring")
+        marked = {(s, c) for s, c in _query(lambda: sdb.db.execute(
+            "SELECT student, copy FROM scoring.scoring_mark").fetchall(), [])}
+    sheets = _query(lambda: sheet_rows(pdir), [])
+    taken = {}
+    for s in sheets:
+        s["name"] = names.get(s["id"]) if s["id"] else None
+        s["code_read"] = read.get((s["student"], s["copy"]))
+        s["marked"] = (s["student"], s["copy"]) in marked
+        if s["id"]:
+            taken.setdefault(s["id"], []).append([s["student"], s["copy"]])
+    students = [{"id": i, "name": n, "sheets": taken.get(i, [])} for i, n in names.items()]
+    students.sort(key=lambda x: x["name"].lower())
+    list_info = None
+    if cl:
+        list_info = {k: cl[k] for k in ("file", "columns", "unique", "key", "error")}
+        list_info["count"] = len(cl["rows"])
+    return jsonify(project=name, list=list_info, codes=codes, code=code or None,
+                   multiple=core.to_bool(core.get_option("multiple_copies")),
+                   sheets=sheets, students=students)
+
+
+@bp.route("/ui/namefield/<project>/<int:student>/<int:copy>")
+def namefield_image(project, student, copy):
+    """The name field AMC cut out of a scanned sheet. The exam is in the
+    address (not a header) so an <img> can load it."""
+    core.headers_info()
+    flask_g.project_name = project
+    try:
+        if not core.project_exists(project):
+            abort(404)
+    except ValueError:
+        abort(404)
+    pdir = core.project_dir()
+    db = _db_for(pdir, "capture")
+    row = _query(lambda: db.db.execute(
+        "SELECT image, imagedata FROM capture.capture_zone WHERE student=? AND copy=? AND type=2",
+        (student, copy)).fetchone()) if db else None
+    if not row:
+        abort(404)
+    image, data = row
+    if data:
+        mime = "image/png" if bytes(data[:4]) == b"\x89PNG" else "image/jpeg"
+        return Response(bytes(data), mimetype=mime, headers={"Cache-Control": "no-store"})
+    if image and not image.startswith("text:"):
+        path = os.path.realpath(os.path.join(pdir, "cr", image))
+        if path.startswith(os.path.realpath(pdir) + "/") and os.path.isfile(path):
+            return send_file(path, max_age=0)
+    abort(404)
+
+
+# ---- marks
+
+@bp.route("/ui/api/marks")
+def api_marks():
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    o = core.get_options(["note_max", "note_null", "note_grain"])
+    out = {"project": name, "rows": [], "rule_breaks": [], "options": o}
+    db = _db_for(pdir, "scoring")
+    if not db:
+        return jsonify(out)
+    match = {(s["student"], s["copy"]): s for s in _query(lambda: sheet_rows(pdir), [])}
+    names = student_names(class_list())
+    for student, copy, total, mx, mark in _query(lambda: db.db.execute(
+            "SELECT student, copy, total, max, mark FROM scoring.scoring_mark"
+            " ORDER BY student, copy").fetchall(), []):
+        m = match.get((student, copy), {})
+        out["rows"].append({"student": student, "copy": copy, "total": total, "max": mx,
+                            "mark": mark, "id": m.get("id"), "state": m.get("state", "unmatched"),
+                            "name": names.get(m.get("id")) if m.get("id") else None})
+    # Answers that break a question's rules, such as two boxes ticked on a
+    # single-answer question: AMC scores them with "e" and records why='E'.
+    if _has_db(pdir, "layout"):
+        db.use_module("layout")
+        out["rule_breaks"] = [
+            {"student": s, "copy": c, "question": q, "title": t, "page": p}
+            for s, c, q, t, p in _query(lambda: db.db.execute(
+                """SELECT s.student, s.copy, s.question, t.title,
+                     (SELECT min(b.page) FROM layout.layout_box AS b
+                       WHERE b.student=s.student AND b.question=s.question AND b.role=1)
+                   FROM scoring.scoring_score AS s
+                   LEFT JOIN scoring.scoring_title AS t ON t.question=s.question
+                   WHERE s.why='E' ORDER BY s.student, s.copy, s.question""").fetchall(), [])]
+    return jsonify(out)
+
+
+def on_mark(data=None):
+    """Compute the marks, always from the latest marking scheme and answer
+    key (as upstream's do-mark with "update the scale" ticked)."""
+    pdir = core.project_dir()
+    inputs = marking_inputs(pdir)
+    messages, variables = {}, {}
+    core.emit_msg("begin-command")
+    core.emit_msg("t", "Reading the marking scheme")
+    core.amc_command("prepare", "--mode", "b", "--progression-id", "MAJ", "--progression", "1",
+                     messages=messages, variables=variables)
+    core.u_exports_available()
+    core.emit_msg("t", "Computing the marks")
+    core.amc_command("note", "--progression-id", "GRD", "--progression", "1",
+                     messages=messages, variables=variables)
+    core.emit_msg("end-command")
+    if not messages.get("ERR"):
+        n = _query(core.get_db().n_graded_students, 0)
+        entry = {"at": int(time.time()), "by": _who(), "inputs": inputs}
+        _update_record(pdir, lambda rec: rec.__setitem__("marks", entry))
+        add_activity(pdir, f"Marks computed for {n} cop{'y' if n == 1 else 'ies'}")
+        core.emit_msg("ui-toast", f"Marks computed for {n} cop{'y' if n == 1 else 'ies'}.")
+    core.show_messages(messages, variables)
+    core.emit_msg("ui-changed", "marks")
+
+
+# ---- matching sheets to students
+
+def _matches_changed(pdir):
+    _update_record(pdir, lambda rec: rec.__setitem__("matches_at", int(time.time())))
+
+
+def on_class_list_loaded(data=None):
+    cl = class_list()
+    pdir = core.project_dir()
+    if cl and not cl["error"]:
+        add_activity(pdir, f"Class list loaded: {cl['file']} ({len(cl['rows'])} students)")
+    core.emit_msg("ui-changed", "students")
+
+
+def on_class_list_remove(data=None):
+    """Remove the class list file and every match (as upstream's
+    studentslist-delete)."""
+    pdir = core.project_dir()
+    path = core.students_list_file()
+    if path and os.path.realpath(path).startswith(os.path.realpath(pdir) + "/"):
+        try:
+            os.unlink(path)
+        except OSError as e:
+            core.app.logger.error(f"Can't delete class list {path}: {e}")
+    if _has_db(pdir, "association"):
+        core.clear_data("assoc")
+    core.set_students_list("")
+    _matches_changed(pdir)
+    add_activity(pdir, "Class list removed, with every match")
+    core.emit_msg("ui-changed", "students")
+
+
+def on_match_auto(data=None):
+    pdir = core.project_dir()
+    db = core.get_db()
+    core.emit_msg("begin-command")
+    core.emit_msg("t", "Matching sheets to students")
+    messages, variables = core.amc_command("association-auto")
+    core.emit_msg("end-command")
+    n = _query(lambda: db.n_identifications(manual=False), 0) if _has_db(pdir, "association") else 0
+    if not messages.get("ERR"):
+        db.set_variable("association", "key_in_list", core.get_option("liste_key"))
+        db.set_variable("association", "code", core.get_option("assoc_code"))
+        db.annotate_source_change()
+        _matches_changed(pdir)
+        add_activity(pdir, f"Automatic matching: {n} sheet{'' if n == 1 else 's'} matched")
+        core.emit_msg("ui-toast", f"{n} sheet{' was' if n == 1 else 's were'} matched automatically.")
+        messages["INFO"] = []  # the count is shown above
+    core.show_messages(messages)
+    core.emit_msg("ui-changed", "matches")
+
+
+def on_match(data):
+    """Match one sheet: to a student (their id in the class list), to
+    nobody in the list ("NONE"), or back to the automatic match (None).
+    A student already matched to another sheet is taken off it, unless one
+    student may have several sheets; that sheet goes back to the sheets to
+    match."""
+    data = data if isinstance(data, dict) else {}
+    try:
+        student, copy = int(data["student"]), int(data["copy"])
+    except (KeyError, TypeError, ValueError):
+        core.dialog_msg(warn="This sheet couldn't be matched.")
+        return
+    sid = data.get("id")
+    sid = None if sid is None else str(sid).strip()[:200] or None
+    pdir = core.project_dir()
+    if sid not in (None, NOT_IN_LIST) and sid not in student_names(class_list()):
+        core.dialog_msg(warn=f"No student with the code {html.escape(sid)} in the class list.")
+        return
+    if not _has_db(pdir, "association"):
+        core.amc_command("db", "upgrade")  # creates AMC's databases, as opening an exam does
+    db = core.get_db()
+    db.use_module("association")
+    db.use_module("capture")
+    db.db.row_factory = None
+    freed = []
+    if sid not in (None, NOT_IN_LIST) and not core.to_bool(core.get_option("multiple_copies")):
+        freed = [list(r) for r in db.db.execute(
+            """SELECT student, copy FROM association.association_association
+               WHERE (manual=? OR (auto=? AND manual IS NULL)) AND NOT (student=? AND copy=?)""",
+            (sid, sid, student, copy)).fetchall()]
+        for s, c in freed:
+            db.db.execute("UPDATE association.association_association SET manual='' "
+                          "WHERE student=? AND copy=?", (s, c))
+    cur = db.db.execute("INSERT OR IGNORE INTO association.association_association "
+                        "(student, copy, manual, auto) VALUES (?, ?, ?, NULL)", (student, copy, sid))
+    if cur.rowcount <= 0:
+        db.db.execute("UPDATE association.association_association SET manual=? "
+                      "WHERE student=? AND copy=?", (sid, student, copy))
+    db.commit()
+    db.annotate_source_change()
+    _matches_changed(pdir)
+    core.emit_msg("ui-matched", {"student": student, "copy": copy, "id": sid, "freed": freed})
+
+
+def on_match_clear(data=None):
+    pdir = core.project_dir()
+    if _has_db(pdir, "association"):
+        core.get_db().clear_associations()
+    _matches_changed(pdir)
+    add_activity(pdir, "Every match removed")
+    core.emit_msg("ui-changed", "matches")
+
+
+# ---- export
+
+def _export_module():
+    return "CSV" if (core.get_option("format_export") or "").lower() == "csv" else "ods"
+
+
+@bp.route("/ui/api/export")
+def api_export():
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    o = core.get_options(list(EXPORT_OPTIONS))
+    o["format_export"] = _export_module()
+    files = [{"name": f, "time": int(os.path.getmtime(f"{pdir}/exports/{f}")),
+              "size": os.path.getsize(f"{pdir}/exports/{f}")} for f in _files(f"{pdir}/exports")]
+    link = None
+    if core.to_bool(o["app_public_marks"]):
+        link = f"{request.root_url}public/{core.project_uuid()}/marks.csv"
+    return jsonify(project=name, options=o, files=files, public_link=link)
+
+
+def on_export(data=None):
+    pdir = core.project_dir()
+    module = _export_module()
+    os.makedirs(f"{pdir}/exports", exist_ok=True)
+    core.emit_msg("begin-command")
+    core.emit_msg("t", "Exporting the marks")
+    messages, variables = core.amc_command(
+        "export", "--module", module, "--output", f"{pdir}/exports/marks.{module.lower()}",
+        "--export-ods-filter")
+    core.emit_msg("end-command")
+    if not messages.get("ERR"):
+        add_activity(pdir, f"Marks exported ({module.upper()})")
+    core.show_messages(messages)
+    core.emit_msg("ui-exported", {"file": f"marks.{module.lower()}", "ok": not messages.get("ERR")})
+    core.emit_msg("ui-changed", "exports")
+
+
+# ---- annotate
+
+def _annotated_files(pdir, names):
+    """Annotated sheets with the copy and student they belong to (AMC's
+    report of annotated files), then any other PDF in the folder."""
+    adir = _annotated_dir(pdir)
+    present = set(_files(adir))
+    out = []
+    db = _db_for(pdir, "report") if _has_db(pdir, "report") else None
+    if db:
+        match = {(s["student"], s["copy"]): s for s in _query(lambda: sheet_rows(pdir), [])}
+        for s, c, f in _query(lambda: db.db.execute(
+                "SELECT student, copy, file FROM report.report_student WHERE type=1"
+                " ORDER BY student, copy").fetchall(), []):
+            if f in present:
+                m = match.get((s, c), {})
+                out.append({"file": f, "student": s, "copy": c,
+                            "name": names.get(m.get("id")) if m.get("id") else None})
+                present.discard(f)
+    for f in sorted(present):
+        if f.lower().endswith(".pdf"):
+            out.append({"file": f, "student": None, "copy": None, "name": None,
+                        "all": f == "all-students.pdf"})
+    return out
+
+
+@bp.route("/ui/api/annotate")
+def api_annotate():
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    o = core.get_options(list(ANNOTATE_OPTIONS))
+    preview = f"{pdir}/{PREVIEW_DIR}/{PREVIEW_FILE}"
+    return jsonify(project=name, options=o, default_verdict=DEFAULT_VERDICT,
+                   files=_annotated_files(pdir, student_names(class_list())),
+                   preview=f"{PREVIEW_DIR}/{PREVIEW_FILE}" if os.path.isfile(preview) else None)
+
+
+def on_annotate(data=None):
+    """Annotate every sheet (as upstream's do-annotate)."""
+    pdir = core.project_dir()
+    single = core.get_option("regroupement_type") == "ALL"
+    keep = core.to_bool(core.get_option("annotate_dont_overwrite"))
+    if not (single or keep):
+        core.unlink_indiv_annotated()
+    core.emit_msg("begin-command")
+    core.emit_msg("t", "Annotating the answer sheets")
+    messages, variables = core.amc_command(
+        "annotate", *(["--single-output", "all-students.pdf"] if single else []),
+        "--progression-id", "ANNOT", "--progression", "1", "--changes-only")
+    core.emit_msg("end-command")
+    if messages.get("ERR"):
+        core.annotate_source_change()
+    else:
+        n = len(_files(_annotated_dir(pdir), exclude=("all-students.pdf",)))
+        add_activity(pdir, "Annotated sheets made: " + ("one file for the class" if single
+                                                        else f"{n} file{'' if n == 1 else 's'}"))
+    core.show_messages(messages)
+    core.emit_msg("ui-changed", "annotated")
+
+
+def on_annotate_preview(data):
+    """Annotate one sheet into a separate file, to check the settings.
+    AMC doesn't record single-file output as a student's annotated sheet,
+    so this leaves the real annotated sheets alone."""
+    data = data if isinstance(data, dict) else {}
+    try:
+        student, copy = int(data["student"]), int(data["copy"])
+    except (KeyError, TypeError, ValueError):
+        core.dialog_msg(warn="Choose a sheet to preview.")
+        return
+    pdir = core.project_dir()
+    out_dir = f"{pdir}/{PREVIEW_DIR}"
+    os.makedirs(out_dir, exist_ok=True)
+    try:
+        os.unlink(f"{out_dir}/{PREVIEW_FILE}")
+    except OSError:
+        pass
+    id_file = core.amc_user_tmp("annotate-preview.txt", is_file=True)
+    with open(id_file, "w") as f:
+        f.write(f"{student}:{copy}\n" if copy else f"{student}\n")
+    core.emit_msg("begin-command")
+    core.emit_msg("t", "Annotating one sheet")
+    messages, variables = core.amc_command(
+        "annotate", "--id-file", id_file, "--pdf-dir", out_dir, "--single-output", PREVIEW_FILE,
+        "--progression-id", "ANNOT", "--progression", "1")
+    core.emit_msg("end-command")
+    ok = os.path.isfile(f"{out_dir}/{PREVIEW_FILE}")
+    if messages.get("ERR") or not ok:
+        if not messages.get("ERR"):
+            messages["ERR"].append(":AMC didn't make the preview.")
+        core.show_messages(messages)
+    core.emit_msg("ui-annotate-preview", {"file": f"{PREVIEW_DIR}/{PREVIEW_FILE}" if ok else None,
+                                          "student": student, "copy": copy})
+
+
+def class_list_refusal(filename):
+    """In /upload/students: a class list is a .csv or .txt file, and it
+    can't replace one of the exam's own files."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ("csv", "txt"):
+        return "A class list is a CSV file (.csv or .txt)."
+    pdir = core.project_dir()
+    main = core.main_source_file()
+    if filename in (RECORD, "options.xml", main) or (
+            os.path.isfile(os.path.join(pdir, filename)) and ext == "txt"
+            and core.get_option("filter") == "plain"):
+        return f"{filename} is one of the exam's own files. Rename the class list and upload it again."
+    return None
+
+
 SOCKET_EVENTS = {
     "ui-layout-ok": on_layout_ok,
     "ui-mark-printed": on_mark_printed,
@@ -794,4 +1370,13 @@ SOCKET_EVENTS = {
     "ui-scoring-defaults": on_scoring_defaults,
     "ui-review-page": on_review_page,
     "ui-accept-detected": on_accept_detected,
+    "ui-mark": on_mark,
+    "ui-class-list-loaded": on_class_list_loaded,
+    "ui-class-list-remove": on_class_list_remove,
+    "ui-match-auto": on_match_auto,
+    "ui-match": on_match,
+    "ui-match-clear": on_match_clear,
+    "ui-export": on_export,
+    "ui-annotate": on_annotate,
+    "ui-annotate-preview": on_annotate_preview,
 }

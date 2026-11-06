@@ -962,6 +962,8 @@ def file_upload(dest):
         rep = project_dir();
         emit_msg("end-command");
         fn, ext = upload_file_parts(request_files[0])
+        if rep and (refusal := ui.class_list_refusal(fn)):
+            return { "error": refusal }  # not a class list (ui.py)
         if rep:
             request_files[0].save(f"{rep}/{fn}");
             set_students_list("%PROJET/" + fn)
