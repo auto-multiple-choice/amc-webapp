@@ -201,7 +201,7 @@ The box size and spacing come from the RJ settings
 - Paper size (A4, Letter), font size (10, 11, 12 pt), margins.
 - **Footer:** a pattern with fields, e.g. `Level {level} // Code {code} //
   Page {page}` or `Page {page} of {pages}`, its alignment and border (none,
-  dashed, solid). The same on both sheets, or one per sheet.
+  dashed, solid). The same on both sheets, or one per sheet. If `{level}` is null then we should not print `Level {level} // ` in question paper.
 - **Same number of pages in every copy** (`\AMCaddpagesto{n}`), so the
   answer sheet is always the last sheet.
 - Box style and spacing on the answer sheet (section 6).
