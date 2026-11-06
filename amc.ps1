@@ -53,6 +53,9 @@ Shared machine (sign-in, HTTPS, one projects folder per teacher):
   user enable NAME     Re-enable a disabled account
   cert                 Show how browsers can trust the app's HTTPS certificate
 
+  printer              Direct printing is Linux only; on Windows, teachers save
+                       the PDFs in the Print step and print them anywhere
+
   backup               Save all projects (and, on a shared machine, accounts and
                        the certificate authority) to AMC_DATA_DIR/backups
   help                 Show this help
@@ -655,6 +658,7 @@ switch ($command) {
   'user'    { Invoke-User $rest }
   'cert'    { Invoke-Cert }
   'backup'  { Invoke-Backup }
+  'printer' { Die 'Direct printing only works when the shared machine runs Linux. On Windows, teachers save the PDFs in the Print step and print them from any computer.' }
   { $_ -in 'help', '-h', '--help', '/?' } { Show-Usage }
   default   { Show-Usage; exit 1 }
 }
