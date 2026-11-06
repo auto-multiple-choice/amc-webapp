@@ -1222,7 +1222,8 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { if (S.dialog) { S.dialog = null; renderLayer(); } else if (S.menu) { S.menu = false; renderTop(); } return; }
-  if (S.dialog || e.target.closest('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
+  const typing = e.target instanceof Element && e.target.closest('input, textarea, select');
+  if (S.dialog || typing || e.metaKey || e.ctrlKey || e.altKey) return;
   if (route.kind === 'exam' && route.step === 'check-scans' && scanned() && boxesLeft()) {
     if (e.key === 't' || e.key === 'T') decide(true);
     else if (e.key === 'n' || e.key === 'N') decide(false);
@@ -1288,3 +1289,8 @@ if (S.marked) settleScans();
 if (S.logo) { const img = new Image(); img.onload = () => { S.logoColors = logoColors(img); renderAll(true); }; img.src = S.logo; }
 protoPanel();
 renderAll();
+if (qs.get('selftest')) {
+  const t = document.createElement('script');
+  t.src = 'prototype-selftest.js';
+  document.body.appendChild(t);
+}

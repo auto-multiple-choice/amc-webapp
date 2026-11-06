@@ -39,5 +39,6 @@ GitLab doesn't display HTML pages, so open it from a local copy.
 |---|---|
 | `server/static/ui/ui.css` | The design system: colour tokens (light, dark, branding), layout and components. Phase 1 reuses it as is. |
 | `doc/design/prototype.html`, `prototype.js`, `prototype.css` | The mock-up: screens, made-up data and drawn papers. Not used by the app. |
+| `doc/design/prototype-selftest.js` | Clicks through a whole exam and reports PASS/FAIL. Open `prototype.html?selftest=1` and scroll to the bottom. |
 
 Icons come from the Iconoir set already bundled with the app (`src-icons/iconoir.css`).
