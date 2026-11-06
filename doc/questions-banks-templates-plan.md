@@ -384,6 +384,13 @@ into the exam folder; the sandboxed LaTeX run never touches them.
 
 ## 8. RJ template and the Paper design panel
 
+> **Superseded (November 2026, review of MR !12).** The Olympiad paper
+> starter described here, a fixed list of parts switched on and off, is
+> not what we want. It is replaced by the RJ Style Paper Builder: rows and
+> columns of blocks on a 12-column grid, for the question paper and the
+> OMR sheet. See `paper-builder-plan.md`. The sections model (section 6)
+> stays.
+
 **The starter** (`server/school_templates/olympiad/`): the RJ files
 reorganised into one `exam.tex` plus `amc-preamble.tex` and
 `paper-template.tex`, where every optional part is a **block** between
@@ -531,7 +538,7 @@ Each phase one branch and one merge request, as before.
 |---|---|---|---|
 | **6 Source history** | `write_source()` with history, "changed meanwhile" check, deleted files kept, built-OK marker, History tab with diff and restore, editor drafts in the browser, main source undeletable | new | M |
 | **7 Question editor** | Parser extension (spans, numeric, explanation, figure, macro rules), question list and form with instant maths preview, add / delete / reorder / retype, read-only after printing, "Edit in LaTeX" at the line | #4 | L |
-| **8 Structure and RJ template** | Sections model and panel, conversion of unstructured exams, generated instructions, the olympiad starter with blocks, Paper design tab, second logo, `pifont`/FontAwesome switch | new | L |
+| **8 Structure and RJ template** | Sections model and panel, conversion of unstructured exams, generated instructions, the olympiad starter with blocks, Paper design tab, second logo, `pifont`/FontAwesome switch. The olympiad starter is superseded by the RJ Style Paper Builder (`paper-builder-plan.md`, steps B0 to B4) | new | L |
 | **9 Question banks** | Bank folders and page, import from editor, exams and files, tags and search, picker with fixed and per-copy insertion, usage, "Update the bank's copy" | #5 | L |
 | later | Shared school banks published by admins; "save an exam as a template" (from the earlier plan); AMC-TXT support if wanted | | |
 
@@ -562,3 +569,5 @@ be built in parallel by two people once 6 is merged; 9 needs both.
 5. Build the image with `texmf-dist-fontsextra` for the icons, or accept
    the `pifont` look?
 6. Order: 6 → 7 → 8 → 9, or banks (9) before the RJ template (8)?
+   Decided 6 → 7 → 8 → 9; the paper builder that replaces the olympiad
+   starter is placed in `paper-builder-plan.md` (section 14, point 3).
