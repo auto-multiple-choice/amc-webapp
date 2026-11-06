@@ -1,0 +1,13 @@
+# Files the image never uses. The Dockerfile only copies requirements.txt,
+# Makefile, server/ and src-icons/.
+.git
+.env
+doc
+tests
+venv
+**/__pycache__
+
+# macOS metadata. On exFAT/FAT drives macOS writes a "._name" twin next to
+# files, and Docker's build fails trying to read them.
+**/._*
+**/.DS_Store

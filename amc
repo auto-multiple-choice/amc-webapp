@@ -1,0 +1,372 @@
+#!/usr/bin/env bash
+# AMC web app launcher for macOS and Linux (on Windows, use amc.cmd).
+# Run `./amc help` for the list of commands.
+#
+# Keep this file working with bash 3.2, the version macOS ships.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+
+SERVICE=amc-web          # service name in docker-compose.yml
+IMAGE=amc-web            # image name in docker-compose.yml
+MIN_COMPOSE=2.24.4       # first version supporting `!override`
+
+if [ -t 1 ]; then
+  B=$'\033[1m'; RED=$'\033[31m'; YEL=$'\033[33m'; GRN=$'\033[32m'; N=$'\033[0m'
+else
+  B=; RED=; YEL=; GRN=; N=
+fi
+say()  { printf '%s==>%s %s\n' "$B" "$N" "$*"; }
+ok()   { printf '%sOK%s  %s\n' "$GRN" "$N" "$*"; }
+warn() { printf '%sWarning:%s %s\n' "$YEL" "$N" "$*" >&2; }
+die()  { printf '%sError:%s %s\n' "$RED" "$N" "$*" >&2; exit 1; }
+
+usage() {
+  cat <<EOF
+AMC web app launcher
+
+Usage: ./amc <command> [options]
+
+Commands:
+  start [--no-open]    Build if needed, start the app and open it in the browser
+  stop                 Stop the app (projects are kept)
+  restart [--no-open]  Stop, then start (needed after editing .env)
+  status               Show whether the app is running, and where
+  logs                 Follow the server log (Ctrl+C to quit)
+  open                 Open the app in the browser
+  update [--no-open]   Pull the latest version of this repository, then restart
+  import <folder>...   Copy existing AMC project folders into the app
+  help                 Show this help
+
+Settings are in .env, created on first start (see .env.example).
+EOF
+}
+
+# --- settings ---------------------------------------------------------------
+
+# env_get KEY DEFAULT: value of KEY in .env, or DEFAULT.
+env_get() {
+  local line
+  line=$(grep -E "^[[:space:]]*$1=" .env 2>/dev/null | tail -n 1 || true)
+  if [ -z "$line" ]; then printf '%s' "$2"; return 0; fi
+  line=${line#*=}
+  line=${line%$'\r'}
+  line=${line%\"}; line=${line#\"}
+  line=${line%\'}; line=${line#\'}
+  printf '%s' "$line"
+}
+
+detect_tz() {
+  local tz=""
+  if [ -L /etc/localtime ]; then
+    tz=$(readlink /etc/localtime | sed -n 's|.*zoneinfo/||p')
+  elif [ -r /etc/timezone ]; then
+    tz=$(head -n 1 /etc/timezone)
+  fi
+  printf '%s' "${tz:-UTC}"
+}
+
+# The user who should own the data, even when run with sudo on Linux.
+real_home() {
+  if [ -n "${SUDO_USER:-}" ] && command -v getent >/dev/null 2>&1; then
+    getent passwd "$SUDO_USER" | cut -d: -f6
+  else
+    printf '%s' "$HOME"
+  fi
+}
+
+ensure_env() {
+  [ -f .env ] && return 0
+  say "First run: writing settings to .env"
+  {
+    echo "# AMC web app settings (see .env.example). Run ./amc restart after editing."
+    echo "AMC_PORT=8090"
+    echo "AMC_BIND=127.0.0.1"
+    echo "AMC_DATA_DIR=$(real_home)/AMC-Web"
+    if [ "$(uname -s)" = Linux ]; then
+      echo "AMC_UID=${SUDO_UID:-$(id -u)}"
+      echo "AMC_GID=${SUDO_GID:-$(id -g)}"
+    fi
+    echo "TZ=$(detect_tz)"
+    echo "AMC_SERVER_LOGGING=INFO"
+  } > .env
+}
+
+load_settings() {
+  PORT=$(env_get AMC_PORT 8090)
+  BIND=$(env_get AMC_BIND 127.0.0.1)
+  DATA_DIR=$(env_get AMC_DATA_DIR "")
+  case $PORT in ''|*[!0-9]*) die "AMC_PORT in .env must be a number (got '$PORT')." ;; esac
+  case $DATA_DIR in
+    /*) ;;
+    '') die "AMC_DATA_DIR is not set in .env." ;;
+    *)  die "AMC_DATA_DIR in .env must be an absolute path (got '$DATA_DIR')." ;;
+  esac
+  URL="http://localhost:$PORT"
+}
+
+# --- docker -----------------------------------------------------------------
+
+# version_ge A B: true when version A >= version B.
+version_ge() {
+  [ "$(printf '%s\n%s\n' "$2" "$1" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)" = "$2" ]
+}
+
+ensure_docker() {
+  command -v docker >/dev/null 2>&1 ||
+    die "Docker is not installed. Get Docker Desktop (macOS) or Docker Engine (Linux): https://docs.docker.com/get-docker/"
+  docker compose version >/dev/null 2>&1 ||
+    die "The 'docker compose' command is missing. Install Docker Compose v2: https://docs.docker.com/compose/install/"
+
+  if ! docker info >/dev/null 2>&1; then
+    case "$(uname -s)" in
+      Darwin)
+        say "Starting Docker Desktop..."
+        open -a Docker 2>/dev/null || die "Could not start Docker Desktop. Start it from Applications, then try again."
+        local i=0
+        until docker info >/dev/null 2>&1; do
+          i=$((i + 1))
+          [ "$i" -le 90 ] || die "Docker Desktop did not start within 3 minutes."
+          sleep 2
+        done
+        ;;
+      *)
+        if docker info 2>&1 | grep -qi 'permission denied'; then
+          die "Your user can't use Docker. Run 'sudo usermod -aG docker \$USER', log out and back in, then try again."
+        fi
+        die "Docker is not running. Start it with: sudo systemctl start docker"
+        ;;
+    esac
+  fi
+
+  local v
+  v=$(docker compose version --short 2>/dev/null | sed 's/^v//')
+  v=${v%%[-+]*}
+  version_ge "$v" "$MIN_COMPOSE" ||
+    die "Docker Compose $v is too old; $MIN_COMPOSE or newer is needed. Please update Docker."
+}
+
+running() { [ -n "$(docker compose ps --status running -q "$SERVICE" 2>/dev/null)" ]; }
+
+# Host port the running container publishes, or nothing.
+published_port() { docker compose port "$SERVICE" 8080 2>/dev/null | sed 's/.*://' || true; }
+
+# port_in_use PORT: true (and prints who, if known) when something answers on it.
+port_in_use() {
+  local who="" rc4=0 rc6=0
+  if command -v lsof >/dev/null 2>&1; then
+    who=$(lsof -nP -iTCP:"$1" -sTCP:LISTEN 2>/dev/null | awk 'NR > 1 {print $1 " (pid " $2 ")"}' | sort -u | paste -sd ',' - | sed 's/,/, /g' || true)
+  fi
+  if command -v curl >/dev/null 2>&1; then
+    curl -s -m 2 -o /dev/null "http://127.0.0.1:$1/" || rc4=$?
+    curl -s -m 2 -o /dev/null -g "http://[::1]:$1/" || rc6=$?
+    # 7 = connection refused, i.e. nothing is listening.
+    if [ "$rc4" -eq 7 ] && [ "$rc6" -eq 7 ] && [ -z "$who" ]; then return 1; fi
+  elif [ -z "$who" ]; then
+    return 1
+  fi
+  printf '%s' "${who:-another program}"
+}
+
+# --- helpers ----------------------------------------------------------------
+
+write_version() {
+  command -v git >/dev/null 2>&1 || return 0
+  local v line f=server/version.py
+  v=$(git describe --tags --always --dirty 2>/dev/null || true)
+  [ -n "$v" ] || return 0
+  line="APP_VERSION=\"$v\""
+  if [ -f "$f" ] && [ "$(cat "$f")" = "$line" ]; then return 0; fi
+  printf '%s\n' "$line" > "$f"
+}
+
+# The image copies the app files with their permissions from this folder.
+# When the app runs as a user other than the image's own (uid 1000, set via
+# AMC_UID on Linux), it can only read files that everyone may read, which a
+# checkout made with a strict umask, or on an exFAT/NTFS drive, doesn't allow.
+check_readable() {
+  local uid
+  uid=$(env_get AMC_UID 1000)
+  [ "$uid" = 1000 ] && return 0
+  if [ -n "$(find server src-icons Makefile requirements.txt \
+      \( -type f ! -perm -o=r \) -o \( -type d ! -perm -o=rx \) 2>/dev/null | head -n 1)" ]; then
+    die "Some app files in this folder aren't readable by other users, so the app can't run as uid $uid. Fix it with: chmod -R a+rX \"$ROOT\""
+  fi
+}
+
+# On exFAT/FAT drives macOS stores file metadata in "._name" twin files, and
+# Docker's build fails reading them before .dockerignore is even applied.
+# They only hold metadata (such as a download-provenance tag), so drop them.
+remove_appledouble() {
+  [ "$(uname -s)" = Darwin ] || return 0
+  find "$ROOT" -path "$ROOT/.git" -prune -o -name '._*' -type f -exec rm -f {} + 2>/dev/null || true
+}
+
+wait_ready() {
+  local i=0 body
+  command -v curl >/dev/null 2>&1 || { sleep 5; return 0; }
+  while :; do
+    body=$(curl -fs -m 3 "http://127.0.0.1:$PORT/" 2>/dev/null || true)
+    case $body in *'<title>AMC'*) return 0 ;; esac
+    i=$((i + 1))
+    if [ "$i" -gt 60 ]; then
+      docker compose logs --tail 30 "$SERVICE" >&2 || true
+      die "The app did not answer at $URL within 2 minutes (server log above)."
+    fi
+    sleep 2
+  done
+}
+
+lan_address() {
+  case "$(uname -s)" in
+    Darwin)
+      local ifc
+      ifc=$(route -n get default 2>/dev/null | awk '/interface:/ {print $2}' || true)
+      ipconfig getifaddr "${ifc:-en0}" 2>/dev/null || true
+      ;;
+    *) hostname -I 2>/dev/null | awk '{print $1}' || true ;;
+  esac
+}
+
+open_url() {
+  case "$(uname -s)" in
+    Darwin) open "$1" ;;
+    *)
+      if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$1" >/dev/null 2>&1 &
+      else
+        return 1
+      fi
+      ;;
+  esac
+}
+
+parse_open_flag() {
+  OPEN_BROWSER=1
+  local a
+  for a in "$@"; do
+    case $a in
+      --no-open) OPEN_BROWSER=0 ;;
+      *) die "Unknown option: $a" ;;
+    esac
+  done
+}
+
+# --- commands ---------------------------------------------------------------
+
+cmd_start() {
+  parse_open_flag "$@"
+  ensure_docker
+  ensure_env
+  load_settings
+
+  if [ "$(published_port)" != "$PORT" ]; then
+    local who
+    if who=$(port_in_use "$PORT"); then
+      die "Port $PORT is already used by $who. Set another AMC_PORT in .env, then run ./amc start again."
+    fi
+  fi
+
+  mkdir -p "$DATA_DIR/MC-Projects" || die "Could not create $DATA_DIR/MC-Projects"
+  check_readable
+  write_version
+  remove_appledouble
+
+  if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    say "First start: building the app. This downloads AMC and LaTeX (a few GB) and takes 10-30 minutes; later starts take seconds."
+  fi
+  say "Starting the AMC web app..."
+  docker compose up -d --build
+  wait_ready
+
+  ok "AMC is running at $URL"
+  echo "    Projects folder: $DATA_DIR/MC-Projects"
+  if [ "$BIND" = 127.0.0.1 ]; then
+    echo "    Reachable from this computer only."
+  else
+    local ip; ip=$(lan_address)
+    [ -n "$ip" ] && echo "    Others on your network: http://$ip:$PORT"
+    warn "The app is reachable from the network and has no login yet."
+  fi
+
+  if [ "$OPEN_BROWSER" = 1 ]; then
+    open_url "$URL" || echo "    Open $URL in your browser."
+  fi
+}
+
+cmd_stop() {
+  ensure_docker
+  docker compose down
+  ok "Stopped. Your projects are kept."
+}
+
+cmd_status() {
+  ensure_docker
+  if [ ! -f .env ]; then echo "Not set up yet. Run ./amc start"; return 0; fi
+  load_settings
+  if running; then ok "Running at $URL"; else echo "Stopped. Start it with ./amc start"; fi
+  echo "    Projects folder: $DATA_DIR/MC-Projects"
+  if [ "$BIND" = 127.0.0.1 ]; then
+    echo "    Reachable from this computer only."
+  else
+    echo "    Reachable from the network (AMC_BIND=$BIND)."
+  fi
+}
+
+cmd_logs() {
+  ensure_docker
+  docker compose logs -f --tail 100 "$SERVICE"
+}
+
+cmd_open() {
+  [ -f .env ] || die "Not set up yet. Run ./amc start"
+  load_settings
+  open_url "$URL" || echo "Open $URL in your browser."
+}
+
+cmd_update() {
+  command -v git >/dev/null 2>&1 || die "git is needed to update."
+  git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 ||
+    die "This copy isn't linked to a remote branch, so there is nothing to update from."
+  [ -z "$(git status --porcelain --untracked-files=no)" ] ||
+    die "This folder has uncommitted changes. Commit or stash them, then try again."
+  say "Pulling the latest version..."
+  git pull --ff-only
+  cmd_start "$@"
+}
+
+cmd_import() {
+  [ $# -gt 0 ] || die "Usage: ./amc import <project folder>..."
+  ensure_env
+  load_settings
+  mkdir -p "$DATA_DIR/MC-Projects"
+  local src name dest
+  for src in "$@"; do
+    src=${src%/}
+    [ -d "$src" ] || die "Not a folder: $src"
+    [ -f "$src/options.xml" ] || die "$src doesn't look like an AMC project (no options.xml inside)."
+    name=$(basename "$src")
+    dest="$DATA_DIR/MC-Projects/$name"
+    [ ! -e "$dest" ] || die "A project named '$name' already exists in $DATA_DIR/MC-Projects"
+    cp -R "$src" "$dest"
+    ok "Imported $name"
+  done
+  echo "    The original folders are unchanged. Work on the copies in the web app:"
+  echo "    its AMC is newer than desktop AMC 1.7.0."
+}
+
+cmd=${1:-help}
+[ $# -gt 0 ] && shift
+case $cmd in
+  start)          cmd_start "$@" ;;
+  stop)           cmd_stop ;;
+  restart)        cmd_stop; cmd_start "$@" ;;
+  status)         cmd_status ;;
+  logs)           cmd_logs ;;
+  open)           cmd_open ;;
+  update)         cmd_update "$@" ;;
+  import)         cmd_import "$@" ;;
+  help|-h|--help) usage ;;
+  *)              usage >&2; exit 1 ;;
+esac

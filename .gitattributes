@@ -1,0 +1,5 @@
+# Launcher scripts need fixed line endings whatever the checkout platform:
+# bash refuses CRLF, and cmd.exe misreads LF-only batch files.
+amc      text eol=lf
+*.cmd    text eol=crlf
+*.ps1    text eol=crlf
