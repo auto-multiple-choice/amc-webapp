@@ -244,9 +244,9 @@ async function main() {
   check('Unlocking removes the lock and the layout', await waitFor(`S.status && !S.status.lock && !S.status.layout_pages`, 20000));
   check('The editor offers building again', await waitFor(`!!document.querySelector('[data-act="build"]')`, 10000));
 
-  // A step from a later phase
+  // A step that needs earlier ones explains what comes first
   await click('.step[href$="/mark"]');
-  check('Later steps explain when they arrive', await waitFor(`document.querySelector('#main').textContent.includes('Coming in phase 4')`));
+  check('Mark explains that scans come first', await waitFor(`document.querySelector('#main').textContent.includes('No scans yet') && !!document.querySelector('#main a[href$="/upload-scans"]')`));
   check('Leaving Questions closed the editor', await js('editor === null'));
 
   // Preview panel: close, reopen
@@ -289,6 +289,10 @@ async function main() {
   await sleep(1500);
   await shot('06-dark-questions');
   await click('#topbar [data-act="theme"]'); // back to automatic
+
+  // Leave the data folder as it was found
+  await js(`socket_emit('project-delete', ${JSON.stringify(EXAM + ' 2')}); true`);
+  check('The test exam is deleted at the end', await waitFor(`fetch('/ui/api/projects').then(r => r.json()).then(r => r.projects.length === 0)`, 10000));
 
   check('No errors in the page', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 }

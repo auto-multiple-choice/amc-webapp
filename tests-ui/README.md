@@ -13,7 +13,12 @@ The app's icon file only keeps icons named in `server/templates/*.html`, so icon
 
 ## Server logic
 
-`test_ui_logic.py` checks the parts of `server/ui.py` that don't need a running app: the lock's "does this change move anything on the printed paper?" comparison, and writing the default scoring into LaTeX and AMC-TXT sources. It runs with the app's image:
+`test_ui_logic.py` checks the parts of `server/ui.py` that don't need a running app:
+- the lock's "does this change move anything on the printed paper?" comparison;
+- writing the default scoring into LaTeX and AMC-TXT sources;
+- the results helpers: match states, student names from the class list, which files can be uploaded as a class list, and the fingerprint that tells when marks are out of date.
+
+It runs with the app's image:
 
 ```
 docker run --rm -v "$PWD/server:/s:ro" -v "$PWD/tests-ui/test_ui_logic.py:/t.py:ro" \
@@ -69,6 +74,24 @@ Screenshots are saved to the folder given as the second argument, if any.
 node tests-ui/e2e-scans.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 ```
 
-It runs `make_scans.py` in the app's container with `docker exec`. Set `AMC_E2E_CONTAINER` if the container isn't `amc-uitest`; `AMC_E2E_USER`/`AMC_E2E_PASS` sign in first, as above.
+### Results
 
-`cdp.mjs` is the small Chrome driver the scans test uses.
+`e2e-results.mjs` tests Mark, Match students, Export marks and Annotate:
+- it makes a 4-copy exam with student code boxes (`\AMCcodeGridInt`), and scans with the codes filled in, one page left out and two boxes ticked on a single-answer question;
+- **Mark:** "Mark anyway" past the missing page, the rule-breaking answer and its link to the page, "out of date" after a final mark change, and recomputing;
+- **Match students:** loading a class list, automatic matching, matching by hand with the keyboard, moving a student to another sheet, "Not in the class list" and "Back to automatic";
+- **Export marks:** the table, histogram, sorting and search, CSV (previewed) and ODS files, and the shareable link;
+- **Annotate:** previewing one student, annotating all sheets, previous/next in the preview, the zip download, and "out of date" after a settings change;
+- the exam's history.
+
+```
+node tests-ui/e2e-results.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
+```
+
+With `AMC_E2E_KEEP=1`, the test exam is kept afterwards, to look at it.
+
+### Notes for both
+
+The scans and results tests run `make_scans.py` in the app's container with `docker exec`. Set `AMC_E2E_CONTAINER` if the container isn't `amc-uitest`; `AMC_E2E_USER`/`AMC_E2E_PASS` sign in first, as above.
+
+`make_scans.py` takes options as JSON (faint marks, blank page, missing page, student codes, double ticks); see the top of the file. `fixtures.mjs` has the shared setup (a printed exam, test scans) and `cdp.mjs` the small Chrome driver.
