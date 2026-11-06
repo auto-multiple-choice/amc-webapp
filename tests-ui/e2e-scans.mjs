@@ -12,18 +12,14 @@
  * AMC_E2E_USER / AMC_E2E_PASS: sign in first (shared-machine mode).
  * Use a test copy of the app, never your real exams.
  */
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { startBrowser, sleep } from './cdp.mjs';
+import { makeScans, printedExam } from './fixtures.mjs';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8095';
 const USER = process.env.AMC_E2E_USER || '';
 const CONTAINER = process.env.AMC_E2E_CONTAINER || 'amc-uitest';
 const EXAM = 'Scan test exam';
 const b = await startBrowser({ base: BASE, user: USER, pass: process.env.AMC_E2E_PASS || '', shots: process.argv[3] || null });
-const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8' });
 const api = (path) => b.js(`fetch(${JSON.stringify(path)}, {headers: {'AMC-project': S.project}, cache: 'no-store'}).then(r => r.json())`);
 const page = (s, p, c) => api(`/ui/api/scan-page?student=${s}&page=${p}&copy=${c}`);
 
@@ -32,44 +28,9 @@ async function main() {
   await b.goto('/');
   b.check('The app opens', await b.waitFor('S.online === true'));
 
-  // An exam with built, confirmed and printed papers, set up directly
-  await b.js(`S.creating = ${JSON.stringify(EXAM)}; socket_emit('create-project-template', [${JSON.stringify(EXAM)}, 'en/simple']); true`);
-  b.check('The exam is created', await b.waitFor(`S.project === ${JSON.stringify(EXAM)} && !!S.status`, 30000));
-  // A second page per copy, so a copy can miss a page
-  const marker = '% \\AMCaddpagesto{3}'; // a commented-out line in AMC's simple template
-  const extra = '\\clearpage\n\\begin{question}{extra}\n  Is this the second page?\n  \\begin{choices}\n'
-    + '    \\correctchoice{Yes}\n    \\wrongchoice{No}\n  \\end{choices}\n\\end{question}\n';
-  const added = await b.js(`(async (marker, extra) => {
-    const src = S.status.source;
-    const url = '/fs/' + encodeURIComponent(S.project) + '/' + encodeURIComponent(src) + '?attach=0';
-    let t = await (await fetch(url, {cache: 'no-store'})).text();
-    if (!t.includes(marker)) return false;
-    t = t.replace(marker, extra);
-    const form = new FormData();
-    form.append('file', new Blob([t], {type: 'text/plain'}), src);
-    const r = await fetch('/upload/source', {method: 'POST', headers: {'AMC-project': S.project, 'AMC-sid': socket.id}, body: form});
-    return (await r.json()).ok === true;
-  })(${JSON.stringify(marker)}, ${JSON.stringify(extra)})`);
-  b.check('The test exam gets a second page per copy', added === true);
-  await b.js(`socket_emit('doc-update', 'sujet'); true`);
-  await b.waitFor(`!!document.querySelector('#work')`, 10000);
-  b.check('The papers are built', await b.waitFor(`!document.querySelector('#work') && S.status && S.status.layout_pages > 0`, 120000));
-  if (await b.js(`!!document.querySelector('.server-dialog')`)) await b.js('warn_ok(); true');
-  await b.js(`socket_emit('ui-layout-ok'); true`);
-  await b.waitFor(`S.status && !!S.status.layout_ok`, 10000);
-  await b.js(`socket_emit('ui-mark-printed'); true`);
-  b.check('The exam is locked as printed', await b.waitFor(`S.status && !!S.status.lock`, 10000));
-
-  // Test scans, made in the app's container
-  const projectDir = `/amc-web/files/MC-Projects${USER ? '/' + USER : ''}/${EXAM}`;
-  docker('exec', CONTAINER, 'rm', '-rf', '/tmp/amc-test-scans');
-  // Piped to Python rather than copied in: copies of files can come out
-  // unreadable for the app's user (for example from an exFAT drive).
-  const made = JSON.parse(execFileSync('docker', ['exec', '-i', CONTAINER, '/venv/bin/python', '-', projectDir, '/tmp/amc-test-scans'],
-    { input: readFileSync('tests-ui/make_scans.py'), encoding: 'utf8' }));
-  const local = mkdtempSync(join(tmpdir(), 'amc-scans-'));
-  docker('cp', `${CONTAINER}:/tmp/amc-test-scans/.`, local);
-  const files = readdirSync(local).filter((f) => f.endsWith('.png')).sort().map((f) => join(local, f));
+  // An exam with built, confirmed and printed papers, and test scans for it
+  await printedExam(b, { name: EXAM });
+  const { made, files } = makeScans({ container: CONTAINER, user: USER, exam: EXAM });
   b.check('Test scans were made', files.length === made.files.length && files.length > 2, `${files.length} files`);
 
   // Upload scans

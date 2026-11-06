@@ -358,8 +358,8 @@ class Amcdb:
                    FROM association.association_association ) AS a,
                  scoring.scoring_mark AS m
             ON a.student=m.student AND a.copy=m.copy
-            WHERE studentid IS NOT NULL
-            """).fetchall()
+            WHERE studentid IS NOT NULL AND studentid NOT IN ('', 'NONE')
+            """).fetchall()  # '': unmatched, 'NONE': not in the class list
 
     def n_graded_students(self):
         self.use_module("scoring")

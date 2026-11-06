@@ -117,6 +117,12 @@ Steps stay reachable in any order. For example, step 8 can be opened before the 
 
 Changing the marking scheme or answer key after step 7 marks steps 7, 9 and 10 as "out of date", with a "Recompute marks" button. Correcting a box in step 6 does the same.
 
+How the results steps work (built in phase 4):
+- **Out of date:** when marks are computed, the server keeps a fingerprint of what they were computed from: the sources (scoring and answer key), the final mark settings, the detection thresholds, and the scanned pages with every check made in step 6. If any of these changes, step 7 shows "out of date". Exported files are out of date when they are older than the latest marks or matches; annotated sheets also when the annotation settings change. Marks computed in the AMC desktop app have no fingerprint and count as up to date.
+- **Student codes:** AMC reads the codes students filled in (`\AMCcodeGrid`) while marking, so automatic matching is offered once marks exist. Papers without code boxes are matched by hand from the name field.
+- **Matching by hand:** a sheet can be matched to a student, marked as not in the class list (AMC's own "NONE" match), or put back to its automatic match. Matching a student who is already on another sheet moves them, and that sheet goes back to the sheets to match (unless one student may have several sheets).
+- **Preview one student:** AMC annotates the chosen sheet into a separate file. AMC doesn't record that file as the student's annotated sheet, so the real sheets are untouched.
+
 ## 6. Locking an exam after printing
 
 ### States

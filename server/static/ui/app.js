@@ -1,5 +1,5 @@
 /*
- * AMC new interface (doc/ui-redesign-plan.md), phase 1.
+ * AMC new interface (doc/ui-redesign-plan.md).
  *
  * One page; every screen is drawn here. Actions use the server's existing
  * Socket.IO events (create-project-template, doc-update, ...), so AMC's
@@ -37,12 +37,11 @@ const STEPS = [
   { id: 'print', n: 4, label: 'Print', group: 'before', phase: 2, built: true },
   { id: 'upload-scans', n: 5, label: 'Upload scans', group: 'after', phase: 3, built: true },
   { id: 'check-scans', n: 6, label: 'Check scans', group: 'after', phase: 3, built: true },
-  { id: 'mark', n: 7, label: 'Mark', group: 'after', phase: 4 },
-  { id: 'match-students', n: 8, label: 'Match students', group: 'after', phase: 4 },
-  { id: 'export-marks', n: 9, label: 'Export marks', group: 'after', phase: 4 },
-  { id: 'annotate', n: 10, label: 'Annotate', group: 'after', phase: 4 },
+  { id: 'mark', n: 7, label: 'Mark', group: 'after', phase: 4, built: true },
+  { id: 'match-students', n: 8, label: 'Match students', group: 'after', phase: 4, built: true },
+  { id: 'export-marks', n: 9, label: 'Export marks', group: 'after', phase: 4, built: true },
+  { id: 'annotate', n: 10, label: 'Annotate', group: 'after', phase: 4, built: true },
 ];
-const PHASE_NAMES = { 4: 'Results' };
 const GUIDES = {
   questions: ['Write each question with its answers, and mark which answers are correct.', 'Save, then build the preview to see the question paper on the right.', 'If the build fails, the message explains why and links to the LaTeX log.'],
   'marking-scheme': ['Choose how single- and multiple-answer questions are scored by default.', 'Set what the final mark is out of, and how it is rounded.', 'All of this can still change after printing.'],
@@ -50,10 +49,10 @@ const GUIDES = {
   print: ['Save the PDFs and print them anywhere, or print directly when the shared machine runs Linux.', 'Print on A4 at 100% (actual size), never "fit to page".', 'The exam locks after printing: questions and layout can no longer change.'],
   'upload-scans': ['Scan the answer sheets at 300 dpi, in black and white or greyscale.', 'Upload the files (PDF or images). Each page is detected automatically.', 'Problems appear in the next step, Check scans.'],
   'check-scans': ['Unreadable pages: see what AMC saw, then remove them or scan them again.', 'Missing pages: find and upload them.', 'Pages to check: decide each box AMC wasn\'t sure about (T = ticked, N = not ticked, Enter = page done).', 'Marks come next, once everything is clear.'],
-  mark: ['Compute the marks once Check scans is clear.', 'Marking always uses the latest marking scheme and answer key.'],
-  'match-students': ['Load the class list (a CSV file).', 'Match sheets to students automatically, then by hand for the rest.'],
-  'export-marks': ['Check the marks and their distribution.', 'Export to CSV or ODS.'],
-  annotate: ['Choose how marks appear on each sheet and how files are saved.', 'Preview one student, then annotate all sheets.'],
+  mark: ['Compute the marks once Check scans is clear: no unreadable pages, missing pages or pages to check.', 'Marking always uses the latest marking scheme and answer key.', 'Answers that break a question\'s rules, such as two boxes ticked on a single-answer question, are listed afterwards with a link to the page.', 'Changed the marking scheme or a scan afterwards? The step shows "out of date": compute the marks again.'],
+  'match-students': ['Load the class list: a CSV file with column names on the first line and one student per line.', 'Choose the column with the student code, then match automatically if the papers have code boxes.', 'Match the other sheets by hand: type part of the name written on the sheet, then press Enter.'],
+  'export-marks': ['Check the marks and how they are spread.', 'Export to CSV (spreadsheets, school systems) or ODS (LibreOffice, with statistics).', 'Export again after changing marks or matches.'],
+  annotate: ['Choose where marks appear on the sheets and the header text.', 'Choose how the files are saved, then preview one student to check.', 'Annotate all sheets and download them.'],
 };
 const DOC_LABELS = { sujet: 'Question paper', corrige: 'Answer key', catalog: 'Catalogue', 'indiv-solution': 'Corrected copies' };
 const STATE_CHIPS = {
@@ -104,6 +103,18 @@ const S = {
   scans: null,            // pages, unreadable and missing pages (/ui/api/scans)
   review: null,           // the page being checked: boxes and decisions
   previewImage: null,     // {url, title}: a scan or diagnostic image
+  previewList: null,      // {items: [{path, title}], i}: annotated sheets, with previous/next
+  pendingReview: null,    // page to open when Check scans opens ('student/page/copy')
+  marks: null,            // marks table and rule-breaking answers (/ui/api/marks)
+  students: null,         // class list, sheets and matches (/ui/api/students)
+  exportInfo: null,       // export settings and files (/ui/api/export)
+  annotateInfo: null,     // annotation settings and files (/ui/api/annotate)
+  matchSheet: null,       // the sheet being matched by hand ('student/copy')
+  matchFilter: 'todo',    // sheets listed: 'todo' or 'all'
+  matchQuery: '',
+  matchCursor: 0,
+  marksSort: { col: 'copy', dir: 1 },
+  marksQuery: '',
 };
 let editor = null;
 
@@ -201,7 +212,29 @@ socket.on('ui-changed', (what) => {
   if (what === 'layout_ok') toast('Layout confirmed. You can print now.');
   if (what === 'lock') S.printing = null;
   if (what === 'review') { loadScans().then(() => { if (S.route.step === 'check-scans') openNextReview(); }); }
+  if (['marks', 'students', 'matches', 'exports', 'annotated'].includes(what)) loadStepData();
   refreshStatus().then(() => { if (S.route.step === 'questions') renderMain(); });
+});
+socket.on('ui-toast', (text) => toast(text));
+socket.on('ui-matched', (m) => {
+  if (m.freed && m.freed.length) {
+    const names = m.freed.map(([s, c]) => copyName(s, c)).join(', ');
+    const many = m.freed.length > 1;
+    toast(`${names} ${many ? 'were' : 'was'} matched to the same student, and ${many ? 'are' : 'is'} back in the sheets to match.`, 'info-circle');
+  }
+  loadStudents(); refreshStatus();
+});
+socket.on('ui-exported', (r) => {
+  loadExport();
+  if (!r.ok) return;
+  if (/\.csv$/.test(r.file)) { showFile(`exports/${r.file}`, 'Exported marks (CSV)'); toast('Marks exported. The file is shown on the right.'); }
+  else toast(`Marks exported to ${r.file}. Download it below.`);
+});
+socket.on('ui-annotate-preview', (r) => {
+  if (!r.file) return;
+  const sheet = S.marks && S.marks.rows.find((x) => x.student === r.student && x.copy === r.copy);
+  showFile(r.file, `Preview · ${copyName(r.student, r.copy)}${sheet && sheet.name ? ' · ' + sheet.name : ''}`);
+  if (S.route.step === 'annotate') loadAnnotate();
 });
 socket.on('ui-scoring-saved', (v) => {
   if (S.scoring) { S.scoring.S = v.S || null; S.scoring.M = v.M || null; }
@@ -272,7 +305,7 @@ function onRoute() {
   const r = parsePath(location.pathname);
   const leavingQuestions = S.route.step === 'questions' && r.step !== 'questions';
   S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false; S.previewMode = null;
-  S.review = null; S.previewImage = null;
+  S.review = null; S.previewImage = null; S.previewList = null;
   if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) dropEditor();
   if (r.kind === 'exams') {
     S.project = null; S.status = null; S.files = null;
@@ -282,7 +315,8 @@ function onRoute() {
     return;
   }
   if (r.name !== S.project) {
-    S.status = null; S.files = null; S.config = null;
+    S.status = null; S.files = null; S.config = null; S.scans = null;
+    S.marks = null; S.students = null; S.exportInfo = null; S.annotateInfo = null; S.matchSheet = null;
     render();
     openProject(r.name);
     return;
@@ -330,7 +364,7 @@ function suggestStep() {
   const st = S.status;
   if (!st || !st.project) return 'questions';
   if (st.exports.length) return 'export-marks';
-  if (st.marked) return st.matched < st.marked ? 'match-students' : 'export-marks';
+  if (st.marked) return st.unmatched ? 'match-students' : 'export-marks';
   if (st.scans) return 'check-scans';
   if (st.printed) return 'upload-scans';
   if (st.layout_pages) return 'print';
@@ -343,7 +377,12 @@ function enterStep() {
   if (S.route.step === 'marking-scheme') loadScoring();
   if (S.route.step === 'print') loadPrinters();
   if (S.route.step === 'upload-scans') loadScans();
-  if (S.route.step === 'check-scans') loadScans().then(() => { if (!S.review) openNextReview(); });
+  if (S.route.step === 'check-scans') {
+    loadScans().then(() => {
+      if (S.pendingReview) { const k = S.pendingReview; S.pendingReview = null; openReview(k); } else if (!S.review) openNextReview();
+    });
+  }
+  loadStepData();
   if (S.route.step === 'papers' && S.status && S.status.layout_pages && !S.status.layout_ok && !locked()) showLayout();
 }
 
@@ -401,6 +440,25 @@ async function loadScans() {
   try { const r = await getJSON('/ui/api/scans'); if (S.project === p && r.project === p) S.scans = r; } catch (e) { if (S.project === p) console.error(e); }
   if (S.project === p && (S.route.step === 'upload-scans' || S.route.step === 'check-scans')) renderMain(true);
 }
+/* Data for the results steps; answers for an exam the page has left are dropped. */
+async function loadInto(key, url, steps) {
+  const p = S.project;
+  if (!p) return;
+  try { const r = await getJSON(url); if (S.project === p && r.project === p) S[key] = r; } catch (e) { if (S.project === p) console.error(e); }
+  if (S.project === p && steps.includes(S.route.step)) renderMain(true);
+}
+const loadMarks = () => loadInto('marks', '/ui/api/marks', ['mark', 'export-marks', 'annotate']);
+const loadStudents = () => loadInto('students', '/ui/api/students', ['match-students']);
+const loadExport = () => loadInto('exportInfo', '/ui/api/export', ['export-marks']);
+const loadAnnotate = () => loadInto('annotateInfo', '/ui/api/annotate', ['annotate']);
+function loadStepData() {
+  const step = S.route.step;
+  if (step === 'mark') loadMarks();
+  if (step === 'match-students') loadStudents();
+  if (step === 'export-marks') { loadMarks(); loadExport(); }
+  if (step === 'annotate') { loadMarks(); loadAnnotate(); }
+}
+
 async function loadPrinters() {
   try { S.printers = await getJSON('/ui/api/printers'); } catch { S.printers = { available: false, printers: [] }; }
   if (!S.printers.available) S.printRoute = 'files';
@@ -411,7 +469,7 @@ async function loadPrinters() {
 
 function stepStatus(id) {
   const st = S.status;
-  const r = (cls, count = null) => ({ cls, count });
+  const r = (cls, count = null, title = '') => ({ cls, count, title });
   if (!st || !st.project) return r('');
   const problems = (st.failed || 0) + (st.incomplete || 0) + (st.to_check || 0);
   switch (id) {
@@ -420,10 +478,10 @@ function stepStatus(id) {
     case 'print': return st.lock ? r('is-done') : st.layout_ok ? r('is-attention') : r('is-blocked');
     case 'upload-scans': return st.scans ? r('is-done') : st.lock ? r('is-attention') : r('');
     case 'check-scans': return !st.scans ? r('') : problems ? r('is-attention', problems) : r('is-done');
-    case 'mark': return st.marked ? r('is-done') : r('');
-    case 'match-students': return !st.marked ? r('') : st.matched < st.marked ? r('is-attention', st.marked - st.matched) : r('is-done');
-    case 'export-marks': return st.exports.length ? r('is-done') : r('');
-    case 'annotate': return st.annotated ? r('is-done') : r('');
+    case 'mark': return !st.marked ? r('') : st.marks_info && st.marks_info.stale ? r('is-attention', null, 'Out of date') : r('is-done');
+    case 'match-students': return !st.marked ? r('') : st.unmatched ? r('is-attention', st.unmatched, `${st.unmatched} to match`) : r('is-done');
+    case 'export-marks': return !st.exports.length ? r('') : st.exports_stale ? r('is-attention', null, 'Out of date') : r('is-done');
+    case 'annotate': return !(st.annotated || st.annotated_single) ? r('') : st.annotated_stale ? r('is-attention', null, 'Out of date') : r('is-done');
     default: return r('');
   }
 }
@@ -480,7 +538,7 @@ function renderSide() {
     const st = stepStatus(s.id);
     const dot = st.cls === 'is-done' ? ic('check') : st.cls === 'is-locked' ? ic('lock') : s.n;
     const cur = S.route.step === s.id;
-    return `<a class="step ${st.cls}" href="${examPath(name, s.id)}" data-nav ${cur ? 'aria-current="page"' : ''}>
+    return `<a class="step ${st.cls}" href="${examPath(name, s.id)}" data-nav ${cur ? 'aria-current="page"' : ''} ${st.title ? `title="${esc(st.title)}"` : ''}>
       <span class="step-dot">${dot}</span><span class="step-label">${s.label}</span>${st.count !== null ? `<span class="step-count">${st.count}</span>` : ''}</a>`;
   }).join('')}</div>`;
   $('#sidebar').innerHTML = group('before', 'Before the exam') + group('after', 'After the exam')
@@ -500,8 +558,11 @@ function renderMain(keepScroll = false) {
   else if (r.step === 'print') html = viewPrint();
   else if (r.step === 'upload-scans') html = viewUpload();
   else if (r.step === 'check-scans') html = viewCheck();
-  else if (r.step === 'settings') html = viewSettings();
-  else html = viewSoon(r.step);
+  else if (r.step === 'mark') html = viewMark();
+  else if (r.step === 'match-students') html = viewMatch();
+  else if (r.step === 'export-marks') html = viewExport();
+  else if (r.step === 'annotate') html = viewAnnotate();
+  else html = viewSettings();
   main.classList.toggle('fill', r.kind === 'exam' && r.step === 'questions');
   if (r.step === 'questions' && editor && $('#ace-host')) { // keep the live editor
     $('#q-head').innerHTML = questionsHead();
@@ -520,6 +581,7 @@ function renderMain(keepScroll = false) {
   }
   if (keepScroll) main.scrollTop = top;
   if (r.step === 'questions' && S.project) mountEditor();
+  if (r.step === 'match-students' && S.matchFocus) { S.matchFocus = false; const f = $('#match-search'); if (f) f.focus(); }
 }
 
 /* ---------- Rendering: preview panel ---------- */
@@ -557,9 +619,16 @@ function renderPreview() {
     bodyClass = 'preview-body';
     tabs = `<div class="preview-tabs"><button data-act="layout-step" data-delta="-1">${ic('nav-arrow-left')} Previous page</button><button data-act="layout-step" data-delta="1">Next page ${ic('nav-arrow-right')}</button><span class="spacer"></span><button data-act="preview-docs">Documents</button></div>`;
   } else if (S.previewFile) {
-    title = S.previewFile.name;
-    url = fsUrl(S.previewFile.name);
-    ({ body, bodyClass } = fileBody(S.previewFile.name, url));
+    const f = S.previewFile;
+    title = f.title || f.name;
+    url = fsUrl(f.name);
+    ({ body, bodyClass } = fileBody(f.name, f.stamp ? `${url}&v=${f.stamp}` : url));
+    const pl = S.previewList;
+    if (pl && pl.items[pl.i] && pl.items[pl.i].path === f.name && pl.items.length > 1) {
+      tabs = `<div class="preview-tabs"><button data-act="plist-step" data-delta="-1" ${pl.i ? '' : 'disabled'}>${ic('nav-arrow-left')} Previous</button>
+        <label class="sr-only" for="plist-select">Sheet</label><select class="select input-sm" id="plist-select">${pl.items.map((x, i) => `<option value="${i}" ${i === pl.i ? 'selected' : ''}>${esc(x.title)}</option>`).join('')}</select>
+        <button data-act="plist-step" data-delta="1" ${pl.i < pl.items.length - 1 ? '' : 'disabled'}>Next ${ic('nav-arrow-right')}</button></div>`;
+    }
   } else if (docs.length) {
     const cur = docs.includes(S.previewDoc) ? S.previewDoc : docs[0];
     title = DOC_LABELS[cur];
@@ -820,33 +889,6 @@ function viewSettings() {
       <div class="list-row"><span class="list-icon bad">${ic('trash')}</span><div class="list-row-main"><div class="list-row-title">Delete</div><div class="subtle">Removes the exam with its scans and marks. This can't be undone.</div></div><button class="btn btn-sm btn-danger" data-act="delete-exam" data-name="${esc(S.project)}">Delete</button></div>
     </div></section>
     ${activityCard()}
-  </div>`;
-}
-
-/* ---------- View: steps arriving in later phases ---------- */
-
-function viewSoon(stepId) {
-  const s = STEPS.find((x) => x.id === stepId);
-  const st = S.status || {};
-  const facts = {
-    papers: st.layout_pages ? [stat(st.layout_pages, 'Pages laid out', 'ok')] : [],
-    print: st.printed ? [stat('Yes', 'Printed', 'ok')] : [],
-    'upload-scans': st.scans ? [stat(st.scans, 'Pages scanned', 'ok')] : [],
-    'check-scans': st.scans ? [stat(st.failed, 'Unreadable pages', st.failed ? 'bad' : 'ok'), stat(st.incomplete, 'Incomplete copies', st.incomplete ? 'warn' : 'ok'), stat(st.to_check, 'Pages to check', st.to_check ? 'warn' : 'ok')] : [],
-    mark: st.marked ? [stat(st.marked, 'Copies marked', 'ok')] : [],
-    'match-students': st.marked ? [stat(st.matched, 'Matched to students', st.matched < st.marked ? 'warn' : 'ok')] : [],
-    'export-marks': st.exports && st.exports.length ? [stat(st.exports.length, 'Exported files', 'ok')] : [],
-    annotate: st.annotated ? [stat(st.annotated, 'Annotated sheets', 'ok')] : [],
-  }[stepId] || [];
-  return `<div class="page">
-    ${header(stepId, s.label, '')}
-    ${guideBox(stepId)}
-    <section class="card"><div class="empty soon">
-      <div class="empty-icon">${ic('hammer')}</div>
-      <h2>Coming in phase ${s.phase}: ${PHASE_NAMES[s.phase]}</h2>
-      <p>This step is being rebuilt in the new style. Until then, do it in the AMC desktop app.</p>
-      ${facts.length ? `<div class="stats" style="max-width:560px;margin:8px auto 0">${facts.join('')}</div><p class="subtle">From this exam's data.</p>` : ''}
-    </div></section>
   </div>`;
 }
 
@@ -1320,6 +1362,509 @@ function reviewDone() {
   toast(`${pageName(rv)} checked.`);
 }
 
+/* ---------- Results: shared pieces ---------- */
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const fmtNum = (x) => (typeof x === 'number' && Number.isFinite(x) ? String(Math.round(x * 100) / 100) : '–');
+const copyName = (s, c) => `Copy ${c ? `${s}·${c}` : s}`;
+const sheetKey = (x) => `${x.student}/${x.copy}`;
+const fold = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+function showFile(path, title) {
+  S.previewFile = { name: path, title, stamp: Date.now() };
+  S.previewMode = null;
+  if (!S.previewList || !S.previewList.items.some((x) => x.path === path)) S.previewList = null;
+  openPreview();
+}
+
+function emptyStep(step, title, iconName, heading, text, target, button) {
+  return `<div class="page">${header(step, title)}${guideBox(step)}
+    <section class="card"><div class="empty"><div class="empty-icon">${ic(iconName)}</div><h2>${heading}</h2><p>${text}</p>
+      <div class="btn-row"><a class="btn btn-primary" href="${examPath(S.project, target)}" data-nav>${button}</a></div></div></section></div>`;
+}
+
+/* What the final mark is out of: the "Out of" setting, or the raw points. */
+function outOf() {
+  const m = S.marks;
+  if (!m) return null;
+  const full = parseFloat(m.options.note_max);
+  if (full > 0) return full;
+  const maxes = [...new Set(m.rows.map((r) => r.max))];
+  return maxes.length === 1 ? maxes[0] : null;
+}
+
+function markStats(rows) {
+  const v = rows.map((r) => r.mark).filter((x) => typeof x === 'number').sort((a, b) => a - b);
+  if (!v.length) return null;
+  const mid = Math.floor(v.length / 2);
+  return { n: v.length, mean: v.reduce((a, b) => a + b, 0) / v.length, median: v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2, min: v[0], max: v[v.length - 1] };
+}
+
+function statsRow() {
+  const s = S.marks && markStats(S.marks.rows);
+  if (!s) return '';
+  const full = outOf();
+  const of = full ? ` <span class="subtle">/ ${fmtNum(full)}</span>` : '';
+  return `<div class="stats" style="margin-bottom:16px">${stat(s.n, 'Copies marked', 'ok')}${stat(fmtNum(s.mean) + of, 'Mean')}${stat(fmtNum(s.median) + of, 'Median')}${stat(fmtNum(s.min), 'Lowest')}${stat(fmtNum(s.max), 'Highest')}</div>`;
+}
+
+function marksWhen() {
+  const mi = S.status && S.status.marks_info;
+  if (!mi || !mi.at) return '';
+  return ` on ${fmtDate(mi.at)}${mi.by ? ' by ' + esc(mi.by) : ''}`;
+}
+
+/* "Out of date" banners: marks for Mark; marks, then the files, for Export and Annotate. */
+function staleBanner(step) {
+  const st = S.status || {};
+  const mi = st.marks_info;
+  if (mi && mi.stale) {
+    const text = 'The marking scheme, answer key, final mark settings or scan checks changed after the marks were computed.';
+    if (step === 'mark') return banner('warning', 'warning-triangle', 'The marks are out of date.', text, `<button class="btn btn-primary btn-sm" data-act="mark">${ic('refresh')} Recompute marks</button>`);
+    return banner('warning', 'warning-triangle', 'The marks are out of date.', `${text} Compute them again before ${step === 'annotate' ? 'annotating' : 'exporting'}.`, `<a class="btn btn-sm" href="${examPath(S.project, 'mark')}" data-nav>Go to Mark</a>`);
+  }
+  if (step === 'export-marks' && st.exports_stale) return banner('warning', 'warning-triangle', 'The exported files are older than the latest marks or matches.', 'Export again to update them.');
+  if (step === 'annotate' && st.annotated_stale) return banner('warning', 'warning-triangle', 'The annotated sheets are older than the latest marks, matches or settings.', 'Annotate again to update them.');
+  return '';
+}
+
+/* ---------- View: mark ---------- */
+
+function viewMark() {
+  const st = S.status || {};
+  if (!st.scans) return emptyStep('mark', 'Mark', 'clipboard-check', 'No scans yet', 'Marks are computed from the scanned answer sheets. Upload them first.', 'upload-scans', 'Go to Upload scans');
+  const clear = !(st.failed || st.incomplete || st.to_check);
+  const item = (n, ok, bad) => `<div class="checklist-item ${n ? 'warn' : 'ok'}">${ic(n ? 'warning-triangle' : 'check-circle')}<span>${n ? bad : ok}</span></div>`;
+  const actions = clear
+    ? `<button class="btn btn-primary" data-act="mark">${ic('calculator')} ${st.marked ? 'Recompute marks' : 'Compute marks'}</button>`
+    : `<button class="btn" data-act="mark-anyway">Mark anyway…</button><a class="btn btn-primary" href="${examPath(S.project, 'check-scans')}" data-nav>Go to Check scans</a>`;
+  const breaks = (S.marks && S.marks.rule_breaks) || [];
+  return `<div class="page">
+    ${header('mark', 'Mark', 'Compute each copy\'s mark from the scans and the marking scheme.',
+    st.marked && !(st.marks_info && st.marks_info.stale) ? `<a class="btn btn-primary" href="${examPath(S.project, 'match-students')}" data-nav>Next: Match students ${ic('arrow-right')}</a>` : '')}
+    ${guideBox('mark')}
+    ${staleBanner('mark')}
+    ${st.marked && !(st.marks_info && st.marks_info.stale) ? banner('success', 'check-circle', `Marks computed for ${plural(st.marked, 'copy', 'copies')}${marksWhen()}.`, 'Compute them again after changing the marking scheme, the answer key or a scan.') : ''}
+    ${st.marked ? statsRow() : ''}
+    <section class="card"><div class="card-header">${ic('clipboard-check')}<h2>Before marking</h2></div>
+      <div class="card-body"><div class="checklist">
+        ${item(st.failed, 'No unreadable pages', `${plural(st.failed, 'unreadable page', 'unreadable pages')}`)}
+        ${item(st.incomplete, 'No missing pages', `${plural(st.incomplete, 'copy has', 'copies have')} missing pages`)}
+        ${item(st.to_check, 'No pages left to check', `${plural(st.to_check, 'page', 'pages')} still to check`)}
+        <div class="checklist-item ok">${ic('percentage-circle')}<span>Uses the latest <a href="${examPath(S.project, 'marking-scheme')}" data-nav>marking scheme</a> and answer key</span></div>
+      </div>
+      ${clear ? '' : '<p class="muted" style="margin-top:12px">Settle these in Check scans first, so every mark is based on what students really ticked.</p>'}</div>
+      <div class="card-foot">${actions}</div></section>
+    ${breaks.length ? ruleBreaksCard(breaks) : ''}
+  </div>`;
+}
+
+function ruleBreaksCard(breaks) {
+  const shown = breaks.slice(0, 200);
+  return `<section class="card" style="margin-top:16px"><div class="card-header">${ic('warning-triangle')}<h2>Answers that break the rules</h2><span class="chip chip-warning">${breaks.length}</span></div>
+    <p class="muted" style="padding:12px 16px 0">These answers don't follow the question's rules, for example two boxes ticked on a single-answer question. They are scored as an error (<code>e</code> in the marking scheme, 0 by default).</p>
+    <div class="list">${shown.map((b) => `<div class="list-row"><span class="list-icon warn">${ic('warning-triangle')}</span>
+      <div class="list-row-main"><div class="list-row-title">${copyName(b.student, b.copy)} · ${esc(b.title || 'Question ' + b.question)}</div>${b.page ? `<div class="subtle">Page ${b.page}</div>` : ''}</div>
+      ${b.page ? `<button class="btn btn-sm" data-act="open-page" data-key="${b.student}/${b.page}/${b.copy}">Open the page</button>` : ''}</div>`).join('')}</div>
+    <div class="card-foot" style="justify-content:flex-start"><span class="subtle">If a box was read wrongly, correct it in Check scans, then compute the marks again.</span></div></section>`;
+}
+
+async function markAnyway() {
+  const st = S.status || {};
+  const items = [];
+  if (st.failed) items.push(`<li><b>${plural(st.failed, 'unreadable page', 'unreadable pages')}</b>: answers on ${st.failed === 1 ? 'it' : 'them'} are not counted.</li>`);
+  if (st.incomplete) items.push(`<li><b>${plural(st.incomplete, 'copy', 'copies')} with missing pages</b>: marked from the pages that were read.</li>`);
+  if (st.to_check) items.push(`<li><b>${plural(st.to_check, 'page', 'pages')} to check</b>: uncertain boxes count as AMC detected them.</li>`);
+  const ok = await confirmDialog({
+    icon: 'warning-triangle', title: 'Mark with problems left?',
+    body: `<p>Check scans still has:</p><ul>${items.join('')}</ul><p class="subtle">You can settle them later and compute the marks again.</p>`,
+    ok: 'Mark anyway',
+  });
+  if (ok) socket_emit('ui-mark', { anyway: true });
+}
+
+/* ---------- View: match students ---------- */
+
+const MATCH_STATES = {
+  auto: ['chip-success', 'Matched automatically'],
+  manual: ['chip-brand', 'Matched by hand'],
+  none: ['', 'Not in the class list'],
+  unmatched: ['chip-warning', 'To match'],
+};
+
+function viewMatch() {
+  const st = S.status || {};
+  const d = S.students;
+  if (!d) return `<div class="page">${header('match-students', 'Match students')}<div class="skeleton"></div></div>`;
+  const L = d.list;
+  const listOk = L && !L.error && L.key;
+  const counts = { auto: 0, manual: 0, none: 0, unmatched: 0 };
+  d.sheets.forEach((x) => { counts[x.state] += 1; });
+  const done = d.sheets.length && !counts.unmatched;
+  return `<div class="page">
+    ${header('match-students', 'Match students', 'Link each answer sheet to a student in the class list.',
+    done ? `<a class="btn btn-primary" href="${examPath(S.project, 'export-marks')}" data-nav>Next: Export marks ${ic('arrow-right')}</a>` : '')}
+    ${guideBox('match-students')}
+    ${done ? banner('success', 'check-circle', 'Every sheet is matched.', counts.none ? `${plural(counts.none, 'sheet is', 'sheets are')} marked as not in the class list.` : '') : ''}
+    <div class="grid grid-2">${classListCard(d)}${autoMatchCard(d, st)}</div>
+    ${d.sheets.length ? `<div class="stats" style="margin:16px 0">${stat(d.sheets.length, 'Sheets', 'ok')}${stat(counts.auto, 'Matched automatically', 'ok')}${stat(counts.manual, 'Matched by hand', 'ok')}${stat(counts.none, 'Not in the list')}${stat(counts.unmatched, 'To match', counts.unmatched ? 'warn' : 'ok')}</div>` : ''}
+    ${d.sheets.length && listOk ? manualMatchCard(d) : ''}
+    ${!d.sheets.length ? `<p class="subtle" style="margin-top:16px">${ic('info-circle')} Sheets appear here once scans are uploaded. You can load the class list now.</p>` : ''}
+    ${counts.auto + counts.manual + counts.none ? `<details class="card" style="margin-top:16px"><summary class="card-header" style="cursor:pointer;border-bottom:0">${ic('settings')}<h2>Advanced</h2></summary>
+      <div class="card-body" style="border-top:1px solid var(--border)"><div class="row"><span class="muted">Start again: remove every match, automatic and by hand.</span><span class="spacer"></span><button class="btn btn-danger btn-sm" data-act="match-clear">Remove all matches</button></div></div></details>` : ''}
+  </div>`;
+}
+
+function classListCard(d) {
+  const L = d.list;
+  const fileInput = '<input type="file" id="list-file" accept=".csv,.txt,text/csv,text/plain" hidden>';
+  if (!L) {
+    return `<section class="card"><div class="card-header">${ic('group')}<h2>Class list</h2></div><div class="card-body">
+      <label class="dropzone" id="list-drop" style="cursor:pointer;padding:22px">${ic('upload')}<div><strong>Choose the class list</strong> or drop it here</div>
+        <div class="subtle">A CSV file: column names on the first line, then one student per line, for example <code>id,surname,name</code>.</div>${fileInput}</label>
+    </div></section>`;
+  }
+  const unique = L.unique || [];
+  return `<section class="card"><div class="card-header">${ic('group')}<h2>Class list</h2></div>
+    <div class="card-body">
+      <div class="row" style="gap:12px;align-items:flex-start"><span class="list-icon ${L.error ? 'bad' : 'brand'}">${ic('page')}</span>
+        <div style="flex:1;min-width:0"><div class="list-row-title" style="overflow-wrap:anywhere">${esc(L.file)}</div>
+          <div class="subtle">${L.error ? esc(L.error) : `${plural(L.count, 'student', 'students')} · columns: ${L.columns.map(esc).join(', ')}`}</div></div></div>
+      <div class="btn-row" style="margin-top:12px">${L.error ? '' : '<button class="btn btn-sm" data-act="list-preview">' + ic('eye') + ' Preview</button>'}
+        <label class="btn btn-sm">${ic('upload')} Replace${fileInput}</label>
+        <button class="btn btn-ghost btn-sm" data-act="list-remove">${ic('trash')} Remove</button></div>
+    </div>
+    ${L.error ? '' : `<div class="card-body" style="border-top:1px solid var(--border)">${unique.length ? `<label class="field"><span class="field-label">Column with the student code</span>
+      <select class="select" id="list-key">${L.key ? '' : '<option value="">Choose…</option>'}${unique.map((c) => `<option ${c === L.key ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
+      <span class="field-hint">A different value for every student, such as a student number. Matches are kept by this column.</span></label>`
+    : '<p class="muted">No column has a different, non-empty value for every student, so sheets can\'t be matched. Add a column with a unique code (a student number) and upload the list again.</p>'}</div>`}
+  </section>`;
+}
+
+function autoMatchCard(d, st) {
+  const L = d.list;
+  let body;
+  if (!L || L.error || !L.key) body = '<p class="muted">Load a class list with a student code column first.</p>';
+  else if (!st.marked) body = `<p class="muted">Compute the marks first: AMC reads the codes students filled in on the sheets while marking.</p><div class="btn-row"><a class="btn btn-sm" href="${examPath(S.project, 'mark')}" data-nav>Go to Mark</a></div>`;
+  else if (!d.codes.length) body = '<p class="muted">These papers have no student code boxes (<code>\\AMCcodeGrid</code>), so match the sheets by hand below, from the name written on each one.</p>';
+  else {
+    const label = (c) => (c === '<preassoc>' ? 'Names printed on the papers' : c);
+    body = `<label class="field"><span class="field-label">Code on the answer sheet</span>
+      <select class="select" id="assoc-code">${d.code ? '' : '<option value="">Choose…</option>'}${d.codes.map((c) => `<option value="${esc(c)}" ${c === d.code ? 'selected' : ''}>${esc(label(c))}</option>`).join('')}</select>
+      <span class="field-hint">Compared with the class list's <b>${esc(L.key)}</b> column. Sheets matched by hand keep their match.</span></label>`;
+  }
+  const can = L && !L.error && L.key && st.marked && d.codes.length && d.code;
+  return `<section class="card"><div class="card-header">${ic('sparks')}<h2>Automatic matching</h2></div><div class="card-body">${body}</div>
+    ${can ? `<div class="card-foot"><button class="btn btn-primary" data-act="match-auto">${ic('sparks')} Match automatically</button></div>` : ''}</section>`;
+}
+
+function matchShown(d) {
+  return S.matchFilter === 'all' ? d.sheets : d.sheets.filter((x) => x.state === 'unmatched');
+}
+function currentSheet(d) {
+  const shown = matchShown(d);
+  let cur = shown.find((x) => sheetKey(x) === S.matchSheet);
+  if (!cur && S.matchFilter === 'all') cur = d.sheets.find((x) => sheetKey(x) === S.matchSheet);
+  if (!cur) { cur = shown[0] || null; S.matchSheet = cur ? sheetKey(cur) : null; }
+  return cur;
+}
+
+function manualMatchCard(d) {
+  const shown = matchShown(d);
+  const cur = currentSheet(d);
+  const todo = d.sheets.filter((x) => x.state === 'unmatched').length;
+  let pane;
+  if (!cur) {
+    pane = `<div class="empty" style="padding:28px"><div class="empty-icon">${ic('check-circle')}</div><h2>Nothing left to match</h2>
+      <p>Every sheet is matched to a student or marked as not in the list.</p><div class="btn-row"><button class="btn btn-sm" data-act="match-filter" data-v="all">Show all sheets</button></div></div>`;
+  } else {
+    const [cls, label] = MATCH_STATES[cur.state];
+    pane = `<div style="padding:14px 16px">
+      <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px"><strong>${copyName(cur.student, cur.copy)}</strong>
+        <span class="chip ${cls}">${label}${cur.name ? ': ' + esc(cur.name) : ''}</span></div>
+      <div class="namefield"><img class="namefield-img" src="/ui/namefield/${enc(S.project)}/${cur.student}/${cur.copy}?v=${S.status && S.status.scans}" alt="Name written on ${copyName(cur.student, cur.copy)}"></div>
+      ${cur.code_read ? `<p class="subtle" style="margin:8px 0 0">Code read on the sheet: <b class="mono">${esc(cur.code_read)}</b>${cur.state === 'unmatched' ? ' (no student with this code)' : ''}</p>` : ''}
+      <label class="sr-only" for="match-search">Find a student</label>
+      <input class="input" id="match-search" style="margin-top:12px" placeholder="Type part of the name or code…" autocomplete="off" value="${esc(S.matchQuery)}">
+      <div class="match-results" id="match-results" role="listbox" aria-label="Students">${matchResultsHtml(d)}</div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:6px">
+        <span class="subtle"><span class="kbd">↑</span><span class="kbd">↓</span> choose · <span class="kbd">Enter</span> match · <span class="kbd">Esc</span> clear</span><span class="spacer"></span>
+        ${cur.manual !== null && cur.manual !== undefined ? `<button class="btn btn-ghost btn-sm" data-act="match-auto-back">${ic('undo')} Back to automatic</button>` : ''}
+        <button class="btn btn-sm" data-act="match-none">${ic('user-xmark')} Not in the class list</button>
+        ${shown.length > 1 ? `<button class="btn btn-ghost btn-sm" data-act="match-skip">Skip ${ic('nav-arrow-right')}</button>` : ''}
+      </div></div>`;
+  }
+  return `<section class="card"><div class="card-header">${ic('user-square')}<h2>Match by hand</h2><span class="chip ${todo ? 'chip-warning' : 'chip-success'}">${todo ? `${todo} to match` : 'All matched'}</span>
+      <span class="spacer"></span><div class="segmented" role="group" aria-label="Sheets shown"><button aria-pressed="${S.matchFilter === 'todo'}" data-act="match-filter" data-v="todo">To match</button><button aria-pressed="${S.matchFilter === 'all'}" data-act="match-filter" data-v="all">All sheets</button></div></div>
+    <div class="review">
+      <div class="review-list">${shown.map((x) => `<button class="review-item" aria-current="${cur && sheetKey(x) === sheetKey(cur)}" data-act="match-open" data-key="${sheetKey(x)}">
+        <span class="ri-dot" style="background:${x.state === 'unmatched' ? 'var(--warning)' : x.state === 'none' ? 'var(--text-3)' : 'var(--success)'}"></span>
+        <span><span class="ri-title">${copyName(x.student, x.copy)}</span><br><span class="subtle">${x.name ? esc(x.name) : MATCH_STATES[x.state][1]}</span></span></button>`).join('')}
+        ${!shown.length ? '<p class="subtle" style="padding:12px">None.</p>' : ''}</div>
+      <div>${pane}</div>
+    </div></section>`;
+}
+
+function matchCandidates(d) {
+  const q = fold(S.matchQuery).trim();
+  let list = d.students;
+  if (q) list = list.filter((x) => fold(x.name).includes(q) || fold(x.id).includes(q));
+  // Students without a sheet yet come first: they are the likely ones.
+  return [...list.filter((x) => !x.sheets.length), ...list.filter((x) => x.sheets.length)].slice(0, 60);
+}
+
+function matchResultsHtml(d) {
+  const cands = matchCandidates(d);
+  if (!d.students.length) return '<p class="subtle" style="padding:10px 12px">The class list has no students.</p>';
+  if (!cands.length) return `<p class="subtle" style="padding:10px 12px">No student matches “${esc(S.matchQuery)}”.</p>`;
+  S.matchCursor = Math.max(0, Math.min(S.matchCursor, cands.length - 1));
+  const cur = currentSheet(d);
+  return cands.map((x, i) => {
+    const others = x.sheets.filter(([s, c]) => !cur || s !== cur.student || c !== cur.copy);
+    const here = cur && x.sheets.some(([s, c]) => s === cur.student && c === cur.copy);
+    return `<button class="match-item ${i === S.matchCursor ? 'is-current' : ''}" role="option" aria-selected="${i === S.matchCursor}" data-act="match-pick" data-id="${esc(x.id)}">
+      <span class="match-name">${esc(x.name)}</span><span class="subtle mono">${esc(x.id)}</span>
+      ${here ? '<span class="chip chip-success">This sheet</span>' : others.length ? `<span class="chip" title="Matching moves the student to this sheet">${others.map(([s, c]) => copyName(s, c)).join(', ')}</span>` : ''}</button>`;
+  }).join('');
+}
+
+function renderMatchResults() {
+  const host = $('#match-results');
+  if (host && S.students) {
+    host.innerHTML = matchResultsHtml(S.students);
+    const curEl = host.querySelector('.is-current');
+    if (curEl) curEl.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+/* Match the current sheet (id: a student, 'NONE', or null for the automatic match), then go to the next one. */
+function matchTo(id) {
+  const d = S.students;
+  const cur = d && currentSheet(d);
+  if (!cur) return;
+  const todo = d.sheets.filter((x) => x.state === 'unmatched' && sheetKey(x) !== sheetKey(cur));
+  const after = todo.find((x) => x.student > cur.student || (x.student === cur.student && x.copy > cur.copy)) || todo[0];
+  if (S.matchFilter === 'todo' || id !== null) S.matchSheet = after ? sheetKey(after) : (S.matchFilter === 'all' ? sheetKey(cur) : null);
+  S.matchQuery = ''; S.matchCursor = 0; S.matchFocus = true;
+  const f = $('#match-search'); if (f) f.value = '';
+  socket_emit('ui-match', { student: cur.student, copy: cur.copy, id });
+}
+
+async function uploadClassList(file) {
+  try {
+    await upload('/upload/students', [[file, file.name]]);
+    socket_emit('ui-class-list-loaded');
+    toast(`${file.name} loaded.`);
+  } catch (err) { toast(err.message, 'warning-triangle'); }
+}
+
+async function changeListKey(sel) {
+  const st = S.status || {};
+  const n = (st.matched || 0) + (st.not_in_list || 0);
+  let force = false;
+  if (n) {
+    force = await confirmDialog({ title: 'Use another code column?', body: `<p>The <b>${plural(n, 'match', 'matches')}</b> already made use the old column, so ${n === 1 ? 'it is' : 'they are'} removed.</p>`, ok: 'Change and remove matches', danger: true, icon: 'warning-triangle' });
+    if (!force) { sel.value = S.students.list.key || ''; return; }
+  }
+  socket_emit('change-lkey', [sel.value, force]);
+  toast('Saved.');
+  setTimeout(() => { loadStudents(); refreshStatus(); }, 300);
+}
+
+/* ---------- View: export marks ---------- */
+
+function viewExport() {
+  const st = S.status || {};
+  if (!st.marked) return emptyStep('export-marks', 'Export marks', 'table-rows', 'No marks yet', 'Compute the marks first, then match the sheets to students.', 'mark', 'Go to Mark');
+  const m = S.marks;
+  const x = S.exportInfo;
+  return `<div class="page">
+    ${header('export-marks', 'Export marks', 'Check the marks, then export them to a spreadsheet.')}
+    ${guideBox('export-marks')}
+    ${staleBanner('export-marks')}
+    ${st.unmatched ? banner('info', 'info-circle', `${plural(st.unmatched, 'sheet isn\'t', 'sheets aren\'t')} matched to a student yet.`, 'They are exported by copy number, without a name.', `<a class="btn btn-sm" href="${examPath(S.project, 'match-students')}" data-nav>Go to Match students</a>`) : ''}
+    ${m ? statsRow() : ''}
+    <div class="grid grid-2" style="align-items:start">
+      <section class="card"><div class="card-header">${ic('stats-report')}<h2>How the marks are spread</h2></div><div class="card-body">${m ? histogram(m.rows) : '<div class="skeleton" style="height:180px"></div>'}</div></section>
+      ${x ? exportCard(x, st) : '<div class="skeleton"></div>'}
+    </div>
+    <section class="card" style="margin-top:16px"><div class="card-header">${ic('table-rows')}<h2>Marks</h2>
+      <span class="spacer"></span><label class="sr-only" for="marks-search">Search the marks</label><input class="input input-sm" id="marks-search" style="max-width:240px" placeholder="Search name, code or copy…" value="${esc(S.marksQuery)}"></div>
+      <div id="marks-table">${m ? marksTable(m.rows) : '<div class="skeleton" style="margin:16px"></div>'}</div></section>
+    ${x ? publicLinkCard(x) : ''}
+  </div>`;
+}
+
+/* A histogram of the final marks: one series, brand colour, rounded bar ends on the baseline. */
+function histogram(rows) {
+  const marks = rows.map((r) => r.mark).filter((v) => typeof v === 'number');
+  const full = outOf();
+  const low = parseFloat(S.marks.options.note_null) || 0;
+  if (!marks.length) return '<p class="subtle">No marks yet.</p>';
+  const hi = full > low ? full : Math.max(...marks);
+  if (!(hi > low)) return '<p class="subtle">All marks are the same.</p>';
+  const grain = parseFloat(S.marks.options.note_grain);
+  let n = marks.length >= 40 ? 20 : 10;
+  if (grain > 0) n = Math.max(1, Math.min(n, Math.round((hi - low) / grain)));
+  const step = (hi - low) / n;
+  const bins = Array.from({ length: n }, (_, i) => ({ lo: low + i * step, hi: low + (i + 1) * step, n: 0 }));
+  marks.forEach((v) => { bins[Math.max(0, Math.min(n - 1, Math.floor((v - low) / step + 1e-9)))].n += 1; });
+  const top = Math.max(1, ...bins.map((b) => b.n));
+  const W = 340; const H = 170; const L = 26; const B = 22; const T = 10; const R = 6;
+  const pw = W - L - R; const ph = H - T - B; const bw = pw / n;
+  const y = (v) => T + ph - (v / top) * ph;
+  const ticks = [...new Set([0, Math.ceil(top / 2), top])];
+  const bar = (b, i) => {
+    const x0 = L + i * bw + 1; const w = Math.max(1, bw - 2); const y0 = y(b.n); const h = T + ph - y0;
+    const r = Math.min(4, w / 2, h);
+    const path = h > 0 ? `M${x0},${T + ph}V${y0 + r}Q${x0},${y0} ${x0 + r},${y0}H${x0 + w - r}Q${x0 + w},${y0} ${x0 + w},${y0 + r}V${T + ph}Z` : '';
+    const label = `${fmtNum(b.lo)} to ${i === n - 1 ? fmtNum(b.hi) : '<' + fmtNum(b.hi)}: ${plural(b.n, 'copy', 'copies')}`;
+    return `<g class="hist-col" data-tip="${esc(label)}"><rect class="hist-hit" x="${L + i * bw}" y="${T}" width="${bw}" height="${ph}"></rect>${path ? `<path class="hist-bar" d="${path}"></path>` : ''}</g>`;
+  };
+  const every = n > 10 ? 2 : 1;
+  return `<div class="hist" id="hist"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Histogram of the marks: ${bins.map((b) => `${fmtNum(b.lo)}–${fmtNum(b.hi)}: ${b.n}`).join(', ')}">
+    ${ticks.map((t) => `<line class="hist-grid" x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"></line><text class="hist-label" x="${L - 6}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join('')}
+    ${bins.map(bar).join('')}
+    ${bins.map((b, i) => (i % every === 0 ? `<text class="hist-label" x="${L + i * bw}" y="${H - 6}" text-anchor="middle">${fmtNum(b.lo)}</text>` : '')).join('')}
+    <text class="hist-label" x="${W - R}" y="${H - 6}" text-anchor="end">${fmtNum(hi)}</text>
+  </svg><div class="hist-tip" id="hist-tip" hidden></div></div>
+  <p class="field-hint">Number of copies per mark range${full ? `, out of ${fmtNum(full)}` : ''}. Hover a bar for its count; the table below has every mark.</p>`;
+}
+
+const SORTERS = {
+  copy: (r) => r.student * 10000 + r.copy,
+  name: (r) => fold(r.name || '~'),
+  id: (r) => fold(r.id || '~'),
+  total: (r) => r.total,
+  mark: (r) => r.mark,
+};
+
+function marksTable(rows) {
+  const q = fold(S.marksQuery).trim();
+  const { col, dir } = S.marksSort;
+  let list = q ? rows.filter((r) => fold(r.name).includes(q) || fold(r.id).includes(q) || fold(copyName(r.student, r.copy)).includes(q)) : rows.slice();
+  const key = SORTERS[col];
+  list.sort((a, b) => { const ka = key(a); const kb = key(b); return (ka < kb ? -1 : ka > kb ? 1 : 0) * dir; });
+  const th = (c, label, num = false) => `<th class="${num ? 'num' : ''}" aria-sort="${col === c ? (dir > 0 ? 'ascending' : 'descending') : 'none'}"><button class="th-sort" data-act="marks-sort" data-col="${c}">${label}${col === c ? ' ' + ic(dir > 0 ? 'nav-arrow-up' : 'nav-arrow-down') : ''}</button></th>`;
+  const who = (r) => (r.name ? esc(r.name) : `<span class="subtle">${r.state === 'none' ? 'Not in the class list' : 'Not matched'}</span>`);
+  if (!list.length) return `<p class="subtle" style="padding:16px">${q ? `Nothing matches “${esc(S.marksQuery)}”.` : 'No marks yet.'}</p>`;
+  return `<div class="table-wrap" style="border:0;border-radius:0;max-height:480px"><table class="table"><thead><tr>${th('copy', 'Copy')}${th('name', 'Student')}${th('id', 'Code')}${th('total', 'Points', true)}${th('mark', 'Mark', true)}</tr></thead>
+    <tbody>${list.map((r) => `<tr><td class="num">${r.copy ? `${r.student}·${r.copy}` : r.student}</td><td>${who(r)}</td><td class="mono">${esc(r.id || '')}</td>
+      <td class="num">${fmtNum(r.total)} <span class="subtle">/ ${fmtNum(r.max)}</span></td><td class="num"><b>${fmtNum(r.mark)}</b></td></tr>`).join('')}</tbody></table></div>
+    ${q ? `<p class="subtle" style="padding:8px 16px">${list.length} of ${rows.length} copies.</p>` : ''}`;
+}
+
+function exportCard(x, st) {
+  const o = x.options;
+  const csv = o.format_export === 'CSV';
+  const sel = (opt, choices) => `<select class="select" data-option="${opt}">${choices.map(([v, l]) => `<option value="${v}" ${(o[opt] || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  return `<section class="card"><div class="card-header">${ic('download')}<h2>Export</h2></div><div class="card-body">
+    <div class="segmented full" role="radiogroup" aria-label="File format" style="margin-bottom:6px"><button role="radio" aria-pressed="${csv}" aria-checked="${csv}" data-act="export-format" data-v="CSV">CSV</button><button role="radio" aria-pressed="${!csv}" aria-checked="${!csv}" data-act="export-format" data-v="ods">ODS</button></div>
+    <p class="field-hint" style="margin-bottom:12px">${csv ? 'A plain table, for any spreadsheet or school system.' : 'A LibreOffice spreadsheet with the marks per question, and statistics if you want them.'}</p>
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Order</span>${sel('export_sort', [['l', 'Class list order'], ['n', 'Name'], ['i', 'Copy number'], ['m', 'Mark, lowest first'], ['r', 'Mark, highest first']])}</label>
+      ${csv ? `<label class="field"><span class="field-label">Ticked boxes</span>${sel('export_csv_ticked', [['', 'Not included'], ['01', 'Included as 0 and 1'], ['AB', 'Included as letters']])}</label>`
+    : `<label class="field"><span class="field-label">Statistics</span>${sel('export_ods_stats', [['', 'None'], ['h', 'Table, across'], ['v', 'Table, down']])}</label>`}
+    </div>
+    <label class="check" style="margin-top:12px"><input type="checkbox" data-option="export_include_abs" ${isOn(o.export_include_abs) ? 'checked' : ''} ${st.students_list ? '' : 'disabled'}>
+      <span>Include absent students<br><span class="subtle">${st.students_list ? 'Students in the class list without a sheet, with no mark.' : 'Needs a class list.'}</span></span></label>
+    ${x.files.length ? `<div class="list" style="margin:14px -16px -16px;border-top:1px solid var(--border)">${x.files.map((f) => `<div class="list-row"><span class="list-icon brand">${ic('page')}</span>
+      <div class="list-row-main"><div class="list-row-title">${esc(f.name)}</div><div class="subtle">${new Date(f.time * 1000).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${Math.max(1, Math.round(f.size / 1024))} KB</div></div>
+      ${/\.csv$/i.test(f.name) ? `<button class="btn btn-sm" data-act="export-preview" data-file="${esc(f.name)}">Preview</button>` : ''}
+      <a class="btn btn-sm btn-icon" href="${fsUrl('exports/' + f.name, true)}" download="${esc(S.project + '-' + f.name)}" title="Download ${esc(f.name)}" aria-label="Download ${esc(f.name)}">${ic('download')}</a></div>`).join('')}</div>` : ''}
+  </div>
+  <div class="card-foot"><button class="btn btn-primary" data-act="export">${ic('download')} Export as ${csv ? 'CSV' : 'ODS'}</button></div></section>`;
+}
+
+function publicLinkCard(x) {
+  const on = isOn(x.options.app_public_marks);
+  return `<details class="card" style="margin-top:16px" ${on ? 'open' : ''}><summary class="card-header" style="cursor:pointer;border-bottom:0">${ic('link')}<h2>Shareable marks link</h2>${on ? '<span class="chip chip-warning">On</span>' : ''}</summary>
+    <div class="card-body" style="border-top:1px solid var(--border)">
+      <label class="check"><input type="checkbox" data-option="app_public_marks" ${on ? 'checked' : ''}>
+        <span>Turn on a link to this exam's marks<br><span class="subtle">For tools that import marks from an address. <b>Anyone with the link can see each student code and mark, without signing in.</b> It always shows the latest marks, for matched students only.</span></span></label>
+      ${on && x.public_link ? `<div class="input-group" style="margin-top:12px"><input class="input mono" id="public-link" readonly value="${esc(x.public_link)}" aria-label="Shareable marks link"><button class="btn" data-act="copy-link">${ic('copy')} Copy</button></div>` : ''}
+    </div></details>`;
+}
+
+/* AMC's yes/no options are "1" or empty. */
+function isOn(v) { return !!v && v !== '0'; }
+
+/* ---------- View: annotate ---------- */
+
+const POSITIONS = [['marges', 'In both margins'], ['marge', 'In one margin'], ['case', 'Next to the boxes'], ['zones', 'Where the source places them'], ['none', 'Nowhere (header only)']];
+
+function viewAnnotate() {
+  const st = S.status || {};
+  if (!st.marked) return emptyStep('annotate', 'Annotate', 'edit-pencil', 'No marks yet', 'Annotated sheets show each student\'s answers and marks. Compute the marks first.', 'mark', 'Go to Mark');
+  const a = S.annotateInfo;
+  if (!a) return `<div class="page">${header('annotate', 'Annotate')}<div class="skeleton"></div></div>`;
+  const o = a.options;
+  const single = o.regroupement_type === 'ALL';
+  const rows = (S.marks && S.marks.rows) || [];
+  const check = (opt, title, hint) => `<label class="check" style="margin-top:10px"><input type="checkbox" data-option="${opt}" ${isOn(o[opt]) ? 'checked' : ''}><span>${title}${hint ? `<br><span class="subtle">${hint}</span>` : ''}</span></label>`;
+  return `<div class="page">
+    ${header('annotate', 'Annotate', 'Make marked answer sheets to give back to students.',
+    `<button class="btn btn-primary" data-act="annotate">${ic('edit-pencil')} Annotate all sheets</button>`)}
+    ${guideBox('annotate')}
+    ${staleBanner('annotate')}
+    ${st.unmatched ? banner('info', 'info-circle', `${plural(st.unmatched, 'sheet isn\'t', 'sheets aren\'t')} matched to a student yet.`, 'Their files are named by copy number, without a name.', `<a class="btn btn-sm" href="${examPath(S.project, 'match-students')}" data-nav>Go to Match students</a>`) : ''}
+    <div class="grid grid-2">
+      <section class="card"><div class="card-header"><h2>On each sheet</h2></div><div class="card-body">
+        <label class="field"><span class="field-label">Marks for each question</span><select class="select" data-option="annote_position">${POSITIONS.map(([v, l]) => `<option value="${v}" ${(o.annote_position || 'marges') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="field" style="margin-top:12px"><span class="field-label">Header text</span><textarea class="textarea mono" rows="3" id="verdict" data-option="verdict" placeholder="${esc(a.default_verdict)}">${esc(o.verdict)}</textarea>
+          <span class="field-hint">Written at the top of the first page. Empty: AMC's default. <code>%s</code> mark, <code>%m</code> out of, <code>%S</code> points, <code>%M</code> maximum points, <code>(ID)</code> the student's name.</span></label>
+      </div></section>
+      <section class="card"><div class="card-header"><h2>Files</h2></div><div class="card-body">
+        <div class="segmented full" role="radiogroup" aria-label="Files"><button role="radio" aria-pressed="${!single}" aria-checked="${!single}" data-act="annotate-type" data-v="STUDENTS">One PDF per student</button><button role="radio" aria-pressed="${single}" aria-checked="${single}" data-act="annotate-type" data-v="ALL">One PDF for the class</button></div>
+        ${single ? '' : `<label class="field" style="margin-top:12px"><span class="field-label">File names</span><input class="input mono" id="file-model" data-option="modele_regroupement" value="${esc(o.modele_regroupement)}" placeholder="(N)-(ID)">
+          <span class="field-hint"><code>(N)</code> copy number, <code>(ID)</code> student name, or a class list column in brackets, such as <code>(surname)</code>.</span></label>`}
+        ${check('add_corrected', 'Add the corrected question paper', 'Appended after each student\'s sheet.')}
+        ${check('regroupement_compose', 'Add question paper pages where needed', 'For exams with a separate answer sheet: pages without boxes come from the question paper.')}
+        ${single ? '' : check('annotate_dont_overwrite', 'Keep sheets already made', 'Only make the missing ones.')}
+      </div></section>
+    </div>
+    <section class="card" style="margin-top:16px"><div class="card-header">${ic('eye')}<h2>Preview one student</h2></div><div class="card-body">
+      <div class="row" style="flex-wrap:wrap;gap:8px"><label class="sr-only" for="annot-copy">Sheet</label>
+        <select class="select" id="annot-copy" style="max-width:360px">${rows.map((r) => `<option value="${r.student}/${r.copy}">${copyName(r.student, r.copy)}${r.name ? ' · ' + esc(r.name) : ''}</option>`).join('')}</select>
+        <button class="btn" data-act="annotate-preview" ${rows.length ? '' : 'disabled'}>${ic('eye')} Preview</button></div>
+      <p class="field-hint" style="margin-top:8px">Makes this student's sheet with the settings above and shows it on the right. The real annotated sheets aren't touched.</p>
+    </div></section>
+    ${annotatedCard(a)}
+  </div>`;
+}
+
+function annotatedCard(a) {
+  if (!a.files.length) return '';
+  const all = a.files.find((f) => f.all);
+  const per = a.files.filter((f) => !f.all);
+  const zip = `/fs/${enc(S.project)}/cr/corrections/pdf?filename=${enc(S.project + '-annotated.zip')}&exclude=all-students.pdf`;
+  return `<section class="card" style="margin-top:16px"><div class="card-header">${ic('multiple-pages')}<h2>Annotated sheets</h2><span class="chip">${per.length + (all ? 1 : 0)}</span>
+    <span class="spacer"></span>${per.length ? `<a class="btn btn-sm" href="${zip}">${ic('download')} Download all (zip)</a>` : ''}</div>
+    <div class="table-wrap" style="border:0;border-radius:0;max-height:420px"><table class="table"><thead><tr><th>Sheet</th><th>Student</th><th>File</th><th></th></tr></thead><tbody>
+    ${a.files.map((f, i) => `<tr><td>${f.all ? 'Whole class' : f.student ? copyName(f.student, f.copy) : ''}</td><td>${f.name ? esc(f.name) : ''}</td><td class="mono" style="word-break:break-all">${esc(f.file)}</td>
+      <td style="text-align:right;white-space:nowrap"><button class="btn btn-sm" data-act="annotated-open" data-i="${i}">Preview</button> <a class="btn btn-sm btn-ghost" href="${fsUrl('cr/corrections/pdf/' + f.file, true)}" title="Download" aria-label="Download ${esc(f.file)}">${ic('download')}</a></td></tr>`).join('')}
+    </tbody></table></div></section>`;
+}
+
+function openAnnotated(i) {
+  const files = (S.annotateInfo && S.annotateInfo.files) || [];
+  S.previewList = {
+    items: files.map((f) => ({ path: `cr/corrections/pdf/${f.file}`, title: f.all ? 'Whole class' : `${f.student ? copyName(f.student, f.copy) : f.file}${f.name ? ' · ' + f.name : ''}` })),
+    i,
+  };
+  const it = S.previewList.items[i];
+  S.previewFile = { name: it.path, title: it.title, stamp: Date.now() };
+  S.previewMode = null;
+  openPreview();
+}
+function previewListGo(i) {
+  const pl = S.previewList;
+  if (!pl || !pl.items[i]) return;
+  pl.i = i;
+  S.previewFile = { name: pl.items[i].path, title: pl.items[i].title, stamp: Date.now() };
+  renderPreview();
+}
+
 /* ---------- Dialogs, toasts, progress ---------- */
 
 let dialogResolve = null;
@@ -1444,7 +1989,7 @@ const ACTIONS = {
   menu: (el) => { const m = el.dataset.menu; S.menu = S.menu === m ? null : m; renderTop(); if (S.route.kind === 'exams') renderMain(true); },
   'toggle-preview': () => { S.previewOpen = !S.previewOpen; S.previewMax = false; store.set('previewOpen', S.previewOpen); renderTop(); renderPreview(); resizeEditor(); },
   'preview-max': () => { S.previewMax = !S.previewMax; renderPreview(); resizeEditor(); },
-  'preview-docs': () => { S.previewFile = null; S.previewMode = null; renderPreview(); },
+  'preview-docs': () => { S.previewFile = null; S.previewMode = null; S.previewList = null; renderPreview(); },
   'show-doc': (el) => { S.previewDoc = el.dataset.doc; S.previewFile = null; S.previewMode = null; if (!S.previewOpen) { S.previewOpen = true; store.set('previewOpen', true); renderTop(); } renderPreview(); },
   unlock: () => unlockExam(),
   'save-scoring': () => {
@@ -1498,6 +2043,55 @@ const ACTIONS = {
     if (ok) { socket_emit('delete-scans', [{ student, page, copy }]); if (S.review && S.review.key === el.dataset.key) S.review = null; }
   },
   'mark-printed': () => markPrinted(),
+  mark: () => socket_emit('ui-mark', {}),
+  'mark-anyway': () => markAnyway(),
+  'open-page': (el) => { S.pendingReview = el.dataset.key; navigate(examPath(S.project, 'check-scans')); },
+  'list-preview': () => { const f = S.students.list.file; showFile(f, `Class list · ${f}`); },
+  'list-remove': async () => {
+    const st = S.status || {};
+    const n = (st.matched || 0) + (st.not_in_list || 0);
+    const ok = await confirmDialog({ title: 'Remove the class list?', body: `<p>The file is deleted from the exam${n ? `, and the <b>${plural(n, 'match', 'matches')}</b> between sheets and students ${n === 1 ? 'is' : 'are'} removed` : ''}.</p>`, ok: 'Remove', danger: true, icon: 'trash' });
+    if (ok) socket_emit('ui-class-list-remove');
+  },
+  'match-auto': () => socket_emit('ui-match-auto'),
+  'match-filter': (el) => { S.matchFilter = el.dataset.v; S.matchQuery = ''; S.matchCursor = 0; renderMain(true); },
+  'match-open': (el) => { S.matchSheet = el.dataset.key; S.matchQuery = ''; S.matchCursor = 0; S.matchFocus = true; const f = $('#match-search'); if (f) f.value = ''; renderMain(true); },
+  'match-pick': (el) => matchTo(el.dataset.id),
+  'match-none': () => matchTo('NONE'),
+  'match-auto-back': () => matchTo(null),
+  'match-skip': () => {
+    const shown = matchShown(S.students);
+    const i = shown.findIndex((x) => sheetKey(x) === S.matchSheet);
+    S.matchSheet = sheetKey(shown[(i + 1) % shown.length]); S.matchQuery = ''; S.matchCursor = 0; S.matchFocus = true;
+    const f = $('#match-search'); if (f) f.value = '';
+    renderMain(true);
+  },
+  'match-clear': async () => {
+    const ok = await confirmDialog({ title: 'Remove all matches?', body: '<p>Every sheet goes back to unmatched, including the ones matched by hand. Automatic matching can be run again.</p>', ok: 'Remove all matches', danger: true, icon: 'trash' });
+    if (ok) socket_emit('ui-match-clear');
+  },
+  'marks-sort': (el) => {
+    const c = el.dataset.col;
+    S.marksSort = { col: c, dir: S.marksSort.col === c ? -S.marksSort.dir : (c === 'mark' || c === 'total' ? -1 : 1) };
+    const host = $('#marks-table'); if (host && S.marks) host.innerHTML = marksTable(S.marks.rows);
+  },
+  'export-format': (el) => { socket_emit('set-config', ['format_export', el.dataset.v]); if (S.exportInfo) S.exportInfo.options.format_export = el.dataset.v; renderMain(true); },
+  export: () => socket_emit('ui-export'),
+  'export-preview': (el) => showFile(`exports/${el.dataset.file}`, `Exported marks · ${el.dataset.file}`),
+  'copy-link': async () => {
+    const v = $('#public-link').value;
+    try { await navigator.clipboard.writeText(v); toast('Link copied.'); } catch { $('#public-link').select(); toast('Select the link and copy it.', 'info-circle'); }
+  },
+  'annotate-type': (el) => { socket_emit('set-config', ['regroupement_type', el.dataset.v]); if (S.annotateInfo) S.annotateInfo.options.regroupement_type = el.dataset.v; renderMain(true); },
+  annotate: () => socket_emit('ui-annotate'),
+  'annotate-preview': () => {
+    const v = $('#annot-copy') && $('#annot-copy').value;
+    if (!v) return;
+    const [student, copy] = v.split('/').map(Number);
+    socket_emit('ui-annotate-preview', { student, copy });
+  },
+  'annotated-open': (el) => openAnnotated(+el.dataset.i),
+  'plist-step': (el) => { if (S.previewList) previewListGo(S.previewList.i + parseInt(el.dataset.delta, 10)); },
   'guide-toggle': (el) => { const k = el.dataset.step; S.guide[k] = !S.guide[k]; store.set('guide', S.guide); const g = el.closest('.guide'); g.classList.toggle('is-collapsed', S.guide[k]); el.setAttribute('aria-expanded', !S.guide[k]); resizeEditor(); },
   'new-exam': () => newExam(),
   'rename-exam': (el) => { S.menu = null; renameExam(el.dataset.name); },
@@ -1557,10 +2151,18 @@ document.addEventListener('change', async (e) => {
   }
   if (t.id === 'cfg-engine') { socket_emit('set-config', ['moteur_latex_b', t.value]); toast('LaTeX engine saved.'); }
   if (t.matches('[data-option]')) {
-    socket_emit('set-config', [t.dataset.option, t.value]);
-    if (S.config) S.config.options[t.dataset.option] = t.value;
+    const name = t.dataset.option;
+    const v = t.type === 'checkbox' ? (t.checked ? '1' : '') : t.value;
+    socket_emit('set-config', [name, v]);
+    [S.config, S.exportInfo, S.annotateInfo].forEach((x) => { if (x && x.options && name in x.options) x.options[name] = v; });
     toast('Saved.');
+    if (name === 'app_public_marks') setTimeout(loadExport, 300);
+    if (S.route.step === 'annotate' || S.route.step === 'export-marks') setTimeout(refreshStatus, 300);
   }
+  if (t.id === 'list-file' && t.files[0]) { uploadClassList(t.files[0]); t.value = ''; }
+  if (t.id === 'list-key' && t.value) changeListKey(t);
+  if (t.id === 'assoc-code' && t.value) { socket_emit('change-acode', t.value); if (S.students) S.students.code = t.value; renderMain(true); toast('Saved.'); }
+  if (t.id === 'plist-select') previewListGo(+t.value);
   if (/^score-[SM]-preset$/.test(t.id)) $(`#score-${t.id[6]}-custom-field`).classList.toggle('hidden', t.value !== 'custom');
   if (t.id === 'scan-files' && t.files.length) { uploadScans(t.files); t.value = ''; }
   if (t.id === 'scan-photocopy') { socket_emit('scans-mode-change', t.checked ? 1 : 0); if (S.scans) S.scans.photocopy = t.checked; renderMain(true); }
@@ -1580,7 +2182,23 @@ document.addEventListener('change', async (e) => {
   }
 });
 
+document.addEventListener('input', (e) => {
+  const t = e.target;
+  if (t.id === 'match-search') { S.matchQuery = t.value; S.matchCursor = 0; renderMatchResults(); }
+  if (t.id === 'marks-search') { S.marksQuery = t.value; const host = $('#marks-table'); if (host && S.marks) host.innerHTML = marksTable(S.marks.rows); }
+});
+
 document.addEventListener('keydown', (e) => {
+  if (e.target instanceof Element && e.target.id === 'match-search' && !$('#layer').innerHTML) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); S.matchCursor += e.key === 'ArrowDown' ? 1 : -1; renderMatchResults(); return; }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const c = S.students && matchCandidates(S.students)[S.matchCursor];
+      if (c) matchTo(c.id);
+      return;
+    }
+    if (e.key === 'Escape' && e.target.value) { e.preventDefault(); e.target.value = ''; S.matchQuery = ''; S.matchCursor = 0; renderMatchResults(); return; }
+  }
   if (e.key === 'Escape') {
     if ($('#layer').innerHTML && !$('#layer .server-dialog')) closeDialog(false);
     else if (S.menu) { S.menu = null; renderTop(); if (S.route.kind === 'exams') renderMain(true); }
@@ -1597,15 +2215,38 @@ document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 's' && S.route.step === 'questions' && !(e.target.closest && e.target.closest('.ace_editor'))) { e.preventDefault(); saveSource(); }
 });
 
-/* Drag and drop scans onto the upload area */
-document.addEventListener('dragover', (e) => { const z = e.target.closest && e.target.closest('#scan-drop'); if (z) { e.preventDefault(); z.classList.add('is-over'); } });
-document.addEventListener('dragleave', (e) => { const z = e.target.closest && e.target.closest('#scan-drop'); if (z) z.classList.remove('is-over'); });
+/* Drag and drop scans, or the class list, onto their upload areas */
+const dropZone = (e) => e.target.closest && e.target.closest('#scan-drop, #list-drop');
+document.addEventListener('dragover', (e) => { const z = dropZone(e); if (z) { e.preventDefault(); z.classList.add('is-over'); } });
+document.addEventListener('dragleave', (e) => { const z = dropZone(e); if (z) z.classList.remove('is-over'); });
 document.addEventListener('drop', (e) => {
-  const z = e.target.closest && e.target.closest('#scan-drop');
+  const z = dropZone(e);
   if (!z) return;
   e.preventDefault(); z.classList.remove('is-over');
-  if (e.dataTransfer && e.dataTransfer.files.length) uploadScans(e.dataTransfer.files);
+  const files = e.dataTransfer ? e.dataTransfer.files : [];
+  if (!files.length) return;
+  if (z.id === 'scan-drop') uploadScans(files); else uploadClassList(files[0]);
 });
+
+/* Histogram tooltips */
+document.addEventListener('mousemove', (e) => {
+  const tip = $('#hist-tip');
+  if (!tip) return;
+  const col = e.target.closest && e.target.closest('.hist-col');
+  if (!col) { tip.hidden = true; return; }
+  const box = $('#hist').getBoundingClientRect();
+  tip.textContent = col.dataset.tip;
+  tip.hidden = false;
+  tip.style.left = `${Math.min(box.width - tip.offsetWidth, Math.max(0, e.clientX - box.left - tip.offsetWidth / 2))}px`;
+  tip.style.top = `${e.clientY - box.top - tip.offsetHeight - 10}px`;
+});
+
+/* A sheet without a readable name field */
+document.addEventListener('error', (e) => {
+  if (e.target instanceof HTMLImageElement && e.target.classList.contains('namefield-img')) {
+    e.target.outerHTML = '<p class="subtle namefield-none">No name field was read on this sheet.</p>';
+  }
+}, true);
 
 /* Preview panel resizing */
 document.addEventListener('pointerdown', (e) => {
