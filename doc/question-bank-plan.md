@@ -606,16 +606,16 @@ updated as each phase lands. ✅ built, ⬜ to build, ✖ not doing (why).
 - ✅ A section edited as one LaTeX document (`%%%% item name %%%%` separators), with "what will happen" before saving
 - ✅ Snippets for AMC environments; completion of question names and the exam's macros
 
-**P2 — Question banks** (#5)
-- ⬜ Banks per instructor, in groups, with history (git) and a trash
-- ⬜ Bank page: groups, items, search and filters (type, tags, difficulty, not used since), the item form and LaTeX view
-- ⬜ Bank → exam: a whole group as a new section or into one; selected questions; a random pick made once and shown first; sets moved whole
-- ⬜ Exam → bank: a whole section as a group, selected questions, or the whole exam as a new bank; "Update the bank's copy" or "Save as new"
+**P2 — Question banks** (#5; P2a built on `feature/banks-p2a`)
+- ✅ Banks per instructor, in groups, with history (git) and a trash
+- ✅ Bank page: groups, items, difficulty and tags, the item form, LaTeX view and History (search and filters: P2b)
+- ✅ Bank → exam: a whole group as a new section or into one; selected questions; a random pick made once and shown first; sets moved whole
+- ✅ Exam → bank: a whole section as a group, selected questions, or the whole exam as a new bank; "Update the bank's copy" or "Save as new"
 - ⬜ Copies with a revision record: status Up to date / Bank updated / Edited here / Both changed; comparison; update either side; printed exams take answer-key fixes only
 - ⬜ A section made from a group offers questions added to the group later
-- ⬜ Macros and packages an item needs, offered to the exam that lacks them
+- ✅ Macros and packages an item needs, offered to the exam that lacks them
 - ⬜ Usage recorded when papers are printed
-- ⬜ Import of RJ-style LaTeX files (`\element{sectionI}{…}` blocks with figures)
+- ✅ Import of RJ-style LaTeX files (`\element{sectionI}{…}` blocks with figures)
 - ⬜ Search index (SQLite FTS5, outside teachers' folders)
 - ⬜ Bank zip export and import (checked like exam archives)
 

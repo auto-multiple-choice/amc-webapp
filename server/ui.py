@@ -35,6 +35,7 @@ import ui_scale as scale
 import ui_changes as changes
 import ui_items as items
 import ui_latex as ltx
+import ui_banks as banks
 import ui_vcs as vcs
 
 HISTORY_DIR = vcs.OLD_HISTORY_DIR  # the old per-file history: kept out of exam downloads until converted (amc.py)
@@ -73,6 +74,8 @@ def init_app(app, server_module):
 @bp.route("/exams")
 @bp.route("/new")
 @bp.route("/appearance")
+@bp.route("/banks")
+@bp.route("/bank/<name>")
 @bp.route("/exam/<name>")
 @bp.route("/exam/<name>/<step>")
 def page(name=None, step=None):
@@ -1174,10 +1177,11 @@ def _item_names(pdir):
                   and os.path.isfile(os.path.join(d, n, items.ITEM_FILE)))
 
 
-def _read_questions(pdir, fn, text):
+def _read_questions(pdir, fn, text, pmap=None):
     """The questions of one LaTeX file of the exam: an item's questions
-    belong to the section pools.tex puts the item in."""
-    return items.annotate(scale.read_latex(text, fn), fn, items.pool_map(_pools_text(pdir)))
+    belong to the section pools.tex puts the item in (PMAP: a bank's
+    groups instead)."""
+    return items.annotate(scale.read_latex(text, fn), fn, items.pool_map(_pools_text(pdir)) if pmap is None else pmap)
 
 
 def modular(pdir):
@@ -2219,15 +2223,41 @@ def _version_label(e, label=None):
     return label or time.strftime("%d %b %Y %H:%M UTC", time.gmtime((e or {}).get("at") or 0))
 
 
-@bp.route("/ui/api/history")
-def api_history():
-    """The exam's versions, newest first (or one file's), and the files
-    that have a history, deleted ones included. Changes made outside the
-    app are recorded first, so the list starts from the files as they are."""
-    name = _open_project()
-    if not name:
+def bank_dir(name):
+    """The folder of the signed-in teacher's bank NAME (ui_banks.py), or None."""
+    core.headers_info()
+    try:
+        d = banks.bank_dir(core.projects_dir(), name)
+    except ValueError:
+        return None
+    return d if vcs.is_target(d, "bank") else None
+
+
+def _subject(bank):
+    """What a history request is about: (name, folder, target) of the open
+    exam (AMC-project header) or of the teacher's bank BANK, or None."""
+    if bank is None:
+        name = _open_project()
+        return (name, core.project_dir(), "exam") if name else None
+    d = bank_dir(bank)
+    return (bank, d, "bank") if d else None
+
+
+def _repo(pdir, target):
+    return exam_history(pdir) if target == "exam" else vcs.Repo(pdir, _root(), "bank").open(by=_who())
+
+
+@bp.route("/ui/api/history", defaults={"bank": None})
+@bp.route("/ui/api/bank/<bank>/history")
+def api_history(bank):
+    """The exam's (or a bank's) versions, newest first (or one file's), and
+    the files that have a history, deleted ones included. Changes made
+    outside the app are recorded first, so the list starts from the files
+    as they are."""
+    subj = _subject(bank)
+    if not subj:
         return jsonify(project=None)
-    pdir = core.project_dir()
+    name, pdir, target = subj
     fn = request.args.get("file") or None
     if fn is not None and not vcs.tracked(fn):
         return jsonify(project=name, error="No history is kept for this file."), 400
@@ -2237,14 +2267,14 @@ def api_history():
     except ValueError:
         skip, limit = 0, HISTORY_PAGE
     try:
-        repo = exam_history(pdir)
+        repo = _repo(pdir, target)
         repo.record_outside()
         versions, total = repo.log(fn, limit=limit, skip=skip)
         files = repo.files()
     except (vcs.HistoryError, OSError) as e:
         return _history_error(name, e)
     return jsonify(project=name, file=fn, versions=versions, total=total, skip=skip, files=files,
-                   head=repo.head(), lock=bool(exam_lock(pdir)))
+                   head=repo.head(), lock=bool(target == "exam" and exam_lock(pdir)), target=target)
 
 
 def _design_or_none(data):
@@ -2254,19 +2284,20 @@ def _design_or_none(data):
         return None
 
 
-@bp.route("/ui/api/history/<cid>")
-def api_history_version(cid):
+@bp.route("/ui/api/history/<cid>", defaults={"bank": None})
+@bp.route("/ui/api/bank/<bank>/history/<cid>")
+def api_history_version(cid, bank):
     """One version: what it changed (against=parent, the default), what
     changed since (against=now), or the differences with another version
     (against=<id>), in words and line by line. raw=1&file=F gives the file
     as it was (inline=1: an image to show)."""
-    name = _open_project()
-    if not name:
+    subj = _subject(bank)
+    if not subj:
         return jsonify(project=None)
-    pdir = core.project_dir()
+    name, pdir, target = subj
     fn = request.args.get("file") or None
     try:
-        repo = exam_history(pdir)
+        repo = _repo(pdir, target)
         if not repo.check_commit(cid):
             return jsonify(project=name, error="This version doesn't exist."), 404
         if request.args.get("raw"):
@@ -2361,21 +2392,22 @@ def _restore_what(mode, e, fn, label=None):
     return f"Undid the change of {label} ({e['what']})"[:200]
 
 
-@bp.route("/ui/api/history/<cid>/plan")
-def api_history_plan(cid):
+@bp.route("/ui/api/history/<cid>/plan", defaults={"bank": None})
+@bp.route("/ui/api/bank/<bank>/history/<cid>/plan")
+def api_history_plan(cid, bank):
     """What a restore would do, for its confirmation: the files, the
     changes in words, and why it can't be done (a change made again
     since, a printed exam)."""
-    name = _open_project()
-    if not name:
+    subj = _subject(bank)
+    if not subj:
         return jsonify(project=None)
-    pdir = core.project_dir()
+    name, pdir, target = subj
     mode = request.args.get("mode")
     if mode not in RESTORE_MODES:
         return jsonify(project=name, error="Unknown kind of restore."), 400
     fn = request.args.get("file") or None
     try:
-        repo = exam_history(pdir)
+        repo = _repo(pdir, target)
         if not repo.check_commit(cid):
             return jsonify(project=name, error="This version doesn't exist."), 404
         plan, problem, e = _restore_plan(repo, cid, mode, fn)
@@ -2386,26 +2418,28 @@ def api_history_plan(cid):
     return jsonify(project=name, mode=mode, id=cid, file=fn, head=repo.head(), entry=e, what=_restore_what(mode, e, fn),
                    files=[{"file": p, "action": "removed" if d is None else "added" if p not in now else "changed"}
                           for p, d in sorted(plan.items())],
-                   summary=changes.describe(old, plan), problem=problem, refused=None if problem else _plan_refusal(pdir, plan))
+                   summary=changes.describe(old, plan), problem=problem,
+                   refused=None if problem or target != "exam" else _plan_refusal(pdir, plan))
 
 
-@bp.route("/ui/api/history/restore", methods=["POST"])
-def api_history_restore():
+@bp.route("/ui/api/history/restore", methods=["POST"], defaults={"bank": None})
+@bp.route("/ui/api/bank/<bank>/history/restore", methods=["POST"])
+def api_history_restore(bank):
     """Restore: the whole exam to a version (mode exam), one file (file),
     or take back one change (undo). One new version, which can itself be
     undone. HEAD is the version the confirmation was shown for: if the
     exam changed since, nothing is written."""
-    name = _open_project()
-    if not name:
+    subj = _subject(bank)
+    if not subj:
         return jsonify(error="This exam doesn't exist any more.")
-    pdir = core.project_dir()
+    name, pdir, target = subj
     data = request.get_json(silent=True)
     data = data if isinstance(data, dict) else {}
     mode, cid, fn = data.get("mode"), str(data.get("id") or ""), str(data.get("file") or "") or None
     if mode not in RESTORE_MODES:
         return jsonify(error="Unknown kind of restore.")
     try:
-        repo = exam_history(pdir)
+        repo = _repo(pdir, target)
         if not repo.check_commit(cid):
             return jsonify(error="This version doesn't exist.")
         plan, problem, e = _restore_plan(repo, cid, mode, fn)
@@ -2415,18 +2449,20 @@ def api_history_restore():
             return jsonify(error="The exam was changed since you looked at this version. Look at it again before restoring.", conflict=True)
         if not plan:
             return jsonify(ok=True, nothing=True, what="Nothing to restore: the files are already as in that version.")
-        if refusal := _plan_refusal(pdir, plan):
+        if target == "exam" and (refusal := _plan_refusal(pdir, plan)):
             return jsonify(error=refusal, locked=True)
         what = _restore_what(mode, e, fn, data.get("label"))
+        if target == "bank":
+            what = what.replace("the exam", "the bank")
         existed = {p: os.path.isfile(os.path.join(pdir, p)) for p in plan}
-        with history_change(pdir, what, kind="undo" if mode == "undo" else "restore",
-                            extra={"Undoes" if mode == "undo" else "Restores": cid}) as cs:
+        with vcs.change(pdir, _root(), by=_who(), what=what, kind="undo" if mode == "undo" else "restore",
+                        extra={"Undoes" if mode == "undo" else "Restores": cid}, target=target) as cs:
             for path, d in plan.items():
                 if d is None:
                     cs.delete(path)
                 else:
                     cs.write(path, d)
-            if any(p == paper_builder.DESIGN_FILE or (p.endswith((".tex", ".latex")) and p != paper_builder.LAYOUT_FILE) for p in plan):
+            if target == "exam" and any(p == paper_builder.DESIGN_FILE or (p.endswith((".tex", ".latex")) and p != paper_builder.LAYOUT_FILE) for p in plan):
                 refresh_layout(pdir, force=True)  # a builder exam: the layout follows the restored design and sections
         new = cs.commit_id
         if not new:
@@ -2435,6 +2471,9 @@ def api_history_restore():
         return jsonify(error="The exam was changed while restoring. Look at the version again.", conflict=True)
     except (vcs.HistoryError, OSError) as err:
         return _history_error(name, err)
+    if target == "bank":
+        vcs.audit(repo.home, _who(), "bank version restored", bank=name, mode=mode, version=cid, file=fn, new=new)
+        return jsonify(ok=True, what=what, id=new, files=sorted(plan))
     audit("version restored", pdir, exam=name, mode=mode, version=cid, file=fn, new=new)
     add_activity(pdir, what)
     if any(d is None or not existed[p] for p, d in plan.items()):
@@ -2444,19 +2483,21 @@ def api_history_restore():
     return jsonify(ok=True, what=what, id=new, files=sorted(plan))
 
 
-@bp.route("/ui/api/history/name", methods=["POST"])
-def api_history_name():
+@bp.route("/ui/api/history/name", methods=["POST"], defaults={"bank": None})
+@bp.route("/ui/api/bank/<bank>/history/name", methods=["POST"])
+def api_history_name(bank):
     """Name a version ("Checked by the head of department"), or remove a name."""
-    name = _open_project()
-    if not name:
+    subj = _subject(bank)
+    if not subj:
         return jsonify(error="This exam doesn't exist any more.")
+    name, pdir, target = subj
     data = request.get_json(silent=True)
     data = data if isinstance(data, dict) else {}
     label = re.sub(r"[\x00-\x1f\x7f]", "", str(data.get("name") or "")).strip()[:80]
     if not label:
         return jsonify(error="Give the version a name.")
     try:
-        repo = exam_history(core.project_dir())
+        repo = _repo(pdir, target)
         cid = repo.check_commit(str(data.get("id") or ""))
         if not cid:
             return jsonify(error="This version doesn't exist.")
@@ -2512,9 +2553,10 @@ def api_trash_action(action):
     try:
         home = _owner_home()
         if action == "restore":
-            name = vcs.restore_trash(home, tid, core.projects_dir(), by=_who())
-            add_activity(core.project_dir(p=name), "Restored from the trash")
-            return jsonify(ok=True, name=name)
+            name, target = vcs.restore_trash(home, tid, core.projects_dir(), by=_who())
+            if target == "exam":
+                add_activity(core.project_dir(p=name), "Restored from the trash")
+            return jsonify(ok=True, name=name, target=target)
         if action == "delete":
             vcs.delete_trash(home, tid, by=_who())
             return jsonify(ok=True)
@@ -2528,7 +2570,7 @@ def api_trash_action(action):
 
 # ---------------------------------------------------------------- the question editor
 
-def _editor_file(pdir, fn):
+def _editor_file(pdir, fn, pmap=None):
     """One source file as the form editor sees it: its questions in file
     order, with what each form field edits."""
     with open(os.path.join(pdir, fn), "rb") as f:
@@ -2540,9 +2582,12 @@ def _editor_file(pdir, fn):
     except UnicodeDecodeError:
         out["problem"] = "The file isn't UTF-8 text, so it can only be read."
         return out
-    qs = _read_questions(pdir, fn, text)
+    qs = _read_questions(pdir, fn, text, pmap)
     if out["item"]:
         out["text"] = text  # the LaTeX view edits the item's whole file
+        m = banks.item_meta(pdir, out["item"])
+        out["meta"] = {"uid": m.get("uid"), "title": m.get("title") or "", "tags": m.get("tags") or [],
+                       "difficulty": m.get("difficulty") or "", "origin": m.get("origin")}
     counts = {}
     for q in qs:
         counts[q["id"]] = counts.get(q["id"], 0) + 1
@@ -2848,7 +2893,7 @@ def _picture(pdf):
         return None
 
 
-def compile_check(pdir, source):
+def compile_check(pdir, source, engine=None):
     """Compile SOURCE in a scratch folder of the exam (the item's \\input and
     figures resolve as in the real build). Returns (ok, log, png or None)."""
     d = CHECK_PREFIX + uuid.uuid4().hex[:8]
@@ -2857,7 +2902,7 @@ def compile_check(pdir, source):
     try:
         with open(os.path.join(full, "check.tex"), "w", encoding="utf-8") as f:
             f.write(source)
-        cmd = _sandboxed([_engine(), "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape",
+        cmd = _sandboxed([engine or _engine(), "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape",
                           f"-output-directory={d}", f"{d}/check.tex"])
         try:
             p = subprocess.run(cmd, cwd=pdir, capture_output=True, timeout=120, env={**os.environ, "TMPDIR": core.amc_user_tmp()})
@@ -4052,3 +4097,9 @@ SOCKET_EVENTS = {
     "ui-exam-meta": on_exam_meta,
     "ui-exam-archive": on_exam_archive,
 }
+
+
+# ---------------------------------------------------------------- question banks (ui_bankapi.py)
+
+import ui_bankapi  # noqa: E402  (its routes use this module's helpers)
+ui_bankapi.init(bp, __import__(__name__))
