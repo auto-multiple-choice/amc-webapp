@@ -31,7 +31,11 @@ NAME_RE = vcs.ITEM_NAME_RE
 POOLS_FILE = "pools.tex"
 ITEM_FILE = "item.tex"
 META_FILE = "item.json"
-MACRO = r"\providecommand{\amcuiItem}[1]{\begingroup\graphicspath{{items/#1/}}\input{items/#1/item.tex}\endgroup}"
+MACRO = (r"\makeatletter\providecommand{\amcuiItem}[1]{\begingroup\@ifundefined{Ginput@path}{\def\Ginput@path{}}{}"
+         r"\edef\Ginput@path{{items/#1/}\Ginput@path}\input{items/#1/item.tex}\endgroup}\makeatother")
+# the item's folder comes first, then the exam's own \graphicspath entries, so a figure
+# an item still names by its old path (one the split couldn't move) is found as before
+_GRAPHICSPATH = re.compile(r"\\graphicspath\s*\{((?:\s*\{[^{}]*\}\s*)+)\}")
 HEADER = ("% The questions of each section, in order: one \\element per item,\n"
           "% and each item is a folder in items/. Written by the app; hand edits are kept.\n"
           "%%AMCUI:ITEMS%%\n" + MACRO + "\n%%AMCUI:END ITEMS%%\n")
@@ -78,15 +82,24 @@ def meta_json(title=""):
 
 def read_pools(text):
     """The items of each section, in order: [{"group", "name", "span"}],
-    span being the whole line. Lines in comments are skipped."""
+    span being the whole line when the \\element is alone on it, else just
+    the \\element (two on one line, or a comment after it, are kept).
+    Lines in comments are skipped."""
     out = []
     for m in _POOL_LINE.finditer(text or ""):
         if scale._in_comment(text, m.start()):
             continue
-        s = text.rfind("\n", 0, m.start()) + 1
-        e = text.find("\n", m.end())
-        e = len(text) if e < 0 else e + 1
-        out.append({"group": m.group(1).strip(), "name": m.group(2).strip(), "span": (s, e)})
+        ls = text.rfind("\n", 0, m.start()) + 1
+        le = text.find("\n", m.end())
+        le = len(text) if le < 0 else le
+        if text[ls:m.start()].strip() == "" and text[m.end():le].strip() == "":
+            span = (ls, min(le + 1, len(text)))
+        else:
+            e = m.end()
+            while e < le and text[e] in " \t":
+                e += 1
+            span = (m.start(), e)
+        out.append({"group": m.group(1).strip(), "name": m.group(2).strip(), "span": span})
     return out
 
 
@@ -221,7 +234,61 @@ def _apply(text, edits):
         return text
     for s, e, new in sorted(edits, key=lambda x: (x[0], x[1]), reverse=True):
         text = text[:s] + new + text[e:]
-    return re.sub(r"\n{3,}", "\n\n", text)  # the blank lines around removed blocks (one paragraph break either way)
+        if not new:  # the blank lines around a removed block: one paragraph break either way (nothing else is touched)
+            a = s
+            while a > 0 and text[a - 1] == "\n":
+                a -= 1
+            b = s
+            while b < len(text) and text[b] == "\n":
+                b += 1
+            if b - a > 2:
+                text = text[:a] + "\n\n" + text[b:]
+    return text
+
+
+def graphics_paths(text):
+    """The folders \\graphicspath names in TEXT ("img/"), in order."""
+    out = []
+    for m in _GRAPHICSPATH.finditer(text or ""):
+        if scale._in_comment(text, m.start()):
+            continue
+        for d in re.findall(r"\{([^{}]*)\}", m.group(1)):
+            d = d.strip()
+            if d and d not in out:
+                out.append(d)
+    return out
+
+
+def _find_figure(ref, search, exists):
+    """The exam file \\includegraphics{REF} means, looked up as LaTeX does:
+    as named or with an image extension, in the exam folder then in the
+    SEARCH folders. None when it isn't in the exam."""
+    names = [ref] + [ref + e for e in IMAGE_EXTS]  # a dotted name may still want an extension ("fig.v2")
+    for d in [""] + list(search):
+        for n in names:
+            c = (d + n) if not d or d.endswith("/") else d + "/" + n
+            if ".." not in c.split("/") and not c.startswith("/") and exists(c):
+                return c
+    return None
+
+
+def relocate_figures(text, name, exists, search=()):
+    """TEXT (an item's LaTeX) with its figures renamed after the item NAME
+    (name-1.png, name-2.pdf...), and where each comes from: (text, [(from,
+    to)]). A figure that isn't in the exam (EXISTS) is left as named."""
+    moved, k = [], 0
+    for f in reversed(list(scale._FIGURE.finditer(text))):
+        ref = f.group(2).strip()
+        src = _find_figure(ref, search, exists)
+        if not src:
+            continue
+        k += 1
+        ext = "." + src.rsplit(".", 1)[-1].lower()
+        new = f"{name}-{k}{ext}"
+        moved.append((src, f"{ITEMS_DIR}/{name}/{new}"))
+        shown = new if "." in ref.rsplit("/", 1)[-1] else new[:-len(ext)]
+        text = text[:f.start(2)] + shown + text[f.end(2):]
+    return text, list(reversed(moved))
 
 
 def _questions_by_group(files, pools_text, items):
@@ -253,6 +320,9 @@ def split(files, main, exists, taken=()):
     taken = set(taken)
     pools_text = files.get(POOLS_FILE) or ""
     order = [main] + sorted(f for f in files if f not in (main, POOLS_FILE))
+    # a file no other file \input{}s isn't part of the paper: left alone
+    order = [f for f in order if f == main or any(_input_line(files[o], f) for o in order if o != f)]
+    search = graphics_paths(" ".join(files[f] for f in order))
     items, groups, figures = {}, {}, []
     edits = {f: [] for f in order}
     first_in = {}  # file -> position of its first block
@@ -273,20 +343,8 @@ def split(files, main, exists, taken=()):
                 continue  # an element without a question stays where it is
             group = m.group(1).strip()
             name = free_name(qs[0]["id"] + ("-set" if len(qs) > 1 else ""), taken | set(items))
-            item = _dedent(content)
-            k = 0
-            for f in reversed(list(scale._FIGURE.finditer(item))):
-                ref = f.group(2).strip()
-                src = next((c for c in ([ref] if "." in ref.rsplit("/", 1)[-1] else [ref + e for e in IMAGE_EXTS])
-                            if ".." not in c.split("/") and not c.startswith("/") and exists(c)), None)
-                if not src:
-                    continue
-                k += 1
-                ext = "." + src.rsplit(".", 1)[-1].lower()
-                new = f"{name}-{k}{ext}"
-                figures.append((src, f"{ITEMS_DIR}/{name}/{new}"))
-                shown = new if "." in ref.rsplit("/", 1)[-1] else new[:-len(ext)]
-                item = item[:f.start(2)] + shown + item[f.end(2):]
+            item, moved = relocate_figures(_dedent(content), name, exists, search)
+            figures += moved
             items[name] = item
             groups.setdefault(group, []).append(name)
             s, e = _block_span(text, m.start(), body[2])

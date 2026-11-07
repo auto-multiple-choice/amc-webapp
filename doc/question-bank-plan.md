@@ -652,7 +652,7 @@ updated as each phase lands. ✅ built, ⬜ to build, ✖ not doing (why).
 - ✅ Side-by-side diffs; a section as History's scope (Paper design › History on a section: the versions that changed its items' files)
 - ✅ "Download with history": the exam as a zip with `history.bundle`; "Import an exam…" (Exams page, new) reads it back with its history under a new uid, every object checked. Also fixed: History's links to a version's file and its images now work for exams (they couldn't send the exam's name)
 - ✅ Admins see and restore an instructor's trash (shared machine, `AMC_ADMINS`: "Whose trash" in the Trash)
-- ✅ `./amc doctor` (and `amc doctor` on Windows): `git fsck` on every history, histories whose exam or bank is gone (listed, kept), the trash, the bank index read again (`--rebuild-index` to throw it away first); changes nothing
+- ✅ `./amc doctor` (and `amc doctor` on Windows): `git fsck` on every history, histories whose exam or bank is gone (listed, kept), the trash, the bank index looked at (`--rebuild-index` to throw it away and build it again); otherwise changes nothing, the trash included
 - ✅ Archive import and exam copy drop dot-folders (a planted `.git` anywhere) and the app's scratch folders; the old `.history/` stays, as it is converted into the history
 
 **Left from `questions-banks-templates-plan.md`** (P4b, built on `feature/editor-extras-p4b`)
