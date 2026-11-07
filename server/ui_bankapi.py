@@ -41,6 +41,7 @@ import ui_items as items
 import ui_latex as ltx
 import ui_questions as questions_edit
 import ui_scale as scale
+import ui_stats as stats
 import ui_structure as paper_structure
 import ui_vcs as vcs
 
@@ -566,7 +567,12 @@ def api_bank_pull():
     record of where it came from (ui_banks.way_in); question names are
     changed where the exam already uses them; the group's scoring goes to
     questions that have none (to all with SCORING_ALL). Items the exam
-    already has a copy of are not added twice. One version."""
+    already has a copy of are not added twice. One version.
+
+    BLUEPRINT [{count, difficulty, group, tag}] with PREVIEW: each row
+    draws COUNT matching questions at random from the bank (ui_banks.
+    blueprint_pick); then ITEMS (from any group) are added as shown, and
+    the blueprint is kept for the section."""
     name = ui._open_project()
     if not name:
         return _err("This exam doesn't exist any more.")
@@ -580,16 +586,31 @@ def api_bank_pull():
         return _err("This bank doesn't exist any more.")
     b = banks.read(bdir)
     g = banks.group(b, str(data.get("group") or ""))
-    if not g:
-        return _err("Choose a group of the bank.")
     chosen = data.get("items")
-    names = list(dict.fromkeys(n for n in (chosen if isinstance(chosen, list) else g["items"]) if n in g["items"]))
+    blueprint = banks.tidy_blueprint(data.get("blueprint"), b) if isinstance(data.get("blueprint"), list) else None
+    if not g and blueprint is None:
+        return _err("Choose a group of the bank.")
+    gmap = banks.group_map(b)
+    have = _exam_copies_of(pdir, b["uid"])
+    if blueprint is not None and data.get("preview"):
+        if not blueprint:
+            return _err("Say how many questions, of what difficulty, from which group.")
+        cands = []
+        for n in b["all"]:
+            m = banks.item_meta(bdir, n)
+            if not m.get("archived") and m.get("uid") not in have:
+                cands.append({"item": n, "group": gmap.get(n), "difficulty": m.get("difficulty") or "", "tags": m.get("tags") or []})
+        picked, short = banks.blueprint_pick(cands, blueprint, banks.seed_of(data.get("seed")))
+        return jsonify(ok=True, chosen=[{"item": n, "group": gmap.get(n), "title": banks.item_meta(bdir, n).get("title")
+                                         or banks.plain_title(_read_text(os.path.join(bdir, items.item_file(n))))} for n in picked],
+                       short=[banks.blueprint_words(blueprint[i], found) for i, found in short])
+    pool = g["items"] if g else b["all"]
+    names = list(dict.fromkeys(n for n in (chosen if isinstance(chosen, list) else pool) if n in pool))
     if not isinstance(chosen, list):  # a whole group or a random pick: archived items stay out
         names = [n for n in names if not banks.item_meta(bdir, n).get("archived")]
     if not names:
         return _err("Choose at least one question.")
-    whole = not isinstance(chosen, list) and not data.get("count")
-    have = _exam_copies_of(pdir, b["uid"])
+    whole = bool(g) and not isinstance(chosen, list) and not data.get("count")
     if data.get("count"):
         try:  # drawn from the questions the exam doesn't have yet
             names = banks.pick([n for n in names if banks.item_meta(bdir, n).get("uid") not in have], int(data["count"]), banks.seed_of(data.get("seed")))
@@ -603,6 +624,8 @@ def api_bank_pull():
     if not _exam_includes_pools(pdir):
         return _err("This exam keeps its questions in its main file. Move them into item files first (Questions › Move questions into item files).")
     mode = data.get("mode") if data.get("mode") in ("new", "into") else "new"
+    if mode == "new" and not g:
+        return _err("Choose the section the questions go into.")
     main_fn = ui.core.main_source_file()
     main = ui._main_text(pdir)
     groups = _exam_groups(pdir)
@@ -626,7 +649,7 @@ def api_bank_pull():
     names = [n for n in names if n not in skipped]
     if not names:
         return _err("This exam already has " + ("this question" if len(skipped) == 1 else "these questions") + " from the bank.")
-    replace = bool(data.get("scoring_all")) and bool(g["scoring"])
+    replace = bool(data.get("scoring_all"))
     pools = ui._pools_text(pdir)
     writes, report, uids = {}, [], []
     for n in names:
@@ -635,15 +658,16 @@ def api_bank_pull():
         mapping = banks.free_ids(text, exam_ids)
         exam_ids.update(mapping.values())
         exam_ids.update(q for q in banks.question_ids(text) if q not in mapping)
-        new_text, scored = banks.way_in(text, mapping, g["scoring"], replace)
+        rule = (banks.group(b, gmap.get(n)) or {}).get("scoring") or ""  # the item's own group's scoring
+        new_text, scored = banks.way_in(text, mapping, rule, replace and bool(rule))
         en = items.free_name(n, exam_items)
         exam_items.add(en)
         m = banks.item_meta(bdir, n)
         uids.append(m.get("uid"))
         origin = {"bank": os.path.basename(bdir), "bank_uid": b["uid"], "item": n, "item_uid": m.get("uid"),
                   "revision": head, "fingerprint": banks.fingerprint(text, banks.figures_of(files)),
-                  "ids": {k: v for k, v in mapping.items()}, "scoring": g["scoring"] if scored else "", "scored": scored,
-                  "replace": replace, "at": int(time.time())}
+                  "ids": {k: v for k, v in mapping.items()}, "scoring": rule if scored else "", "scored": scored,
+                  "replace": replace and bool(rule), "at": int(time.time())}
         writes[items.item_file(en)] = new_text.encode("utf-8")
         writes[f"{items.ITEMS_DIR}/{en}/{items.META_FILE}"] = banks.meta_json(
             title=m.get("title") or "", tags=m.get("tags") or [], difficulty=m.get("difficulty") or "", origin=origin).encode("utf-8")
@@ -664,7 +688,8 @@ def api_bank_pull():
         new_main = banks.add_definitions(new_main, add_lines)
     except banks.BankError as e:
         return _err(str(e))
-    what = (f"{len(names)} question{'s' if len(names) != 1 else ''} from the bank {os.path.basename(bdir)} › {g['title'] or g['name']}"
+    what = (f"{len(names)} question{'s' if len(names) != 1 else ''} from the bank {os.path.basename(bdir)}"
+            + (f" › {g['title'] or g['name']}" if g else " (a blueprint)" if blueprint else "")
             + (f" as the new section {sec}" if mode == "new" else f" into {sec}")
             + (f"; macros and packages added to the preamble: {', '.join([chr(92) + n for n in ltx.macros(chr(10).join(add_lines))] + sorted(banks.packages_of(chr(10).join(add_lines))))}" if add_lines else ""))
     try:
@@ -680,8 +705,10 @@ def api_bank_pull():
         seen = [banks.item_meta(bdir, n).get("uid") for n in g["items"]]
         ui._update_record(pdir, lambda r: r.setdefault("sections_from", {}).__setitem__(
             sec, {"bank_uid": b["uid"], "bank": os.path.basename(bdir), "group": g["name"], "seen": sorted(u for u in seen if u)}))
-    else:  # into a section: what it already follows (if the same group) learns of these items; nothing else changes
+    elif g:  # into a section: what it already follows (if the same group) learns of these items; nothing else changes
         copies.note_seen(pdir, sec, b["uid"], g["name"], [banks.item_meta(bdir, n).get("uid") for n in g["items"]] if whole else uids)
+    if blueprint:
+        ui._update_record(pdir, lambda r: r.setdefault("blueprints", {}).__setitem__(sec, {"bank_uid": b["uid"], "rows": blueprint}))
     ui.add_activity(pdir, what)
     ui.refresh_layout(pdir)
     ui.core.emit_msg("ui-changed", "questions")
@@ -891,8 +918,9 @@ def api_bank_search():
 
 
 def api_bank_usage(name):
-    """The exams that printed the item (the usage log), and the exams
-    holding a copy of it now."""
+    """The exams that printed the item (the usage log), the exams holding a
+    copy of it now, and how its questions did in the exams marked
+    (ui_stats.py), with a summary per question."""
     bdir = ui.bank_dir(name)
     if not bdir:
         return _err("This bank doesn't exist any more.")
@@ -904,7 +932,9 @@ def api_bank_usage(name):
     u = bankindex.usage(ui._owner_home()).get((b["uid"], uid)) or {}
     printed = sorted(({"exam": exam, "at": at} for at, exam in (u.get("exams") or {}).values()), key=lambda x: -x["at"])
     held = [{"exam": e, "item": i} for e, i in bankindex.exams_with(ui.core.projects_dir(), b["uid"], uid)]
-    return jsonify(item=n, printed=printed, copies=held)
+    marked = bankindex.stats_of(ui._owner_home(), b["uid"], uid)
+    summary = {q: stats.summary([e for e in marked if e.get("question") == q]) for q in dict.fromkeys(e.get("question") for e in marked)}
+    return jsonify(item=n, printed=printed, copies=held, stats=marked, summary=summary)
 
 
 # ---------------------------------------------------------------- a bank as a zip (ui_bankzip.py)

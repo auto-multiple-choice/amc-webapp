@@ -625,9 +625,9 @@ updated as each phase lands. ✅ built, ⬜ to build, ✖ not doing (why).
 - ✅ Bank zip export and import, with its history (git bundle, every object checked), checked like exam archives: allowed names only, no links or climbing paths, size limits unpacked (P2c)
 - ✖ `requires` stored in each bank item.json — the macros and packages an item needs are worked out from the bank's preamble each time it is copied, so they can't go stale
 
-**P3 — Analysis and blueprints** (#6)
-- ⬜ Item statistics after marking: share of right answers, discrimination, which wrong answers attract; kept per bank item across exams
-- ⬜ Blueprints ("3 easy + 5 medium from Algebra") that fill a section's pool for review
+**P3 — Analysis and blueprints** (#6; built on `feature/analysis-p3`)
+- ✅ Item statistics after marking (Mark › How each question did): share right, separation (strongest 27% against weakest 27%, ranked by the total without the question), how often each answer was chosen (overall, strong, weak), notes in words; kept per bank item across exams (`_amcweb/<user>/stats/<exam uid>.json`, replaced when the exam is marked again) and shown on the bank's question
+- ✅ Blueprints ("3 easy + 5 medium from Algebra": rows of count, difficulty, group, tag) that fill a section for review: picked once and shown with the rows that couldn't be filled, then added; kept for the section
 
 **Left from P0 and the security section**
 - ⬜ "Build this version" (compile a version in a scratch folder)

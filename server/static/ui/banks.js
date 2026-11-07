@@ -157,7 +157,9 @@ function usageText(item) {
   const parts = [];
   if (u.printed.length) parts.push(`Printed in ${u.printed.map((x) => `${exam(x.exam)} (${esc(fmtDate(x.at))})`).join(', ')}`);
   if (u.copies.length) parts.push(`Copies in ${[...new Set(u.copies.map((x) => x.exam))].map(exam).join(', ')}`);
-  return `${ic('book-stack')} ${parts.length ? parts.join(' · ') : 'Not in any exam yet.'}`;
+  const sums = Object.entries(u.summary || {}).filter(([, s]) => s);
+  const st = sums.map(([q, s]) => `${sums.length > 1 ? `${esc(q)}: ` : ''}${Math.round(s.right * 100)}% right over ${plural(s.n, 'copy', 'copies')} in ${plural(s.exams, 'exam', 'exams')}${s.separation !== null ? `, separates ${s.separation.toFixed(2)}` : ''}`);
+  return `${ic('book-stack')} ${parts.length ? parts.join(' · ') : 'Not in any exam yet.'}${st.length ? `<br>${ic('stats-report')} ${st.join(' · ')}` : ''}`;
 }
 async function loadUsage(item) {
   let r;
@@ -188,7 +190,8 @@ function bankChange(t) {
   if (t.dataset && t.dataset.bmeta) { clearTimeout(bmetaTimer); saveBankMeta(t); return true; }
   if (t.id === 'bp-bank') { bpPickBank(t.value); return true; }
   if (t.id === 'bp-group') { S.bp.group = t.value; S.bp.ticked = []; S.bp.chosen = null; renderPicker(); bpFilter(); return true; }
-  if (t.name === 'bp-mode') { S.bp.mode = t.value; S.bp.chosen = null; renderPicker(); return true; }
+  if (t.name === 'bp-mode') { S.bp.mode = t.value; S.bp.chosen = null; S.bp.chosenInfo = null; S.bp.short = []; renderPicker(); return true; }
+  if (t.classList && t.classList.contains('bpb')) { const r = S.bp.blue[+t.dataset.i]; r[t.dataset.k] = t.dataset.k === 'count' ? Math.max(1, +t.value || 1) : t.value; S.bp.chosen = null; S.bp.chosenInfo = null; const h = $('#bp-listhost'); if (h) h.innerHTML = pickerList(); return true; }
   if (t.id === 'bp-section') { S.bp.section = t.value; return true; }
   if (t.id === 'bp-count') { S.bp.count = +t.value || 1; S.bp.chosen = null; return true; }
   if (t.id === 'bp-scoring-all') { S.bp.scoringAll = t.checked; return true; }
@@ -436,7 +439,7 @@ async function openPicker(section = null) {
   if (!r.banks || !r.banks.length) { notice('No question bank yet', 'Make a bank on the Question banks page (top right), or save this exam\'s questions into one.', 'book-stack'); return; }
   const sel = typeof qsel === 'function' ? qsel() : null;
   if (!S.bcopies) await loadCopies();
-  S.bp = { banks: r.banks, bank: null, data: null, group: null, ticked: [], mode: 'new', section: section || (sel && sel.group) || null, count: 3, chosen: null, scoringAll: false, sections: await examSections(), f: { q: '', difficulty: '', kind: '', tag: '', unused: '', archived: false, active: false, info: {} } };
+  S.bp = { banks: r.banks, bank: null, data: null, group: null, ticked: [], mode: 'new', section: section || (sel && sel.group) || null, count: 3, chosen: null, chosenInfo: null, short: [], blue: null, scoringAll: false, sections: await examSections(), f: { q: '', difficulty: '', kind: '', tag: '', unused: '', archived: false, active: false, info: {} } };
   if (section) S.bp.mode = 'into';
   await bpPickBank(r.banks[0].name);
 }
@@ -450,8 +453,25 @@ async function bpPickBank(name) {
   try { bp.data = await getJSON(`/ui/api/bank/${enc(name)}`); } catch { bp.data = { error: 'This bank couldn\'t be read.' }; }
   if (S.bp !== bp) return;
   bp.group = bp.data.bank && bp.data.bank.groups.length ? bp.data.bank.groups[0].name : null;
+  const saved = S.bcopies && S.bcopies.blueprints && S.bcopies.blueprints[bp.section];
+  bp.blue = saved && bp.data.bank && saved.bank_uid === bp.data.bank.uid ? saved.rows.map((r) => ({ ...r }))
+    : [{ count: 3, difficulty: '', group: bp.group || '', tag: '' }];
   renderPicker();
   bpFilter();
+}
+/* A blueprint: rows of "how many, of what difficulty, from which group, with which tag". */
+function blueprintRows() {
+  const bp = S.bp; const d = bp.data;
+  const groups = d && d.bank ? d.bank.groups : [];
+  const tags = d && d.files ? tagsOf(d.files) : [];
+  const opt = (v, l, cur) => `<option value="${esc(v)}" ${cur === v ? 'selected' : ''}>${esc(l)}</option>`;
+  return `<div class="bp-blue">${bp.blue.map((r, i) => `<div class="bp-blue-row">
+      <input class="input input-sm bpb" type="number" min="1" max="200" data-i="${i}" data-k="count" value="${r.count}" aria-label="How many">
+      <select class="select input-sm bpb" data-i="${i}" data-k="difficulty" aria-label="Difficulty">${opt('', 'of any difficulty', r.difficulty)}${Object.entries(DIFF_LABEL).map(([v, l]) => opt(v, l.toLowerCase(), r.difficulty)).join('')}</select>
+      <span class="subtle">from</span><select class="select input-sm bpb" data-i="${i}" data-k="group" aria-label="Group">${opt('', 'any group', r.group)}${groups.map((g) => opt(g.name, g.title || g.name, r.group)).join('')}</select>
+      ${tags.length ? `<select class="select input-sm bpb" data-i="${i}" data-k="tag" aria-label="Tag">${opt('', 'any tag', r.tag)}${tags.map((x) => opt(x, x, r.tag)).join('')}</select>` : ''}
+      <button class="btn btn-ghost btn-icon btn-sm" data-act="bpb-remove" data-i="${i}" ${bp.blue.length > 1 ? '' : 'disabled'} title="Remove this row" aria-label="Remove this row">${ic('xmark')}</button></div>`).join('')}
+    <button class="btn btn-sm btn-ghost" data-act="bpb-add">${ic('plus')} Add a row</button></div>`;
 }
 async function bpFilter() {
   const bp = S.bp; if (!bp || !bp.group) return;
@@ -467,6 +487,11 @@ function bpShown() {
 }
 function pickerList() {
   const bp = S.bp; const d = bp.data;
+  if (bp.mode === 'blueprint') {
+    if (!bp.chosenInfo) return '<p class="subtle">Pick: the questions are drawn at random once, for each row, from the bank\'s questions this exam doesn\'t have (archived ones left out); you see them before they are added.</p>';
+    return `${bp.short.length ? banner('warning', 'warning-triangle', 'Not enough questions for every row', esc(bp.short.join('; '))) : ''}
+      <div class="bp-list">${bp.chosenInfo.map((x) => `<div class="bp-row is-chosen"><span></span><span class="mono">${esc(x.item)}</span><span class="subtle">${esc(x.group || '')}</span><span class="bp-text">${esc(trunc(x.title || '', 90))}</span><span></span></div>`).join('') || '<p class="subtle">No question matches.</p>'}</div>`;
+  }
   const g = d && d.bank ? d.bank.groups.find((x) => x.name === bp.group) : null;
   if (!d) return '<p class="subtle">Loading…</p>';
   if (d.error) return `<p>${esc(d.error)}</p>`;
@@ -486,7 +511,8 @@ function renderPicker() {
   const d = bp.data;
   const g = d && d.bank ? d.bank.groups.find((x) => x.name === bp.group) : null;
   const secSel = `<select class="select input-sm" id="bp-section">${bp.sections.map((s) => `<option ${s === bp.section ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>`;
-  const list = `${d && d.bank && g ? filterRow('bpf', bp.f, tagsOf(d.files.filter((f) => g.items.includes(f.item))), true) : ''}<div id="bp-listhost">${pickerList()}</div>`;
+  const list = bp.mode === 'blueprint' ? `${d && d.bank ? blueprintRows() : ''}<div id="bp-listhost">${pickerList()}</div>`
+    : `${d && d.bank && g ? filterRow('bpf', bp.f, tagsOf(d.files.filter((f) => g.items.includes(f.item))), true) : ''}<div id="bp-listhost">${pickerList()}</div>`;
   const radio = (v, label) => `<label class="check"><input type="radio" name="bp-mode" value="${v}" ${bp.mode === v ? 'checked' : ''}><span>${label}</span></label>`;
   const sectionsLeft = bp.sections.length;
   openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('book-stack')}</span><div><h2 id="dlg-title">Add questions from a bank</h2><p class="subtle" style="margin:2px 0 0">The exam gets copies; the bank is not changed.</p></div></div>
@@ -497,18 +523,26 @@ function renderPicker() {
         ${radio('new', 'The whole group, as a new section')}
         ${sectionsLeft ? radio('into', `The whole group, into the section ${bp.mode === 'into' ? secSel : ''}`) : ''}
         ${sectionsLeft ? radio('ticked', `The questions ticked below, into the section ${bp.mode === 'ticked' ? secSel : ''}`) : ''}
+        ${sectionsLeft ? radio('blueprint', `By a blueprint ("3 easy + 5 medium from Algebra"), into the section ${bp.mode === 'blueprint' ? secSel : ''}`) : ''}
         ${sectionsLeft ? radio('random', `<input class="input input-sm" type="number" id="bp-count" min="1" max="999" value="${bp.count}" style="width:70px" ${bp.mode === 'random' ? '' : 'disabled'}> picked at random from the questions shown below that this exam doesn't have (shown first), into the section ${bp.mode === 'random' ? secSel : ''}`) : ''}
       </div>
       ${g && g.scoring ? `<div class="bp-modes"><p class="subtle" style="margin:4px 0 2px">The group's scoring <code>${esc(g.scoring)}</code> goes to the questions without their own.</p><label class="check"><input type="checkbox" id="bp-scoring-all" ${bp.scoringAll ? 'checked' : ''}><span>Give it to every question, also those with their own scoring</span></label></div>` : ''}
-      ${bp.chosen ? banner('info', 'info-circle', `Picked: ${esc(bp.chosen.join(', '))}`, 'These are added (the pick is made once). Pick again for another.') : ''}
+      ${bp.chosen && bp.mode === 'random' ? banner('info', 'info-circle', `Picked: ${esc(bp.chosen.join(', '))}`, 'These are added (the pick is made once). Pick again for another.') : ''}
       ${list}<div id="bp-msg"></div></div>
     <div class="dialog-foot"><button class="btn" data-act="dialog-cancel">Cancel</button>
-      ${bp.mode === 'random' ? `<button class="btn" data-act="bp-pick" ${g ? '' : 'disabled'}>${bp.chosen ? 'Pick again' : 'Pick'}</button>` : ''}
-      <button class="btn btn-primary" data-act="bp-add" ${g && (bp.mode !== 'random' || bp.chosen) ? '' : 'disabled'}>${ic('plus')} Add to the exam</button></div>`);
+      ${bp.mode === 'random' || bp.mode === 'blueprint' ? `<button class="btn" data-act="bp-pick" ${g || bp.mode === 'blueprint' ? '' : 'disabled'}>${bp.chosen ? 'Pick again' : 'Pick'}</button>` : ''}
+      <button class="btn btn-primary" data-act="bp-add" ${(bp.mode === 'blueprint' ? bp.chosen && bp.chosen.length : g && (bp.mode !== 'random' || bp.chosen)) ? '' : 'disabled'}>${ic('plus')} Add to the exam</button></div>`);
   const dlg = $('#layer .dialog'); if (dlg) dlg.classList.add('dialog-wide');
 }
 async function bpPick() {
   const bp = S.bp; if (!bp) return;
+  if (bp.mode === 'blueprint') {
+    const r = await postJSON('/ui/api/bank-pull', { bank: bp.bank, blueprint: bp.blue, seed: `${Date.now()}`, preview: true });
+    if (!r.ok) { toast(r.error || 'No pick.', 'warning-triangle'); return; }
+    bp.chosen = r.chosen.map((x) => x.item); bp.chosenInfo = r.chosen; bp.short = r.short || [];
+    renderPicker();
+    return;
+  }
   const r = await postJSON('/ui/api/bank-pull', { bank: bp.bank, group: bp.group, items: bpShown(), count: bp.count, seed: `${Date.now()}`, preview: true });
   if (!r.ok) { toast(r.error || 'No pick.', 'warning-triangle'); return; }
   bp.chosen = r.chosen.map((x) => x.item);
@@ -519,6 +553,7 @@ async function bpAdd() {
   const body = { bank: bp.bank, group: bp.group, mode: bp.mode === 'new' ? 'new' : 'into', section: bp.section || bp.sections[0], scoring_all: bp.scoringAll };
   if (bp.mode === 'ticked') { if (!bp.ticked.length) { toast('Tick at least one question.', 'warning-triangle'); return; } body.items = bp.ticked; }
   if (bp.mode === 'random') body.items = bp.chosen;
+  if (bp.mode === 'blueprint') { body.items = bp.chosen; body.blueprint = bp.blue; body.group = ''; }
   const r = await postJSON('/ui/api/bank-pull', body);
   if (!r.ok) { const m = $('#bp-msg'); if (m) m.innerHTML = banner('danger', 'warning-triangle', esc(r.error || 'Not added.'), ''); return; }
   closeDialog(); S.bp = null;
@@ -781,6 +816,8 @@ const BANK_ACTIONS = {
   'bank-save-exam': () => openSaveDialog({ whole: true }),
   'bs-save': () => bsSave(),
   'copies-open': () => openCopies(),
+  'bpb-add': () => { const bp = S.bp; if (!bp) return; bp.blue.push({ count: 1, difficulty: '', group: bp.group || '', tag: '' }); bp.chosen = null; bp.chosenInfo = null; renderPicker(); },
+  'bpb-remove': (el) => { const bp = S.bp; if (!bp) return; bp.blue.splice(+el.dataset.i, 1); bp.chosen = null; bp.chosenInfo = null; renderPicker(); },
   'bank-zip-import': () => bankZipImport(),
   'bank-zip-go': () => bankZipGo(),
   'bsearch-open': (el) => { S.bankPick = { bank: el.dataset.bank, item: el.dataset.item }; navigate(`/bank/${enc(el.dataset.bank)}`); },

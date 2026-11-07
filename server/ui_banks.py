@@ -308,6 +308,53 @@ def pick(names, n, seed=None):
     return random.Random(seed).sample(names, n)
 
 
+def tidy_blueprint(rows, bank):
+    """A blueprint as the teacher sent it, checked: at most 20 rows of
+    {count (1-200), difficulty, group (of BANK) and tag, each "" for any}."""
+    out = []
+    for r in rows[:20] if isinstance(rows, list) else []:
+        if not isinstance(r, dict):
+            continue
+        try:
+            n = int(r.get("count") or 0)
+        except (TypeError, ValueError, OverflowError):  # OverflowError: 1e999 parses as infinity
+            continue
+        if n < 1:
+            continue
+        out.append({"count": min(n, 200), "difficulty": r.get("difficulty") if r.get("difficulty") in DIFFICULTIES else "",
+                    "group": r.get("group") if group(bank, str(r.get("group") or "")) else "",
+                    "tag": re.sub(r"\s+", " ", str(r.get("tag") or "")).strip()[:40]})
+    return out
+
+
+def blueprint_pick(candidates, rows, seed=None):
+    """Draw at random for each row of a blueprint ("3 easy from Algebra"):
+    CANDIDATES [{item, group, difficulty, tags}] matching the row, never one
+    drawn already. The pick is made once, then shown and kept. Returns
+    (items, [(row index, how many were found) for rows short of questions])."""
+    rnd = random.Random(seed)
+    taken, out, short = set(), [], []
+    for i, r in enumerate(rows):
+        tag = (r.get("tag") or "").lower()
+        pool = [c["item"] for c in candidates if c["item"] not in taken
+                and (not r.get("difficulty") or c.get("difficulty") == r["difficulty"])
+                and (not r.get("group") or c.get("group") == r["group"])
+                and (not tag or tag in [x.lower() for x in c.get("tags") or []])]
+        got = rnd.sample(pool, min(r["count"], len(pool)))
+        if len(got) < r["count"]:
+            short.append((i, len(got)))
+        taken.update(got)
+        out += got
+    return out, short
+
+
+def blueprint_words(row, found):
+    """A blueprint row short of questions, in words."""
+    what = " ".join(x for x in (row.get("difficulty"), f"tagged {row['tag']}" if row.get("tag") else "") if x)
+    return (f"{row['count']} {what + ' ' if what else ''}question{'s' if row['count'] != 1 else ''}"
+            + (f" from {row['group']}" if row.get("group") else "") + f": only {found} available")
+
+
 def plain_title(text, most=80):
     """A question's text as a short plain title."""
     qs = scale.read_latex(text or "")
