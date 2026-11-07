@@ -16,6 +16,7 @@ import os
 import re
 import stat
 import zipfile
+import zlib
 
 import ui_banks as banks
 import ui_items as items
@@ -86,6 +87,15 @@ def read(path, dest):
         if prefix + banks.BANK_FILE not in names:
             raise ZipError("This zip isn't a question bank: it has no bank.json.")
         written, skipped, total = [], [], 0
+        try:
+            _unpack(z, infos, prefix, dest, written, skipped)
+        except (zipfile.BadZipFile, RuntimeError, NotImplementedError, zlib.error, EOFError) as e:  # a bad CRC, encrypted or odd entries
+            raise ZipError(f"The zip can't be unpacked: {str(e)[:120]}")
+    return written, skipped
+
+
+def _unpack(z, infos, prefix, dest, written, skipped):
+        total = 0
         for i in infos:
             rel = i.filename[len(prefix):] if i.filename.startswith(prefix) else None
             if not rel:
@@ -108,4 +118,3 @@ def read(path, dest):
                         raise ZipError(f"The zip is too big unpacked (more than {MAX_TOTAL // 1024 // 1024} MB in all).")
                     out.write(chunk)
             written.append(rel)
-    return written, skipped

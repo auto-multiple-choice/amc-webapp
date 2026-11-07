@@ -179,6 +179,11 @@ def set_user(fake_user):
         flask_g._real_user = None
 
     flask_g._real_user = request.headers.get(header_name)
+    if flask_g._real_user and flask_g._real_user.startswith(("_", ".")):
+        # "_amcweb", "_all", "_branding"... are the server's own folders under
+        # MC-Projects: an account of that name would own them.
+        app.logger.error(f"Refused account name: {flask_g._real_user!r}")
+        abort(403)
     
     admins = os.environ.get("AMC_ADMINS", "").split(",")
     is_admin = bool(flask_g._real_user) and (flask_g._real_user in admins)
@@ -399,7 +404,8 @@ def fs_path_to_local(path, with_fs=True, current_project=False):
     base = os.path.realpath(base)
     path = os.path.realpath(os.path.join(base, path))
     if path == base or path.startswith(base + "/"):
-        if path[len(base):].lstrip("/").split("/")[0] == ui.vcs.AMCWEB_DIR:
+        amcweb = os.path.realpath(os.path.join(projects_dir(root=True), ui.vcs.AMCWEB_DIR))
+        if path == amcweb or path.startswith(amcweb + "/"):
             app.logger.error(f"The server's own folder: {path}")
             return None  # history, trash and audit log (single-user mode: inside the projects folder)
         return path
