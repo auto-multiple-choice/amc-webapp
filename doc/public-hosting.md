@@ -20,7 +20,15 @@ browser ─HTTPS─> Cloudflare ═tunnel═> cloudflared ─HTTP─> caddy:8091
 
 ## 1. Create the tunnel
 
-From any computer with `cloudflared` signed in to the Cloudflare account (`cloudflared tunnel login`, choosing the domain's zone):
+The tunnel must belong to the Cloudflare account that holds the domain. A DNS record can't reach a tunnel in another account: visitors get error 1033 although the tunnel shows as connected.
+
+In that account's dashboard (the simplest way):
+
+1. Zero Trust > Networks > Tunnels (newer dashboards: Networks > Connectors) > **Create a tunnel** > **Cloudflared**, named e.g. `amc`.
+2. On the install page, pick Docker and copy the token: the long string after `--token`, starting with `eyJ`. Don't run the command.
+3. **Public hostname** (newer dashboards: published application route): subdomain `amc`, domain `example.org`, path empty, service type **HTTP**, URL **`caddy:8091`**. Saving it creates the DNS record; delete any older `amc` record first. Until it is saved, the tunnel connects but no address leads to it.
+
+Or with the command line, from a computer where `cloudflared tunnel login` was done **with that same account**, choosing the domain:
 
 ```
 cloudflared tunnel create amc
@@ -28,11 +36,9 @@ cloudflared tunnel route dns amc amc.example.org
 cloudflared tunnel token amc          # prints the token for the server
 ```
 
-`route dns` creates the `amc.example.org` record in the zone `cloudflared tunnel login` chose. If that zone is another domain, the record is created under it (`amc.example.org.other-domain`): check in the DNS page.
+`route dns` creates the record in the zone chosen at `cloudflared tunnel login`. If that zone is another domain, the record is created under it (`amc.example.org.other-domain`): check in the DNS page.
 
-Or in the dashboard: Zero Trust > Networks > Tunnels > Create a tunnel > Cloudflared. Copy the token from the install command. Add a public hostname `amc.example.org` with service `HTTP` and URL `caddy:8091`.
-
-The token gives control of the tunnel: keep it out of chat and email.
+The token gives control of the tunnel: keep it out of chat and email. `./amc public on HOST` asks for it without showing it; `./amc public on HOST --new-token` replaces it.
 
 ## 2. Start the app on the server
 
@@ -114,7 +120,8 @@ Backups on the same server don't survive losing the server: copy them elsewhere 
 
 | What you see | Look at |
 |---|---|
-| Cloudflare error 1033 (tunnel not connected) | `./amc public status`, `docker compose logs cloudflared` (wrong token?) |
+| Cloudflare error 1033 | `./amc public status`, `docker compose logs cloudflared` (wrong token?). If the tunnel is connected: the DNS record points to a tunnel in another Cloudflare account, or to another tunnel |
+| No DNS record for the address, though the tunnel is connected | the tunnel's public hostname wasn't saved; its log then has no "Updated to new configuration" line |
 | Cloudflare 502 | the app is down or starting: `./amc status`, `./amc logs` |
 | The page loads but nothing happens ("connecting…") | `AMC_PUBLIC_HOST` must be exactly the address in the browser; `./amc restart` after changing it |
 | An empty page | the request reached Caddy under another host name: check the tunnel's public hostname |
