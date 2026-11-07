@@ -157,6 +157,22 @@ def free_group(bank_or_names, base):
     return name
 
 
+def group_name(raw):
+    """The group name RAW can be in a bank: itself when GROUP_RE takes it,
+    else its letters, digits and - (the same RAW always gives the same
+    name, so an import's items of one group stay together)."""
+    raw = str(raw or "")
+    if GROUP_RE.match(raw):
+        return raw
+    base = re.sub(r"[^A-Za-z0-9-]+", "-", raw).strip("-")[:40].strip("-") or "group"
+    return base if base[0].isalpha() else ("g-" + base)[:40]
+
+
+def seed_of(value):
+    """A client-given seed random.Random can take, or None."""
+    return value if isinstance(value, (str, int)) and not isinstance(value, bool) and len(str(value)) <= 200 else None
+
+
 def place(bank, item, group_name, before=None):
     """Put ITEM in GROUP (before another item, or at its end); out of any
     other group. GROUP None: in no group."""
@@ -284,48 +300,111 @@ MACROS_END = "%%AMCUI:END BANK MACROS%%"
 _USED = re.compile(r"\\([A-Za-z@]+)")
 
 
+def definition_spans(text):
+    """[(macro name, start, end)] of the macro definitions TEXT holds,
+    whole: a \\newcommand body of several lines, its [n] arguments, a
+    \\def's #1#2, a \\let's target. Comments and verbatim are ignored."""
+    masked = ltx._mask(text or "")
+    out = []
+    n = len(masked)
+    for m in ltx._MACRO_DEF.finditer(masked):
+        name = m.group(1) or m.group(2)
+        start = text.rfind("\n", 0, m.start()) + 1
+        if masked[start:m.start()].strip():
+            start = m.start()
+        i = last = m.end()
+        braced = False
+        while i < n:
+            c = masked[i]
+            if c in " \t":
+                i += 1
+            elif c == "}" and not braced:  # the } of \newcommand{\name}
+                i += 1
+                last = i
+            elif c == "[":
+                j = masked.find("]", i)
+                i = last = n if j < 0 else j + 1
+            elif c == "{":
+                depth, j = 0, i
+                while j < n:
+                    if masked[j] == "{":
+                        depth += 1
+                    elif masked[j] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    j += 1
+                i = last = j + 1
+                braced = True
+                k = i
+                while k < n and masked[k] in " \t":
+                    k += 1
+                if k >= n or masked[k] not in "{[":
+                    break
+            elif c == "#" and not braced:
+                i = last = i + 2
+            elif c in "\\=" and not braced:  # \let\a=\b, \def\x\y
+                j = i + 1
+                while j < n and masked[j].isalpha():
+                    j += 1
+                i = last = max(j, i + 1)
+            else:
+                break
+        if not braced:  # \let and the like: the rest of the line
+            eol = masked.find("\n", m.end())
+            last = n if eol < 0 else eol
+        out.append((name, start, last))
+    return out
+
+
 def definitions(preamble):
-    """{macro name: the line defining it} in a bank's preamble."""
+    """{macro name: its whole definition} in a bank's preamble, in order."""
     out = {}
-    for line in (preamble or "").split("\n"):
-        if line.lstrip().startswith("%"):
-            continue
-        for name in ltx.macros(line):
-            out.setdefault(name, line.strip())
+    for name, s, e in definition_spans(preamble or ""):
+        out.setdefault(name, preamble[s:e].strip())
     return out
 
 
 def needed(texts, preamble, defined):
-    """The lines of PREAMBLE defining macros TEXTS use that DEFINED (the
-    exam's own macros) lacks, in the preamble's order."""
+    """The definitions of PREAMBLE that TEXTS use and DEFINED (the exam's
+    own macros) lacks, with the macros those definitions use in turn, in
+    the preamble's order."""
     defs = definitions(preamble)
-    used = {m for t in texts for m in _USED.findall(t or "")}
-    want = [n for n in defs if n in used and n not in set(defined)]
+    defined = set(defined)
+    queue = [n for n in defs if n not in defined and n in {m for t in texts for m in _USED.findall(t or "")}]
+    want = set()
+    while queue:
+        n = queue.pop(0)
+        if n in want:
+            continue
+        want.add(n)
+        queue += [m for m in _USED.findall(defs[n]) if m in defs and m not in defined and m not in want and m != n]
     lines = []
-    for n in want:
-        if defs[n] not in lines:
+    for n in defs:
+        if n in want and defs[n] not in lines:
             lines.append(defs[n])
     return lines
 
 
 def add_definitions(main, lines):
     """MAIN with LINES in its bank-macros region, made before
-    \\begin{document} when missing. Lines already there aren't repeated."""
+    \\begin{document} when missing (or when a hand edit left only one of
+    its markers). Lines already there aren't repeated."""
     if not lines:
         return main
-    if MACROS_BEGIN in main and MACROS_END in main:
-        s, e = main.index(MACROS_BEGIN), main.index(MACROS_END)
+    s, e = main.find(MACROS_BEGIN), main.find(MACROS_END)
+    if 0 <= s < e:
         have = main[s:e]
         new = [l for l in lines if l not in have]
         return main[:e] + "".join(l + "\n" for l in new) + main[e:] if new else main
-    m = re.search(r"\\begin\s*\{document\}", main)
+    m = re.search(r"\\begin\s*\{document\}", ltx._mask(main))
     if not m:
         raise BankError("The exam's main file has no \\begin{document}.")
     block = MACROS_BEGIN + "\n% Macros the questions from question banks use.\n" + "".join(l + "\n" for l in lines) + MACROS_END + "\n"
     return main[:m.start()] + block + main[m.start():]
 
 
-_PACKAGE = re.compile(r"\\usepackage\s*(\[[^\]]*\])?\s*\{([^{}]*)\}")
+_PACKAGE = re.compile(r"\\(?:usepackage|RequirePackage)\s*(\[[^\]]*\])?\s*\{([^{}]*)\}")
 
 
 def packages_of(text):
