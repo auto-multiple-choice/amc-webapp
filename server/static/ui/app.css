@@ -560,3 +560,18 @@ input[type="color"] { width: 44px; height: 34px; padding: 2px; border: 1px solid
 .bp-blue-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .bp-blue-row .input[type="number"] { width: 70px; }
 .bp-blue-row .select { width: auto; }
+/* History extras (P4a): side by side, who changed each line, a version built */
+.diff-split { display: grid; grid-template-columns: 1fr 1fr; }
+.diff-split > div { min-width: 0; overflow-wrap: anywhere; }
+.diff-split .sx-full { grid-column: 1 / -1; }
+.diff-split .sx-none { background: repeating-linear-gradient(45deg, transparent 0 6px, color-mix(in srgb, var(--border) 50%, transparent) 6px 7px); }
+.diff-split > div:nth-child(odd):not(.sx-full) { border-right: 1px solid var(--border); }
+.hist-split { margin: 0 0 0 auto; font-size: 13px; }
+.blame { font-family: var(--mono, ui-monospace, monospace); font-size: 12.5px; padding: 6px 0; }
+.bl-row { display: grid; grid-template-columns: minmax(150px, 34%) 40px 1fr; align-items: baseline; }
+.bl-row.bl-start { border-top: 1px solid var(--border); }
+.bl-who { font: inherit; font-family: var(--font, inherit); font-size: 12px; text-align: left; background: none; border: 0; padding: 2px 8px; color: var(--text-2); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.bl-who:hover { color: var(--brand); }
+.bl-n { color: var(--text-3); text-align: right; padding-right: 8px; user-select: none; }
+.bl-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.hist-pdf { width: 100%; height: min(72vh, 900px); border: 1px solid var(--border); border-radius: 8px; background: #fff; }

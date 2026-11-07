@@ -888,6 +888,29 @@ try:
     check3("zip: a broken bundle is refused, and the history starts from the files", not vcs.import_bundle(_bd3, _root, _bun + "x", "bank")
           and not os.path.exists(os.path.join(_root, "_amcweb", "ann", "history", "banks", _b3["uid"] + ".git"))
           and len(vcs.Repo(_bd3, _root, "bank").open().log()[0]) == 1)
+    # history extras (P4a): who changed each line, a log over several files, ./amc doctor
+    vcs.write(_bd2, _root, "items/alg-1/item.tex", b"line one\nline two\n", by="ann", what="first", target="bank")
+    vcs.write(_bd2, _root, "items/alg-1/item.tex", b"line one\nline 2 by bob\n", by="bob", what="second", target="bank")
+    _bl, _bc = vcs.Repo(_bd2, _root, "bank").open().blame("items/alg-1/item.tex")
+    check3("blame: each line with who last changed it, in which version", [(l["text"], _bc[l["id"]]["by"], _bc[l["id"]]["what"]) for l in _bl]
+           == [("line one", "ann", "first"), ("line 2 by bob", "bob", "second")], J([_bl, _bc]))
+    check3("blame: nothing for a file history doesn't keep", vcs.Repo(_bd2, _root, "bank").open().blame("../x.tex") == ([], {}))
+    vcs.write(_bd2, _root, "items/geo-1/item.tex", b"geo\n", by="ann", what="third", target="bank")
+    _lg, _tot = vcs.Repo(_bd2, _root, "bank").open().log(["items/alg-1/item.tex", "items/alg-2/item.tex"])
+    check3("history: the versions that changed any of several files (a section's)", [v["what"] for v in _lg][:2] == ["second", "first"]
+           and "third" not in [v["what"] for v in _lg] and _tot == len(_lg), J([v["what"] for v in _lg]))
+    import ui_doctor
+    _out = []
+    check3("doctor: every history sound", ui_doctor.check(_root, out=_out.append) == 0 and any("All histories are sound" in x for x in _out), J(_out))
+    shutil.rmtree(_bd3)
+    _pack = next(os.path.join(dp, f) for dp, _, fs in os.walk(vcs.Repo(_bd2, _root, "bank").open().git_dir) for f in fs if f.endswith(".pack"))
+    os.chmod(_pack, 0o644)  # git leaves packs read-only
+    with open(_pack, "r+b") as _f:
+        _f.truncate(os.path.getsize(_pack) // 2)
+    _out = []
+    _dmg = ui_doctor.check(_root, out=_out.append)
+    check3("doctor: a damaged history reported, a history whose bank is gone listed (and kept)", _dmg == 1 and any("DAMAGED bank history" in x for x in _out)
+           and any("whose bank is gone (kept): Bad bundle" in x for x in _out), J(_out))
 finally:
     shutil.rmtree(_tmpb, ignore_errors=True)
 

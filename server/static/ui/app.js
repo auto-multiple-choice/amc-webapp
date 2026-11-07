@@ -99,6 +99,7 @@ const S = {
   design: null,           // the paper's structure for Paper design (/ui/api/structure)
   dform: null,            // Paper design: edits waiting to be saved, the open section or block
   theme: store.get('theme', 'auto'),
+  histSplit: store.get('histSplit', false), // History: changes side by side
   previewOpen: store.get('previewOpen', window.innerWidth >= 1280),
   previewMax: false,
   previewDoc: null,
@@ -991,7 +992,7 @@ function viewExams() {
       <div class="card ${shown.length ? 'hidden' : ''}" id="dash-none"><div class="empty"><p>${d.archived ? 'No archived exams match.' : 'No exams match.'}</p></div></div>`;
   }
   return `<div class="page">
-    ${header('', 'Exams', 'Your exams, where each one stands and what comes next.', `<button class="btn btn-ghost" data-act="trash-open" title="Deleted exams, kept for 30 days">${ic('trash')} Trash</button>${CAN_BRAND && !USER ? `<a class="btn btn-ghost" href="/appearance" data-nav>${ic('color-filter')} Appearance</a>` : ''}${list && list.length ? `<a class="btn btn-primary" href="/new" data-nav>${ic('plus')} New exam</a>` : ''}`)}
+    ${header('', 'Exams', 'Your exams, where each one stands and what comes next.', `<button class="btn btn-ghost" data-act="trash-open" title="Deleted exams, kept for 30 days">${ic('trash')} Trash</button><button class="btn btn-ghost" data-act="exam-import" title="An exam saved as a zip (with its history, from History › With history), or an AMC project archive">${ic('upload')} Import an exam…</button>${CAN_BRAND && !USER ? `<a class="btn btn-ghost" href="/appearance" data-nav>${ic('color-filter')} Appearance</a>` : ''}${list && list.length ? `<a class="btn btn-primary" href="/new" data-nav>${ic('plus')} New exam</a>` : ''}`)}
     ${body}</div>`;
 }
 
@@ -1394,8 +1395,8 @@ function notice(title, text, icon = 'warning-triangle') {
   });
 }
 
-function openHistory(file = null) {
-  S.history = { file: file || null, versions: null, total: 0, files: [], head: null, selected: null, detail: null, against: 'parent', view: 'changes', open: {}, loading: true };
+function openHistory(file = null, section = null) {
+  S.history = { file: file || null, section: section || null, versions: null, total: 0, files: [], head: null, selected: null, detail: null, against: 'parent', view: 'changes', open: {}, loading: true, blame: null };
   S.previewMode = 'history'; S.previewFile = null; S.previewList = null;
   openPreview();
   return loadHistory();
@@ -1406,7 +1407,7 @@ async function loadHistory({ more = false, select = null } = {}) {
   const project = S.project;
   const skip = more && h.versions ? h.versions.length : 0;
   try {
-    const r = await getJSON(`${histApi()}?skip=${skip}${h.file ? `&file=${enc(h.file)}` : ''}`);
+    const r = await getJSON(`${histApi()}?skip=${skip}${h.file ? `&file=${enc(h.file)}` : ''}${h.section ? `&section=${enc(h.section)}` : ''}`);
     if (S.history !== h || S.project !== project) return;
     if (r.error) throw new Error(r.error);
     h.versions = more ? h.versions.concat(r.versions) : r.versions;
@@ -1425,7 +1426,7 @@ async function loadHistory({ more = false, select = null } = {}) {
 function pickVersion(id) {
   const h = S.history;
   if (!h) return;
-  h.selected = id; h.against = 'parent'; h.view = 'changes'; h.detail = null;
+  h.selected = id; h.against = 'parent'; h.view = h.view === 'blame' ? 'blame' : 'changes'; h.detail = null;
   const s = historySessions(h.versions).find((x) => x.items.some((v) => v.id === id));
   if (s && s.items.length > 1) h.open[s.key] = true;
   loadVersion();
@@ -1472,12 +1473,12 @@ function versionRow(v, h, nested) {
 
 function historyPreview() {
   const h = S.history;
-  const title = `History · ${h.file || (inBank() ? 'whole bank' : 'whole exam')}`;
+  const title = `History · ${h.file || (h.section ? `section ${h.section}` : (inBank() ? 'whole bank' : 'whole exam'))}`;
   const label = (f) => (f.exists ? f.file : `${f.file} (deleted)`);
   const files = h.files.some((f) => f.file === h.file) || !h.file ? h.files : [{ file: h.file, exists: true }, ...h.files];
   const tabs = `<div class="preview-tabs"><label class="sr-only" for="hist-file">Show the history of</label><select class="select input-sm" id="hist-file">
-      <option value="" ${h.file ? '' : 'selected'}>${inBank() ? 'Whole bank' : 'Whole exam'}</option>${files.map((f) => `<option value="${esc(f.file)}" ${f.file === h.file ? 'selected' : ''}>${esc(label(f))}</option>`).join('')}</select>
-    <span class="spacer"></span><button data-act="preview-docs">Documents</button></div>`;
+      <option value="" ${h.file || h.section ? '' : 'selected'}>${inBank() ? 'Whole bank' : 'Whole exam'}</option>${h.section ? `<option value="@section" selected>Section ${esc(h.section)}</option>` : ''}${files.map((f) => `<option value="${esc(f.file)}" ${f.file === h.file ? 'selected' : ''}>${esc(label(f))}</option>`).join('')}</select>
+    <span class="spacer"></span>${inBank() ? '' : `<a class="btn btn-ghost btn-sm" href="/ui/api/history/download?project=${enc(S.project)}" download title="The exam as a zip with its whole history; importing that zip as an exam brings the history back">${ic('download')} With history</a>`}<button data-act="preview-docs">Documents</button></div>`;
   if (h.loading || !h.versions) return { title, body: '<div class="preview-empty">Loading…</div>', tabs };
   const sessions = historySessions(h.versions);
   const rows = sessions.map((s) => {
@@ -1492,7 +1493,7 @@ function historyPreview() {
       ${open ? s.items.map((v) => versionRow(v, h, true)).join('') : ''}`;
   }).join('');
   const more = h.versions.length < h.total ? `<button class="hist-row hist-more" data-act="hist-more"><span class="hist-what">Show older versions (${h.total - h.versions.length} more)</span></button>` : '';
-  const head = `<div class="hist-row is-current"><span class="hist-when">${h.file ? `${esc(h.file)} now` : 'The exam now'}</span><span class="hist-what">${h.versions.length ? `${h.total} version${h.total === 1 ? '' : 's'} kept${h.file ? ' of this file' : ''}, for good` : 'No version yet. One is kept at every save.'}</span></div>`;
+  const head = `<div class="hist-row is-current"><span class="hist-when">${h.file ? `${esc(h.file)} now` : h.section ? `Section ${esc(h.section)} now` : 'The exam now'}</span><span class="hist-what">${h.versions.length ? `${h.total} version${h.total === 1 ? '' : 's'} kept${h.file ? ' of this file' : h.section ? ' that changed its questions' : ''}, for good` : h.section ? 'No version changed the questions of this section yet.' : 'No version yet. One is kept at every save.'}</span></div>`;
   const list = `<div class="hist-list">${h.error ? `<p class="subtle" style="padding:10px 14px;margin:0">${esc(h.error)}</p>` : ''}${head}${rows}${more}</div>`;
   return { title, body: list + historyDetail(h), tabs };
 }
@@ -1511,12 +1512,16 @@ function historyDetail(h) {
       ${opt('parent', 'What this version changed')}${isHead ? '' : opt('now', 'What changed since, up to now')}
       ${named.length ? `<optgroup label="Compare with a named version">${named.map((x) => opt(x.id, `${x.names.map((n) => n.name).join(', ')} · ${fmtWhen(x.at)}`)).join('')}</optgroup>` : ''}
       <optgroup label="Compare with the version of">${others.slice(0, 80).map((x) => opt(x.id, `${fmtWhen(x.at)} · ${x.what}`.slice(0, 90))).join('')}</optgroup></select>`;
-  const views = d.design ? `<div class="seg" role="group" aria-label="View"><button class="btn btn-sm ${h.view === 'changes' ? 'is-on' : ''}" data-act="hist-view" data-v="changes" aria-pressed="${h.view === 'changes'}">Changes</button><button class="btn btn-sm ${h.view === 'picture' ? 'is-on' : ''}" data-act="hist-view" data-v="picture" aria-pressed="${h.view === 'picture'}">${ic('eye')} Picture of the design</button></div>` : '';
+  const viewBtn = (v, label) => `<button class="btn btn-sm ${h.view === v ? 'is-on' : ''}" data-act="hist-view" data-v="${v}" aria-pressed="${h.view === v}">${label}</button>`;
+  const canBlame = h.file && TEXT_RE.test(h.file);
+  const views = (d.design || canBlame ? `<div class="seg" role="group" aria-label="View">${viewBtn('changes', 'Changes')}${d.design ? viewBtn('picture', `${ic('eye')} Picture of the design`) : ''}${canBlame ? viewBtn('blame', `${ic('user')} Who changed each line`) : ''}</div>` : '')
+    + (h.view === 'changes' ? `<label class="check hist-split"><input type="checkbox" id="hist-split" ${S.histSplit ? 'checked' : ''}><span>Side by side</span></label>` : '');
   const actions = `<div class="hist-actions">
       ${isHead ? '' : `<button class="btn btn-sm btn-primary" data-act="hist-restore" data-mode="exam" title="Every file of the exam comes back as it was in this version">${ic('undo')} Restore the exam to this version</button>`}
       ${h.file && !isHead && d.in_version.includes(h.file) ? `<button class="btn btn-sm" data-act="hist-restore" data-mode="file" data-file="${esc(h.file)}">${ic('undo')} Restore only ${esc(h.file)}</button>` : ''}
       ${v.parent ? `<button class="btn btn-sm" data-act="hist-restore" data-mode="undo" title="Take back only what this version changed; later changes stay">${ic('restart')} ${v.kind === 'restore' || v.kind === 'undo' ? 'Undo this restore' : 'Undo this change'}</button>` : ''}
-      <button class="btn btn-sm btn-ghost" data-act="hist-name">${ic('bookmark')} Name this version</button></div>`;
+      <button class="btn btn-sm btn-ghost" data-act="hist-name">${ic('bookmark')} Name this version</button>
+      ${inBank() || (S.status && S.status.format && S.status.format !== 'latex') ? '' : `<button class="btn btn-sm btn-ghost" data-act="hist-build" title="Compile the exam as it was in this version, in a scratch folder; nothing in the exam changes">${ic('page')} Build this version</button>`}</div>`;
   const names = (v.names || []).map((n) => `<span class="chip chip-brand">${ic('bookmark')} ${esc(n.name)}${n.auto ? '' : ` <button class="chip-x" data-act="hist-unname" data-name="${esc(n.name)}" title="Remove this name" aria-label="Remove the name ${esc(n.name)}">×</button>`}</span>`).join('');
   const headLine = `<div class="hist-detail-head"><b>${esc(fmtDay(v.at))} ${esc(fmtTime(v.at))}</b><span>${esc(v.what)}${v.by ? ` · ${esc(v.by)}` : ''}</span>${versionChips({ ...v, names: [] })}${names}</div>`;
   const what = h.against === 'parent' ? (v.parent ? 'Changed in this version' : 'The files when the history started')
@@ -1525,6 +1530,9 @@ function historyDetail(h) {
     ? `<div class="hist-summary"><div class="hist-summary-title">${esc(what)}</div>${d.summary.map((f) => `<div class="hist-sum-file"><b>${esc(f.file)}</b> <span class="subtle">${FILE_STATUS[f.status]}</span>${f.lines.length ? `<ul>${f.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}</div>`).join('')}</div>`
     : `<div class="hist-summary"><div class="hist-summary-title">${esc(what)}</div><p class="subtle" style="margin:4px 0 0">No difference${h.file ? ` in ${esc(h.file)}` : ''}.</p></div>`;
   let body;
+  if (h.view === 'blame' && canBlame) {
+    return `<div class="hist-detail">${headLine}${actions}<div class="hist-compare">${views}</div><div class="hist-detail-body">${blameHtml(h)}</div></div>`;
+  }
   if (h.view === 'picture' && d.design) {
     const [bl, tl] = h.against === 'parent' ? ['Before this version', 'This version'] : h.against === 'now' ? ['This version', 'Now'] : ['Older', 'Newer'];
     const pic = (design, lbl) => `<div class="hist-picture"><div class="hist-summary-title">${esc(lbl)}</div>${design ? designPicture(design, d.design) : '<p class="subtle">No design (paper.json isn\'t there or can\'t be read).</p>'}</div>`;
@@ -1535,8 +1543,25 @@ function historyDetail(h) {
   return `<div class="hist-detail">${headLine}${actions}<div class="hist-compare">${compare}${views}</div><div class="hist-detail-body">${summary}${body}</div></div>`;
 }
 
-function diffRows(rows) {
+function diffRows(rows, split = false) {
   const words = (segs, plain) => (segs ? segs.map(([c, s]) => (c ? `<mark>${esc(s)}</mark>` : esc(s))).join('') : esc(plain));
+  if (split) {
+    // removed lines on the left, added ones on the right, side by side
+    const out = []; let i = 0;
+    while (i < rows.length) {
+      const r = rows[i];
+      if (r[0] === 'g') { out.push(`<div class="diff-gap sx-full">${r[1]} unchanged line${r[1] === 1 ? '' : 's'}</div>`); i += 1; continue; }
+      if (r[0] === 'c') { out.push(`<div class="ctx">${esc(r[1]) || ' '}</div><div class="ctx">${esc(r[1]) || ' '}</div>`); i += 1; continue; }
+      const dels = []; const adds = [];
+      while (i < rows.length && rows[i][0] === 'd') dels.push(rows[i++]);
+      while (i < rows.length && rows[i][0] === 'a') adds.push(rows[i++]);
+      for (let k = 0; k < Math.max(dels.length, adds.length); k++) {
+        out.push(dels[k] ? `<div class="del">${words(dels[k][2], dels[k][1]) || ' '}</div>` : '<div class="sx-none"></div>');
+        out.push(adds[k] ? `<div class="add">${words(adds[k][2], adds[k][1]) || ' '}</div>` : '<div class="sx-none"></div>');
+      }
+    }
+    return out.join('');
+  }
   return rows.map((r) => {
     if (r[0] === 'g') return `<div class="diff-gap">${r[1]} unchanged line${r[1] === 1 ? '' : 's'}</div>`;
     if (r[0] === 'c') return `<div class="ctx">${esc(r[1]) || ' '}</div>`;
@@ -1548,20 +1573,76 @@ function fileDiffHtml(f, d, h) {
   const stat = f.binary ? (f.status === 'changed' ? 'replaced' : f.status) : `${f.status === 'changed' ? '' : `${f.status} · `}<span class="diff-plus">+${f.added ?? '?'}</span> <span class="diff-minus">−${f.removed ?? '?'}</span>`;
   const isHead = d.entry.id === h.head;
   const head = `<div class="hist-file-head"><b>${esc(f.file)}</b><span class="subtle">${stat}</span><span class="spacer"></span>
-    ${inV ? `<a class="btn btn-ghost btn-sm" href="${histApi()}/${enc(d.entry.id)}?raw=1&file=${enc(f.file)}" title="Download ${esc(f.file)} as it is in this version" aria-label="Download">${ic('download')}</a>` : ''}
+    ${inV ? `<a class="btn btn-ghost btn-sm" href="${histApi()}/${enc(d.entry.id)}?raw=1&file=${enc(f.file)}${histProject()}" title="Download ${esc(f.file)} as it is in this version" aria-label="Download">${ic('download')}</a>` : ''}
     ${inV && !isHead && !h.file ? `<button class="btn btn-ghost btn-sm" data-act="hist-restore" data-mode="file" data-file="${esc(f.file)}" title="Only this file comes back as it was in this version">${ic('undo')} Restore this file</button>` : ''}</div>`;
   let body;
   if (f.binary) {
-    const img = (id, label) => (id ? `<figure><figcaption>${label}</figcaption><img src="${histApi()}/${enc(id)}?raw=1&inline=1&file=${enc(f.file)}" alt="${esc(f.file)}, ${label}"></figure>` : `<figure><figcaption>${label}</figcaption><p class="subtle">Not there</p></figure>`);
+    const img = (id, label) => (id ? `<figure><figcaption>${label}</figcaption><img src="${histApi()}/${enc(id)}?raw=1&inline=1&file=${enc(f.file)}${histProject()}" alt="${esc(f.file)}, ${label}"></figure>` : `<figure><figcaption>${label}</figcaption><p class="subtle">Not there</p></figure>`);
     body = IMAGE_RE.test(f.file)
       ? `<div class="hist-imgs">${img(f.status === 'added' ? null : d.base, 'Before')}${img(f.status === 'removed' ? null : d.target, 'After')}</div>`
       : `<p class="subtle" style="padding:6px 14px;margin:0">${f.old_size != null ? fmtSize(f.old_size) : '—'} → ${f.new_size != null ? fmtSize(f.new_size) : '—'}</p>`;
   } else if (f.too_big) {
     body = '<p class="subtle" style="padding:6px 14px;margin:0">Too many lines to compare here. Download the file to look at it.</p>';
   } else {
-    body = `<div class="diff">${diffRows(f.rows)}</div>`;
+    body = S.histSplit ? `<div class="diff diff-split">${diffRows(f.rows, true)}</div>` : `<div class="diff">${diffRows(f.rows)}</div>`;
   }
   return `<section class="hist-file">${head}${body}</section>`;
+}
+
+/* Links and images can't send the AMC-project header: they name the exam in the address (GET only). */
+const histProject = () => (inBank() ? '' : `&project=${enc(S.project)}`);
+const TEXT_RE = /\.(tex|txt|sty|cls|yml|yaml|csv|json)$/i;
+
+/* Who changed each line: the file as it is now, each run of lines with the version that last changed it. */
+function blameHtml(h) {
+  const b = h.blame;
+  if (!b || b.file !== h.file) { loadBlame(); return '<div class="preview-empty">Loading…</div>'; }
+  if (b.error) return `<p class="subtle" style="padding:10px 14px">${esc(b.error)}</p>`;
+  if (!b.lines.length) return '<p class="subtle" style="padding:10px 14px">The file is empty, or not in the history yet.</p>';
+  let html = ''; let prev = null;
+  for (const l of b.lines) {
+    const c = b.commits[l.id] || {};
+    const start = l.id !== prev;
+    prev = l.id;
+    html += `<div class="bl-row ${start ? 'bl-start' : ''}">${start ? `<button class="bl-who" data-act="hist-pick" data-id="${esc(l.id || '')}" title="${esc(c.what || '')}">${esc(c.by || 'someone')} · ${esc(fmtWhen(c.at))}<span class="subtle"> · ${esc(trunc(c.what || '', 50))}</span></button>` : '<span class="bl-who"></span>'}<span class="bl-n">${l.line}</span><span class="bl-text">${esc(l.text) || ' '}</span></div>`;
+  }
+  return `<div class="blame">${html}</div>${b.truncated ? '<p class="subtle" style="padding:6px 14px">Only the first 5,000 lines are shown.</p>' : ''}`;
+}
+async function loadBlame() {
+  const h = S.history;
+  if (!h || !h.file || h.blameLoading === h.file) return;
+  h.blameLoading = h.file;
+  const file = h.file;
+  let r;
+  try { r = await getJSON(`${histApi()}/blame?file=${enc(file)}`); } catch { r = { error: 'This couldn\'t be loaded.' }; }
+  if (S.history !== h || h.file !== file) return;
+  h.blame = { file, lines: r.lines || [], commits: r.commits || {}, truncated: !!r.truncated, error: r.error || null };
+  h.blameLoading = null;
+  renderPreview();
+}
+
+/* Build this version: compiled on the server in a scratch folder, shown here. */
+async function historyBuild() {
+  const h = S.history;
+  if (!h || !h.selected) return;
+  toast('Building this version…', 'refresh');
+  let resp;
+  try { resp = await fetch(`${histApi()}/${enc(h.selected)}/build`, { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' }, body: '{}' }); } catch { toast('The server couldn\'t be reached.', 'warning-triangle'); return; }
+  const type = resp.headers.get('content-type') || '';
+  if (!type.includes('pdf')) {
+    let r = {};
+    try { r = await resp.json(); } catch { /* not JSON */ }
+    notice('This version doesn\'t build', r.error || 'Unknown error');
+    return;
+  }
+  const blob = await resp.blob();
+  if (S.versionPdf) URL.revokeObjectURL(S.versionPdf);
+  S.versionPdf = URL.createObjectURL(blob);
+  const v = (h.versions || []).find((x) => x.id === h.selected) || {};
+  openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('page')}</span><div><h2 id="dlg-title">The exam as it was ${esc(fmtWhen(v.at))}</h2><p class="subtle" style="margin:2px 0 0">${esc(v.what || '')}. Compiled from that version; nothing in the exam changed.</p></div></div>
+    <div class="dialog-body"><iframe class="hist-pdf" src="${S.versionPdf}" title="The question paper of that version"></iframe></div>
+    <div class="dialog-foot"><a class="btn" href="${S.versionPdf}" download="${esc(S.project)} ${esc(fmtWhen(v.at))}.pdf">${ic('download')} Download</a><button class="btn btn-primary" data-act="dialog-ok">Close</button></div>`);
+  const dlg = $('#layer .dialog'); if (dlg) dlg.classList.add('dialog-wide');
 }
 
 async function historyRestore(mode, file) {
@@ -1625,33 +1706,61 @@ async function deleteCurrentFile() {
 
 /* ---------- Trash (Exams page; server: ui_vcs.py) ---------- */
 
-async function openTrash() {
+async function openTrash(user = null) {
   let r;
-  try { r = await getJSON('/ui/api/trash'); } catch { toast('The trash couldn\'t be read.', 'warning-triangle'); return; }
+  try { r = await getJSON(`/ui/api/trash${user ? `?user=${enc(user)}` : ''}`); } catch { toast('The trash couldn\'t be read.', 'warning-triangle'); return; }
   if (r.error) { toast(r.error, 'warning-triangle'); return; }
+  S.trashUser = r.admin ? user : null;
   const items = r.items || [];
+  // An admin of a shared machine can look at, and restore from, another teacher's trash.
+  const who = r.admin && (r.users || []).length ? `<label class="field" style="margin:0 0 10px"><span class="field-label">Whose trash</span><select class="select" id="trash-teacher">
+      <option value="">Mine${r.me ? ` (${esc(r.me)})` : ''}</option>${r.users.filter((u) => u !== r.me).map((u) => `<option value="${esc(u)}" ${u === user ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select></label>` : '';
   openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('trash')}</span><div><h2 id="dlg-title">Trash</h2><p class="subtle" style="margin:2px 0 0">Deleted exams stay here for ${r.days} days with their history, then go for good.</p></div></div>
-    <div class="dialog-body">${items.length ? `<div class="list trash-list">${items.map((x) => `<div class="list-row"><span class="list-icon">${ic(x.target === 'bank' ? 'book-stack' : 'page')}</span><div class="list-row-main"><div class="list-row-title">${esc(x.name)}</div>
+    <div class="dialog-body">${who}${items.length ? `<div class="list trash-list">${items.map((x) => `<div class="list-row"><span class="list-icon">${ic(x.target === 'bank' ? 'book-stack' : 'page')}</span><div class="list-row-main"><div class="list-row-title">${esc(x.name)}</div>
       <div class="subtle">${x.target === 'bank' ? 'Question bank · ' : ''}Deleted ${esc(fmtWhen(x.deleted_at))}${x.by ? ` by ${esc(x.by)}` : ''} · ${fmtSize(x.size || 0)} · ${x.days_left} day${x.days_left === 1 ? '' : 's'} left</div></div>
       <button class="btn btn-sm" data-act="trash-restore" data-id="${esc(x.id)}">${ic('undo')} Restore</button>
       <button class="btn btn-sm btn-ghost" data-act="trash-delete" data-id="${esc(x.id)}" data-name="${esc(x.name)}" title="Delete for good" aria-label="Delete ${esc(x.name)} for good">${ic('trash')}</button></div>`).join('')}</div>`
     : '<p class="subtle">The trash is empty.</p>'}</div>
     <div class="dialog-foot"><button class="btn btn-primary" data-act="dialog-ok">Close</button></div>`);
 }
+/* An exam from a zip ("With history" in History, or any AMC project archive): upstream's archive
+   import, which drops dot-folders and takes the history back from history.bundle (ui.py). */
+function examImport() {
+  openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('upload')}</span><div><h2 id="dlg-title">Import an exam</h2><p class="subtle" style="margin:2px 0 0">A zip made with History › With history (its history comes along), or an AMC project archive (.zip, .tar.gz).</p></div></div>
+    <div class="dialog-body"><input type="file" id="exam-import-file" accept=".zip,.tgz,.tar,.gz">
+      <label class="field" style="margin-top:10px"><span class="field-label">Name of the exam</span><input class="input" id="exam-import-name" maxlength="80"></label><div id="exam-import-msg"></div></div>
+    <div class="dialog-foot"><button class="btn" data-act="dialog-cancel">Cancel</button><button class="btn btn-primary" data-act="exam-import-go">${ic('upload')} Import</button></div>`);
+}
+async function examImportGo() {
+  const f = ($('#exam-import-file') || {}).files; const file = f && f[0];
+  const name = (($('#exam-import-name') || {}).value || '').trim() || (file ? file.name.replace(/\.(zip|tgz|tar\.gz|tar)$/i, '') : '');
+  const msg = (h) => { const m = $('#exam-import-msg'); if (m) m.innerHTML = h; };
+  if (!file) { msg('<p class="field-hint" style="color:var(--danger)">Choose the file first.</p>'); return; }
+  let r;
+  try { r = await upload('/upload/create', [[file, file.name]], { name }); } catch (e) { r = e.body || { error: e.message }; }
+  if (!r || !r.ok) { msg(banner('danger', 'warning-triangle', esc((r && r.error) || 'Not imported.'), '')); return; }
+  closeDialog();
+  toast(`"${name}" imported.`);
+  loadProjects();
+  navigate(examPath(name, 'questions'));
+}
+
 async function trashRestore(id) {
-  const r = await postJSON('/ui/api/trash/restore', { id });
+  const user = S.trashUser;
+  const r = await postJSON('/ui/api/trash/restore', { id, user });
   if (!r.ok) { toast(r.error || 'Not restored.', 'warning-triangle'); return; }
-  toast(`"${r.name}" is back with its history.`, 'undo');
-  if (r.target === 'bank') { if (S.route.kind === 'banks') loadBanks(); } else loadProjects();
-  openTrash();
+  toast(user ? `"${r.name}" is back in ${user}'s exams, with its history.` : `"${r.name}" is back with its history.`, 'undo');
+  if (!user) { if (r.target === 'bank') { if (S.route.kind === 'banks') loadBanks(); } else loadProjects(); }
+  openTrash(user);
 }
 async function trashDelete(id, name) {
   const ok = await confirmDialog({ danger: true, icon: 'trash', title: `Delete "${esc(name)}" for good?`, ok: 'Delete for good',
     body: '<p>The exam, its scans, marks and history are removed. This can\'t be undone.</p>' });
-  if (!ok) { openTrash(); return; }
-  const r = await postJSON('/ui/api/trash/delete', { id });
+  const user = S.trashUser;
+  if (!ok) { openTrash(user); return; }
+  const r = await postJSON('/ui/api/trash/delete', { id, user });
   if (!r.ok) toast(r.error || 'Not deleted.', 'warning-triangle');
-  openTrash();
+  openTrash(user);
 }
 
 async function buildPreview() {
@@ -2452,7 +2561,7 @@ function renderDSections(d, L) {
       <div class="d-sub">${per}${chips.length ? ' · ' + chips.join(' · ') : ''}${marks}</div>
       ${s.problem ? `<div class="d-problem">${ic('warning-triangle')} ${esc(s.problem)}</div>` : ''}
       ${isOpen ? renderDSectionForm(s, L) : ''}
-      ${!L && !isOpen ? `<div class="d-row"><button class="btn btn-ghost btn-sm" data-act="d-sec-addq" data-name="${esc(s.name)}">${ic('plus')} Add a question</button>${S.design.modular && s.pool ? `<button class="btn btn-ghost btn-sm" data-act="d-sec-latex" data-name="${esc(s.name)}" title="All the section's questions as one LaTeX document">${ic('code')} Edit as LaTeX</button>` : ''}${S.design.modular ? `<button class="btn btn-ghost btn-sm" data-act="bank-pick" data-section="${esc(s.name)}" title="Add questions from one of your question banks">${ic('book-stack')} From a bank…</button>${s.pool ? `<button class="btn btn-ghost btn-sm" data-act="bank-save-section" data-section="${esc(s.name)}" title="Copy this section's questions into a bank, as a group">${ic('book-stack')} Save to a bank…</button>` : ''}` : ''}</div>` : ''}
+      ${!L && !isOpen ? `<div class="d-row"><button class="btn btn-ghost btn-sm" data-act="d-sec-addq" data-name="${esc(s.name)}">${ic('plus')} Add a question</button>${S.design.modular && s.pool ? `<button class="btn btn-ghost btn-sm" data-act="d-sec-latex" data-name="${esc(s.name)}" title="All the section's questions as one LaTeX document">${ic('code')} Edit as LaTeX</button><button class="btn btn-ghost btn-sm" data-act="d-sec-history" data-name="${esc(s.name)}" title="The versions that changed this section's questions">${ic('clock-rotate-right')} History</button>` : ''}${S.design.modular ? `<button class="btn btn-ghost btn-sm" data-act="bank-pick" data-section="${esc(s.name)}" title="Add questions from one of your question banks">${ic('book-stack')} From a bank…</button>${s.pool ? `<button class="btn btn-ghost btn-sm" data-act="bank-save-section" data-section="${esc(s.name)}" title="Copy this section's questions into a bank, as a group">${ic('book-stack')} Save to a bank…</button>` : ''}` : ''}</div>` : ''}
     </div>`;
   });
   (d.unused || []).forEach((u) => { html += banner('info', 'info-circle', `${u.pool} question${u.pool > 1 ? 's' : ''} in the group "${esc(u.name)}" ${u.pool > 1 ? 'aren\'t' : 'isn\'t'} printed.`, 'No section uses this group.', L ? '' : `<button class="btn btn-sm" data-act="d-sec-adopt" data-name="${esc(u.name)}">Add a section for it</button>`); });
@@ -4158,6 +4267,10 @@ const ACTIONS = {
   'hist-more': () => loadHistory({ more: true }),
   'hist-view': (el) => { if (S.history) { S.history.view = el.dataset.v; renderPreview(); } },
   'hist-name': () => historyName(),
+  'hist-build': () => historyBuild(),
+  'exam-import': () => examImport(),
+  'exam-import-go': () => examImportGo(),
+  'd-sec-history': (el) => openHistory(null, el.dataset.name),
   'hist-unname': (el) => historyUnname(el.dataset.name),
   'trash-open': () => openTrash(),
   'trash-restore': (el) => trashRestore(el.dataset.id),
@@ -4246,8 +4359,10 @@ document.addEventListener('change', async (e) => {
     if (S.source.dirty && !(await confirmLeave())) { t.value = S.source.name; return; }
     saveDraft(); S.source.loaded = false; S.source.dirty = false; loadSource(t.value);
   }
-  if (t.id === 'hist-file' && S.history && (t.value || null) !== S.history.file) openHistory(t.value || null);
+  if (t.id === 'hist-file' && S.history && t.value !== '@section' && ((t.value || null) !== S.history.file || S.history.section)) openHistory(t.value || null);
   if (t.id === 'hist-against' && S.history) { S.history.against = t.value; loadVersion(); }
+  if (t.id === 'hist-split') { S.histSplit = t.checked; store.set('histSplit', t.checked); renderPreview(); }
+  if (t.id === 'trash-teacher') openTrash(t.value || null);
   if (t.id === 'qf-kind' && S.qform) changeQKind(t);
   if (t.dataset.df && S.dform) {
     const name = t.dataset.name; const k = t.dataset.df;

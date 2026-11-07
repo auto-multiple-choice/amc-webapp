@@ -58,6 +58,9 @@ Shared machine (sign-in, HTTPS, one projects folder per teacher):
 
   backup               Save all projects (and, on a shared machine, accounts and
                        the certificate authority) to AMC_DATA_DIR/backups
+  doctor [--rebuild-index]
+                       Check every exam's and bank's history (git fsck), the
+                       trash and the bank search index; changes nothing
   help                 Show this help
 
 Settings are in .env, created on first start (see .env.example).
@@ -591,6 +594,16 @@ function Invoke-User([string[]]$Arguments) {
   if (-not (Invoke-Auth $Arguments)) { exit 1 }
 }
 
+function Invoke-Doctor($Arguments) {
+  Assert-Docker
+  Initialize-EnvFile
+  Read-Settings
+  if (-not (Test-Running $Service)) { Die "The app isn't running. Start it first: amc start" }
+  # Histories (git fsck), the trash and the bank search index, for every teacher.
+  & docker compose exec -T $Service python3 /amc-web/server/ui_doctor.py @Arguments
+  exit $LASTEXITCODE
+}
+
 function Invoke-Backup {
   Assert-Docker
   Initialize-EnvFile
@@ -676,6 +689,7 @@ switch ($command) {
   'user'    { Invoke-User $rest }
   'cert'    { Invoke-Cert }
   'backup'  { Invoke-Backup }
+  'doctor'  { Invoke-Doctor $rest }
   'printer' { Die 'Direct printing only works when the shared machine runs Linux. On Windows, teachers save the PDFs in the Print step and print them from any computer.' }
   { $_ -in 'help', '-h', '--help', '/?' } { Show-Usage }
   default   { Show-Usage; exit 1 }
