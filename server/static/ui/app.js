@@ -1409,12 +1409,15 @@ async function loadHistory({ more = false, select = null } = {}) {
     const r = await getJSON(`${histApi()}?skip=${skip}${h.file ? `&file=${enc(h.file)}` : ''}`);
     if (S.history !== h || S.project !== project) return;
     if (r.error) throw new Error(r.error);
-    h.versions = more ? h.versions.concat(r.versions) : r.versions;
+    if (r.project === null || !r.versions) throw new Error('gone');
+    const have = new Set((more && h.versions ? h.versions : []).map((v) => v.id));
+    h.versions = more ? h.versions.concat(r.versions.filter((v) => !have.has(v.id))) : r.versions; // saves made since the first page shift the pages
     h.total = r.total; h.files = r.files; h.head = r.head; h.error = null;
   } catch (e) {
     console.error(e);
     if (S.history !== h) return;
-    h.versions = h.versions || []; h.error = 'The history couldn\'t be loaded. Try again in a moment.';
+    h.versions = h.versions || [];
+    h.error = e.message === 'gone' ? 'This exam isn\'t there any more.' : 'The history couldn\'t be loaded. Try again in a moment.';
   }
   h.loading = false;
   if (select) { pickVersion(select); return; }
@@ -1440,6 +1443,7 @@ async function loadVersion() {
     const r = await getJSON(`${histApi()}/${enc(id)}?against=${enc(against)}${h.file ? `&file=${enc(h.file)}` : ''}`);
     if (S.history !== h || h.selected !== id || h.against !== against) return;
     if (r.error) throw new Error(r.error);
+    if (r.project === null || !r.entry) throw new Error('This version isn\'t there any more.');
     h.detail = r;
     if (!r.design && h.view === 'picture') h.view = 'changes';
   } catch (e) {
@@ -1458,6 +1462,7 @@ function historySessions(versions) {
     if (s && prev.by === v.by && prev.at - v.at < SESSION_GAP && !ALONE.includes(v.kind) && !ALONE.includes(prev.kind)) s.items.push(v);
     else out.push({ key: v.id, items: [v] });
   });
+  out.forEach((s) => { s.key = s.items[s.items.length - 1].id; }); // the oldest: a new save joining the session doesn't change its key
   return out;
 }
 function versionChips(v) {
@@ -1505,12 +1510,15 @@ function historyDetail(h) {
   const v = d.entry;
   const isHead = v.id === h.head;
   const others = h.versions.filter((x) => x.id !== v.id);
+  const shown = others.slice(0, 80);
+  const cur = others.find((x) => x.id === h.against);
+  if (cur && !shown.includes(cur)) shown.push(cur); // reached through "Show older versions": still the selected choice
   const named = others.filter((x) => (x.names || []).length);
   const opt = (val, text) => `<option value="${esc(val)}" ${h.against === val ? 'selected' : ''}>${esc(text)}</option>`;
   const compare = `<label class="sr-only" for="hist-against">Show</label><select class="select input-sm" id="hist-against">
       ${opt('parent', 'What this version changed')}${isHead ? '' : opt('now', 'What changed since, up to now')}
       ${named.length ? `<optgroup label="Compare with a named version">${named.map((x) => opt(x.id, `${x.names.map((n) => n.name).join(', ')} · ${fmtWhen(x.at)}`)).join('')}</optgroup>` : ''}
-      <optgroup label="Compare with the version of">${others.slice(0, 80).map((x) => opt(x.id, `${fmtWhen(x.at)} · ${x.what}`.slice(0, 90))).join('')}</optgroup></select>`;
+      <optgroup label="Compare with the version of">${shown.map((x) => opt(x.id, `${fmtWhen(x.at)} · ${x.what}`.slice(0, 90))).join('')}</optgroup></select>`;
   const views = d.design ? `<div class="seg" role="group" aria-label="View"><button class="btn btn-sm ${h.view === 'changes' ? 'is-on' : ''}" data-act="hist-view" data-v="changes" aria-pressed="${h.view === 'changes'}">Changes</button><button class="btn btn-sm ${h.view === 'picture' ? 'is-on' : ''}" data-act="hist-view" data-v="picture" aria-pressed="${h.view === 'picture'}">${ic('eye')} Picture of the design</button></div>` : '';
   const actions = `<div class="hist-actions">
       ${isHead ? '' : `<button class="btn btn-sm btn-primary" data-act="hist-restore" data-mode="exam" title="Every file of the exam comes back as it was in this version">${ic('undo')} Restore the exam to this version</button>`}
@@ -1573,6 +1581,7 @@ async function historyRestore(mode, file) {
   let p;
   try { p = await getJSON(`${histApi()}/${enc(id)}/plan?mode=${mode}${file ? `&file=${enc(file)}` : ''}`); } catch { toast('The server couldn\'t be reached.', 'warning-triangle'); return; }
   if (p.error) { notice('Not possible', p.error); return; }
+  if (p.project === null || !p.files) { notice('Not possible', 'This exam or version isn\'t there any more.'); return; }
   if (p.problem) { notice(mode === 'undo' ? 'This change can\'t be undone on its own' : 'Not possible', p.problem); return; }
   if (p.refused) { notice('The exam is printed', p.refused, 'lock'); return; }
   if (!p.files.length) { toast('Nothing to restore: the files are already as in that version.', 'info-circle'); return; }
@@ -1630,25 +1639,35 @@ async function openTrash() {
   try { r = await getJSON('/ui/api/trash'); } catch { toast('The trash couldn\'t be read.', 'warning-triangle'); return; }
   if (r.error) { toast(r.error, 'warning-triangle'); return; }
   const items = r.items || [];
-  openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('trash')}</span><div><h2 id="dlg-title">Trash</h2><p class="subtle" style="margin:2px 0 0">Deleted exams stay here for ${r.days} days with their history, then go for good.</p></div></div>
+  openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('trash')}</span><div><h2 id="dlg-title">Trash</h2><p class="subtle" style="margin:2px 0 0">Deleted exams and question banks stay here for ${r.days} days with their history, then go for good.</p></div></div>
     <div class="dialog-body">${items.length ? `<div class="list trash-list">${items.map((x) => `<div class="list-row"><span class="list-icon">${ic(x.target === 'bank' ? 'book-stack' : 'page')}</span><div class="list-row-main"><div class="list-row-title">${esc(x.name)}</div>
       <div class="subtle">${x.target === 'bank' ? 'Question bank · ' : ''}Deleted ${esc(fmtWhen(x.deleted_at))}${x.by ? ` by ${esc(x.by)}` : ''} · ${fmtSize(x.size || 0)} · ${x.days_left} day${x.days_left === 1 ? '' : 's'} left</div></div>
-      <button class="btn btn-sm" data-act="trash-restore" data-id="${esc(x.id)}">${ic('undo')} Restore</button>
-      <button class="btn btn-sm btn-ghost" data-act="trash-delete" data-id="${esc(x.id)}" data-name="${esc(x.name)}" title="Delete for good" aria-label="Delete ${esc(x.name)} for good">${ic('trash')}</button></div>`).join('')}</div>`
+      <button class="btn btn-sm" data-act="trash-restore" data-id="${esc(x.id)}" data-name="${esc(x.name)}" data-target="${esc(x.target || 'exam')}">${ic('undo')} Restore</button>
+      <button class="btn btn-sm btn-ghost" data-act="trash-delete" data-id="${esc(x.id)}" data-name="${esc(x.name)}" data-target="${esc(x.target || 'exam')}" title="Delete for good" aria-label="Delete ${esc(x.name)} for good">${ic('trash')}</button></div>`).join('')}</div>`
     : '<p class="subtle">The trash is empty.</p>'}</div>
     <div class="dialog-foot"><button class="btn btn-primary" data-act="dialog-ok">Close</button></div>`);
 }
-async function trashRestore(id) {
+function trashBusy(id) { // one request per entry at a time: the buttons wait for the answer
+  const btns = document.querySelectorAll(`[data-act="trash-restore"][data-id="${id}"], [data-act="trash-delete"][data-id="${id}"]`);
+  if ([...btns].some((b) => b.disabled)) return true;
+  btns.forEach((b) => { b.disabled = true; });
+  return false;
+}
+async function trashRestore(id, was) {
+  if (trashBusy(id)) return;
   const r = await postJSON('/ui/api/trash/restore', { id });
-  if (!r.ok) { toast(r.error || 'Not restored.', 'warning-triangle'); return; }
-  toast(`"${r.name}" is back with its history.`, 'undo');
+  if (!r.ok) { toast(r.error || 'Not restored.', 'warning-triangle'); openTrash(); return; }
+  const kind = r.target === 'bank' ? 'bank' : 'exam';
+  toast(was && r.name !== was ? `Restored as "${r.name}" (${kind === 'bank' ? 'a bank' : 'an exam'} named "${was}" exists), with its history.` : `"${r.name}" is back with its history.`, 'undo');
   if (r.target === 'bank') { if (S.route.kind === 'banks') loadBanks(); } else loadProjects();
   openTrash();
 }
-async function trashDelete(id, name) {
+async function trashDelete(id, name, target) {
   const ok = await confirmDialog({ danger: true, icon: 'trash', title: `Delete "${esc(name)}" for good?`, ok: 'Delete for good',
-    body: '<p>The exam, its scans, marks and history are removed. This can\'t be undone.</p>' });
+    body: target === 'bank' ? '<p>The bank, its questions and history are removed. Exams that took questions from it keep their copies. This can\'t be undone.</p>'
+      : '<p>The exam, its scans, marks and history are removed. This can\'t be undone.</p>' });
   if (!ok) { openTrash(); return; }
+  if (trashBusy(id)) return;
   const r = await postJSON('/ui/api/trash/delete', { id });
   if (!r.ok) toast(r.error || 'Not deleted.', 'warning-triangle');
   openTrash();
@@ -2348,9 +2367,10 @@ function moveQuestion(d) {
     const ents = itemEntries(); const i = ents.indexOf(li);
     const t = ents[i + d];
     if (!t) return;
-    const tg = t.questions[0].group;
+    const tg = t.questions[0].group; const cg = li.questions[0].group;
     let before;
-    if (d < 0) before = t.item;
+    if (tg !== cg) before = d < 0 ? null : t.item; // crossing a section's edge: its end going up, its start going down
+    else if (d < 0) before = t.item;
     else { const after = ents[i + 2]; before = after && after.questions[0].group === tg ? after.item : null; }
     itemOp({ op: 'move', item: li.item, before, group: tg }).then((r) => { if (r) renderQuestionsForm(); });
     return;
@@ -3967,9 +3987,15 @@ async function deleteExam(name) {
   }
   if (!ok) return;
   socket_emit('project-delete', name);
-  toast(`"${name}" moved to the Trash.`, 'trash');
   if (S.route.kind === 'exam' && S.route.name === name) { S.source.dirty = false; navigate('/exams'); }
-  else setTimeout(loadProjects, 300);
+  // The toast waits until the exam is gone: when the move to the Trash fails, the server says so in its own dialog.
+  for (let i = 0; i < 12; i++) {
+    await new Promise((res) => setTimeout(res, 500));
+    let gone = false;
+    try { const r = await getJSON('/ui/api/projects'); gone = !(r.projects || []).some((p) => p.name === name); } catch { return; }
+    if (gone) { toast(`"${name}" moved to the Trash.`, 'trash'); loadProjects(); return; }
+  }
+  loadProjects();
 }
 
 /* ---------- Events ---------- */
@@ -4159,8 +4185,8 @@ const ACTIONS = {
   'hist-name': () => historyName(),
   'hist-unname': (el) => historyUnname(el.dataset.name),
   'trash-open': () => openTrash(),
-  'trash-restore': (el) => trashRestore(el.dataset.id),
-  'trash-delete': (el) => trashDelete(el.dataset.id, el.dataset.name),
+  'trash-restore': (el) => trashRestore(el.dataset.id, el.dataset.name),
+  'trash-delete': (el) => trashDelete(el.dataset.id, el.dataset.name, el.dataset.target),
   'draft-use': () => {
     const d = S.source.draft; if (!d || !editor) return;
     // Typed against an earlier version of the file: save against that version, so the conflict dialog asks which to keep.
