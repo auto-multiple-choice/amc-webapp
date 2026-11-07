@@ -929,6 +929,32 @@ try:
     check3("zip: a broken bundle is refused, and the history starts from the files", not vcs.import_bundle(_bd3, _root, _bun + "x", "bank")
           and not os.path.exists(os.path.join(_root, "_amcweb", "ann", "history", "banks", _b3["uid"] + ".git"))
           and len(vcs.Repo(_bd3, _root, "bank").open().log()[0]) == 1)
+    # an odd item.json (a list where a string goes) keeps only that item out of the index
+    _home = vcs.amcweb_dir(_bd, _root, "bank")
+    _odd = os.path.join(_bd2, "items", bk.read(_bd2)["all"][0], "item.json")
+    _odd_was = open(_odd).read() if os.path.exists(_odd) else None  # the test bank has no item.json
+    open(_odd, "w").write(json.dumps({"uid": ["x"], "title": ["t"], "tags": "no"}))
+    try:
+        _found = bix.search(_home, _pd, q="")
+        check("index: an item with an odd item.json is left out, the others are found", any(f["bank"] == "Copied bank" for f in _found))
+    except Exception as e:
+        check("index: an item with an odd item.json is left out, the others are found", False)
+    if _odd_was is None:
+        os.unlink(_odd)
+    else:
+        open(_odd, "w").write(_odd_was)
+    check("index: a search that has no word in it finds nothing, not everything", bix.search(_home, _pd, q="?!") == [])
+    _bad = io.BytesIO()
+    with zipfile.ZipFile(_bad, "w") as _z:
+        _z.writestr("bank.json", "{}")
+        _z.writestr("items/q1/item.tex", "x")
+    _raw = bytearray(_bad.getvalue())
+    _raw[_raw.index(b"x", _raw.index(b"items/q1/item.tex") + 17)] ^= 0xFF  # the file's bytes no longer match its CRC
+    _badp = os.path.join(_tmpb, "bad.zip"); open(_badp, "wb").write(bytes(_raw))
+    try:
+        bz.read(_badp, os.path.join(_tmpb, "bad-out")); check("zip: a damaged entry is refused with a message, not a crash", False)
+    except bz.ZipError:
+        check("zip: a damaged entry is refused with a message, not a crash", True)
     _pre = "\\usepackage{amssymb}\n\\newcommand{\\foo}[1]{%\n  \\mathrm{#1}%\n}\n\\newcommand{\\bar}{\\foo{x}}\n\\def\\Z#1{z#1}\n\\let\\a=\\b\n% \\newcommand{\\hidden}{}\n\\RequirePackage{tikz}\n"
     _defs = bk.definitions(_pre)
     check("banks: a definition is taken whole (several lines, [n], #1, \\let), comments left out",

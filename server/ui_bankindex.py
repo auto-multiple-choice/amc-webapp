@@ -32,6 +32,8 @@ import ui_vcs as vcs
 INDEX = "bank-index.sqlite"
 USAGE = "bank-usage.jsonl"
 SCHEMA = 1
+INDEX_TEXT_MAX = 200 * 1024   # an item's LaTeX beyond this is indexed by its start only
+_DAMAGED = ("malformed", "not a database", "file is not a database", "unsupported file format", "file is encrypted")
 KINDS = ("single", "multiple", "numeric", "set")
 _log = logging.getLogger("amcweb.banks")
 
@@ -56,11 +58,12 @@ def _connect(home):
                 db.execute(f"PRAGMA user_version = {SCHEMA}")
                 db.commit()
             return db
-        except sqlite3.DatabaseError:
+        except sqlite3.DatabaseError as e:
             db.close()
-            if attempt == 2:
+            # Only a damaged file is thrown away (it is rebuilt from the files): a lock held by
+            # another request, a full disk or a read-only file aren't damage.
+            if attempt == 2 or not any(w in str(e).lower() for w in _DAMAGED):
                 raise
-            # damaged: throw it away, it is rebuilt from the files
             for ext in ("", "-wal", "-shm", "-journal"):
                 try:
                     os.unlink(path + ext)
@@ -113,6 +116,11 @@ def _bank_dirs(projects_dir):
     return out
 
 
+def _text(value):
+    """A string field of item.json (a file the teacher may edit by hand), or ""."""
+    return value if isinstance(value, str) else ""
+
+
 def _index_bank(db, bdir, b, st):
     uid = b["uid"]
     db.execute("DELETE FROM fts WHERE rowid IN (SELECT rowid FROM items WHERE bank_uid = ?)", (uid,))
@@ -121,18 +129,24 @@ def _index_bank(db, bdir, b, st):
     for i, n in enumerate(b["all"]):
         try:
             with open(os.path.join(bdir, items.item_file(n)), encoding="utf-8", errors="replace") as f:
-                text = f.read()
+                text = f.read(INDEX_TEXT_MAX + 1)
         except OSError:
             continue
-        m = banks.item_meta(bdir, n)
-        qs = scale.read_latex(text)
-        title = m.get("title") or banks.plain_title(text)
-        tags = [t for t in (m.get("tags") or []) if isinstance(t, str)]
-        cur = db.execute("INSERT INTO items (bank_uid, item, uid, grp, title, kind, nq, difficulty, tags, archived, ord) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                         (uid, n, m.get("uid"), gmap.get(n), title, kind_of(qs), len(qs), m.get("difficulty") or "",
-                          json.dumps(tags, ensure_ascii=False), 1 if m.get("archived") else 0, i))
-        db.execute("INSERT INTO fts (rowid, title, body, tags) VALUES (?,?,?,?)",
-                   (cur.lastrowid, title, " ".join(q["id"] for q in qs) + " " + plain(text), " ; ".join(tags)))
+        try:
+            m = banks.item_meta(bdir, n)
+            if len(text) > INDEX_TEXT_MAX:  # a huge file (an imported zip): its start is enough to find it
+                text, qs = text[:INDEX_TEXT_MAX], []
+            else:
+                qs = scale.read_latex(text)
+            title = _text(m.get("title")) or banks.plain_title(text)
+            tags = [t for t in (m.get("tags") or []) if isinstance(t, str)] if isinstance(m.get("tags"), list) else []
+            cur = db.execute("INSERT INTO items (bank_uid, item, uid, grp, title, kind, nq, difficulty, tags, archived, ord) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                             (uid, n, _text(m.get("uid")) or None, gmap.get(n), title, kind_of(qs), len(qs), _text(m.get("difficulty")),
+                              json.dumps(tags, ensure_ascii=False), 1 if m.get("archived") else 0, i))
+            db.execute("INSERT INTO fts (rowid, title, body, tags) VALUES (?,?,?,?)",
+                       (cur.lastrowid, title, " ".join(q["id"] for q in qs) + " " + plain(text), " ; ".join(tags)))
+        except (sqlite3.Error, ValueError, TypeError) as e:  # one odd item doesn't keep the others out of the index
+            _log.warning(f"{bdir}/{n}: not indexed ({e})")
     db.execute("INSERT OR REPLACE INTO banks (uid, name, stamp) VALUES (?,?,?)", (uid, os.path.basename(bdir), st))
 
 
@@ -140,23 +154,27 @@ def refresh(home, projects_dir):
     """Bring the index up to date with the teacher's banks. Returns the
     open database and {bank uid: folder}."""
     db = _connect(home)
-    known = {uid: s for uid, s in db.execute("SELECT uid, stamp FROM banks")}
-    dirs = {}
-    for d in _bank_dirs(projects_dir):
-        st = stamp(d)
-        b = banks.read(d)
-        if not b["uid"] or b["uid"] in dirs:
-            continue
-        dirs[b["uid"]] = d
-        if known.get(b["uid"]) != st:
-            _index_bank(db, d, b, st)
-        elif db.execute("SELECT name FROM banks WHERE uid = ?", (b["uid"],)).fetchone()[0] != os.path.basename(d):
-            db.execute("UPDATE banks SET name = ? WHERE uid = ?", (os.path.basename(d), b["uid"]))
-    for uid in set(known) - set(dirs):
-        db.execute("DELETE FROM fts WHERE rowid IN (SELECT rowid FROM items WHERE bank_uid = ?)", (uid,))
-        db.execute("DELETE FROM items WHERE bank_uid = ?", (uid,))
-        db.execute("DELETE FROM banks WHERE uid = ?", (uid,))
-    db.commit()
+    try:
+        known = {uid: s for uid, s in db.execute("SELECT uid, stamp FROM banks")}
+        dirs = {}
+        for d in _bank_dirs(projects_dir):
+            st = stamp(d)
+            b = banks.read(d)
+            if not b["uid"] or b["uid"] in dirs:
+                continue
+            dirs[b["uid"]] = d
+            if known.get(b["uid"]) != st:
+                _index_bank(db, d, b, st)
+            elif db.execute("SELECT name FROM banks WHERE uid = ?", (b["uid"],)).fetchone()[0] != os.path.basename(d):
+                db.execute("UPDATE banks SET name = ? WHERE uid = ?", (os.path.basename(d), b["uid"]))
+        for uid in set(known) - set(dirs):
+            db.execute("DELETE FROM fts WHERE rowid IN (SELECT rowid FROM items WHERE bank_uid = ?)", (uid,))
+            db.execute("DELETE FROM items WHERE bank_uid = ?", (uid,))
+            db.execute("DELETE FROM banks WHERE uid = ?", (uid,))
+        db.commit()
+    except BaseException:
+        db.close()
+        raise
     return db, dirs
 
 
@@ -216,12 +234,14 @@ def search(home, projects_dir, q="", bank=None, group=None, difficulty=None, kin
     last_exam}]. BANK is a bank's uid; TAGS must all be on the item;
     UNUSED_SINCE (a time) keeps items never printed, or last printed
     before it; ARCHIVED items only when asked."""
+    fq = fts_query(q)
+    if str(q or "").strip() and not fq:  # typed, but no word in it: nothing matches, rather than everything
+        return []
     db, dirs = refresh(home, projects_dir)
     try:
         sql = ("SELECT items.bank_uid, banks.name, items.item, items.uid, items.grp, items.title, items.kind, items.nq, "
                "items.difficulty, items.tags, items.archived FROM items JOIN banks ON banks.uid = items.bank_uid")
         where, args = [], []
-        fq = fts_query(q)
         if fq:
             sql += " JOIN fts ON fts.rowid = items.rowid"
             where.append("fts MATCH ?")
@@ -232,8 +252,10 @@ def search(home, projects_dir, q="", bank=None, group=None, difficulty=None, kin
                 args.append(val)
         if not archived:
             where.append("items.archived = 0")
-        sql += (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY banks.name, items.ord LIMIT ?"
-        args.append(int(limit) * 4 if tags or unused_since else int(limit))
+        sql += (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY banks.name, items.ord"
+        if not (tags or unused_since):  # tags and usage are filtered below, over every row, so no match is missed
+            sql += " LIMIT ?"
+            args.append(int(limit))
         rows = db.execute(sql, args).fetchall()
     except sqlite3.OperationalError as e:  # what is typed is cleaned first (fts_query), so this is worth a look
         _log.warning(f"Bank search ({fq!r}): {e}")
@@ -272,7 +294,7 @@ def exams_with(projects_dir, bank_uid, item_uid):
             continue
         root = os.path.join(d, items.ITEMS_DIR)
         for n in sorted(os.listdir(root)) if os.path.isdir(root) and not os.path.islink(root) else []:
-            o = banks.item_meta(d, n).get("origin") or {}
+            o = banks.origin_of(banks.item_meta(d, n))
             if o.get("bank_uid") == bank_uid and o.get("item_uid") == item_uid:
                 out.append((e, n))
     return out

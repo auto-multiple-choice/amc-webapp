@@ -940,6 +940,7 @@ def api_banks_import():
     up = request.files.get("file")
     if not up or not up.filename:
         return _err("Choose a bank's zip.")
+    moved = None
     tmp = ui.core.amc_user_tmp(f"bank-zip-{uuid.uuid4().hex[:8]}")
     os.makedirs(tmp, exist_ok=True)
     try:
@@ -970,16 +971,20 @@ def api_banks_import():
         bdir = banks.bank_dir(pd, name)
         os.makedirs(banks.banks_root(pd), exist_ok=True)
         shutil.move(unpacked, bdir)
+        moved = bdir  # from here on, a failure takes the half-made bank away again
         history = bool(bundle) and vcs.import_bundle(bdir, ui._root(), bundle, "bank")
         what = f"Bank \"{name}\" imported from {os.path.basename(up.filename)[:120]}" + ("" if history or not bundle else " (its history couldn't be read, so it starts here)")
         vcs.snapshot(bdir, ui._root(), by=_who(), what=what, kind="save" if history else "create", target="bank")
         vcs.audit(vcs.amcweb_dir(bdir, ui._root(), "bank"), _who(), "bank imported", bank=name, uid=uid, history=history,
                   files=len(written), skipped=len(skipped))
     except bankzip.ZipError as e:
+        _undo_created(moved)
         return _err(str(e))
     except banks.BankError as e:
+        _undo_created(moved)
         return _err(str(e))
     except (vcs.HistoryError, OSError, ValueError) as e:
+        _undo_created(moved)
         ui.core.app.logger.error(f"Bank import: {e}")
         return _err("This zip couldn't be imported. The server log has the details.")
     finally:

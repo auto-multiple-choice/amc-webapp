@@ -51,6 +51,7 @@ AMCWEB_DIR = "_amcweb"
 LOCAL_OWNER = "_local"       # single-user mode (account names can't start with "_")
 TRASH_DAYS = 30
 MAX_FILE = 10 * 1024 * 1024  # bigger files (a scanned image dropped in the folder) aren't kept
+BUNDLE_MAX_UNPACKED = 512 * 1024 * 1024  # a history read from a bundle may not take more on disk
 TEXT_EXTENSIONS = ("tex", "latex", "txt", "sty", "cls", "bib", "yml", "yaml", "csv", "json")
 IMAGE_EXTENSIONS = ("png", "jpg", "jpeg", "gif", "svg", "eps", "pdf")
 NOT_TRACKED = ("amcweb.json", "options.xml", "description.xml")
@@ -291,6 +292,8 @@ def import_bundle(pdir, root, bundle, target="bank"):
         _git(tmp, *checked, "bundle", "verify", "-q", bundle)
         _git(tmp, *checked, "fetch", "-q", "--no-tags", "--no-write-fetch-head", bundle, f"+{BRANCH}:{BRANCH}")
         _git(tmp, "rev-parse", "--verify", "-q", BRANCH + "^{commit}")
+        if _size(tmp) > BUNDLE_MAX_UNPACKED:  # a small bundle can unpack to a lot (deltas)
+            raise HistoryError(f"the history unpacks to more than {BUNDLE_MAX_UNPACKED // 1024 // 1024} MB")
         os.replace(tmp, git_dir)
         return True
     except (HistoryError, subprocess.SubprocessError, OSError) as e:
