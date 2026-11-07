@@ -384,6 +384,31 @@ try:
     fake(os.path.join(exam, hist.HISTORY_DIR, "d.tex"), "d.tex", "tex", hist.MAX_VERSIONS + 20, lambda i: (hist.MAX_VERSIONS + 20 - i) / 1000.0, -1)
     hist.prune(exam, "d.tex", now=now)
     check("history: versions from the last days are kept, but never more than MAX_VERSIONS", len(hist.versions(exam, "d.tex")) == hist.MAX_VERSIONS)
+    # a file copied in with an old date: pruning goes by when the version was kept, not by that date
+    hist.write_source(exam, "old.tex", b"a\n", what="Saved")
+    fake(os.path.join(exam, hist.HISTORY_DIR, "old.tex"), "old.tex", "tex", 20, lambda i: 0.001 * (20 - i), -1)
+    with open(os.path.join(exam, "old.tex"), "wb") as f: f.write(b"copied in\n")
+    os.utime(os.path.join(exam, "old.tex"), (now - 400 * 86400, now - 400 * 86400))
+    hist.write_source(exam, "old.tex", b"b\n", what="Saved")
+    check("history: a version with an old date is kept when it was just replaced",
+          any(v["digest"] == hist.digest(b"copied in\n") for v in hist.versions(exam, "old.tex")))
+    # only the newest deleted version is kept for ever
+    for i in range(3):
+        time.sleep(1.1)
+        hist.write_source(exam, "del.tex", b"d%d\n" % i, what="Saved"); hist.delete_source(exam, "del.tex")
+    for v in hist.versions(exam, "del.tex"):
+        e = json.load(open(os.path.join(exam, hist.HISTORY_DIR, "del.tex", v["id"] + ".json"))); e["kept_at"] = int(now - 30 * 86400); e["at"] = e["kept_at"]
+        json.dump(e, open(os.path.join(exam, hist.HISTORY_DIR, "del.tex", v["id"] + ".json"), "w"))
+    fake(os.path.join(exam, hist.HISTORY_DIR, "del.tex"), "del.tex", "tex", hist.KEEP_AT_LEAST, lambda i: 0.001 * i, -1)
+    hist.prune(exam, "del.tex", now=now)
+    dels = [v for v in hist.versions(exam, "del.tex") if v["deleted"]]
+    check("history: of a file deleted several times, the newest deleted version is kept", len(dels) == 1 and dels[0]["digest"] == hist.digest(b"d2\n") and dels[0].get("deleted_at"))
+    # a deleted exam's folder isn't brought back by a late save
+    gone = os.path.join(tmp, "gone"); os.makedirs(gone); hist.write_source(gone, "exam.tex", b"x\n"); shutil.rmtree(gone)
+    try:
+        hist.write_source(gone, "exam.tex", b"y\n"); check("history: a save into a deleted exam is refused", False)
+    except OSError:
+        check("history: a save into a deleted exam is refused, and the folder stays gone", not os.path.exists(gone))
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
@@ -623,6 +648,108 @@ bq = sc.read_latex(open(os.path.join(SERVER, "school_templates/builder/questions
 check("builder: the summary from the starter's files", len(pb.summary_for(open(os.path.join(SERVER, "school_templates/builder/exam.tex")).read(), bq)) == 3)
 check("builder: paper.json of the starter is the RJ preset", json.load(open(os.path.join(SERVER, "school_templates/builder/paper.json"))) == rj)
 check("builder: a first section goes before \\amcuiPaperBack", st._insert_point("\\onecopy{2}{\n\\amcuiPaperFront\n\\amcuiPaperBack\n}")[0] == len("\\onecopy{2}{\n\\amcuiPaperFront\n"))
+
+# question editor: inputs that must not break the file (review of !11)
+_shared = r"""\documentclass{article}
+\begin{document}
+\element{g}{
+  \begin{question}{a}
+    Text % \end{question} not the end
+    \begin{choices}
+      \correctchoice{yes}
+      \wrongchoice{no}
+    \end{choices}
+  \end{question}
+  \begin{questionmult}{b}
+    T2
+    \begin{choices}
+      \correctchoice{x}
+      \correctchoice{y}
+      \wrongchoice{z}
+    \end{choices}
+  \end{questionmult}
+}
+\end{document}
+"""
+_qs = sc.read_latex(_shared)
+check("editor: an \\end{question} in a comment isn't the end of the question", len(_qs) == 2 and len(_qs[0]["answers"]) == 2)
+check("editor: questions sharing one \\element{}{} belong to its group", [(q["group"], q.get("element")) for q in _qs] == [("g", "shared"), ("g", "shared")])
+_t, _ = qe.apply(_shared, [{"op": "add", "after": "b"}])
+check("editor: a question added inside a shared \\element goes in bare, in the group", _t.count("\\element") == 1 and [q["group"] for q in sc.read_latex(_t)] == ["g", "g", "g"])
+_t, _ = qe.apply(_shared, [{"op": "answer_text", "id": "a", "i": 0, "latex": "50% sure"}])
+check("editor: a bare % in a field is escaped, so it can't comment out the closing brace", "\\correctchoice{50\\% sure}" in _t)
+_t, _ = qe.apply(_shared, [{"op": "text", "id": "a", "latex": "ok $\\{1,2\\}$ 100\\% \\textbf{b}"}])
+check("editor: escaped braces and \\% pass as typed", "ok $\\{1,2\\}$ 100\\% \\textbf{b}" in _t)
+def _refused(ops):
+    try:
+        qe.apply(_shared, ops)
+        return False
+    except qe.EditError:
+        return True
+check("editor: question structure typed in a field is refused",
+      all(_refused([{"op": "text", "id": "a", "latex": v}]) for v in ("hi \\end{question} x", "\\begin{choices}", "\\correctchoice{y}", "\\explain{e}", "\\scoring{b=1}")))
+check("editor: braces closing before opening are refused", _refused([{"op": "text", "id": "a", "latex": "a } b {"}]))
+check("editor: bad indices and a refused answer key are errors in words, not crashes",
+      _refused([{"op": "answer_correct", "id": "a", "i": None}]) and _refused([{"op": "answer_move", "id": "a", "i": None, "j": 0}])
+      and _refused([{"op": "answer_correct", "id": "a", "i": 0, "correct": False}]) and _refused([{"op": "numeric", "id": "a", "value": "-", "options": ""}]))
+_t, _ = qe.apply(_shared, [{"op": "type", "id": "b", "kind": "single"}])
+check("editor: multiple -> single keeps the first correct answer only", [a["correct"] for a in sc.read_latex(_t)[1]["answers"]] == [True, False, False])
+_t, _ = qe.apply(_shared, [{"op": "answer_correct", "id": "a", "i": 1, "correct": "true"}, {"op": "answer_correct", "id": "a", "i": 0, "correct": "false"}])
+check("editor: correct is read as a real boolean", [a["correct"] for a in sc.read_latex(_t)[0]["answers"]] == [False, True])
+
+# paper design: what the teacher wrote stays (review of !12)
+import ui_structure as pst
+_doc = r"""\documentclass{article}
+\def\ptsA{b=3,m=-1}
+\begin{document}
+\element{a}{\begin{question}{q1} T \begin{choices}\correctchoice{y}\wrongchoice{n}\end{choices}\end{question}}
+\element{Part 1}{\begin{question}{q2} T \begin{choices}\correctchoice{y}\wrongchoice{n}\end{choices}\end{question}}
+\onecopy{3}{ % note: { here
+%%AMCUI:SECTION a%%
+\amcuiSectionHeading{Section 1}
+\vspace{3cm}
+\insertgroup[3]{a}
+\insertgroup{b}
+%%AMCUI:END SECTION%%
+\newpage \insertgroup{Part 1}
+\begin{multicols}{2}\insertgroup{d}\end{multicols}
+\setgroupmode{a}{withoutreplacement}
+}
+\end{document}
+"""
+check("design: \\onecopy is found when a comment inside holds a brace", pst.onecopy(_doc) is not None)
+_t = pst.set_section(_doc, "a", {"count": 2, "heading": "New"})
+check("design: a rewrite keeps the LaTeX written between the markers", all(x in _t for x in ("\\vspace{3cm}", "\\insertgroup{b}", "\\insertgroup[2]{a}", "\\amcuiSectionHeading{New}")) and "Section 1" not in _t)
+_t2 = pst.set_section(_t, "a", {"shuffle": True})
+check("design: a second rewrite adds nothing twice", _t2.count("%%AMCUI:SECTION a%%") == 1 and _t2.count("\\insertgroup{b}") == 1 and _t2.count("\\vspace{3cm}") == 1)
+_t3 = pst.set_section(_doc, "Part 1", {"count": 1})
+_t4 = pst.set_section(_t3, "Part 1", {"count": 2})
+check("design: a group named with a space gets markers that are read back, and keeps the \\newpage on its line",
+      "%%AMCUI:SECTION Part 1%%" in _t3 and "\\newpage" in _t3 and _t4.count("%%AMCUI:SECTION Part 1%%") == 1 and "\\insertgroup[2]{Part 1}" in _t4)
+_t5 = pst.set_section(_doc, "d", {"count": 1})
+check("design: a multicols around a plain \\insertgroup is kept, and read as the section's columns",
+      "\\begin{multicols}{2}" in _t5 and "\\end{multicols}" in _t5 and [s["columns"] for s in pst.read_sections(_t5) if s["name"] == "d"] == [2])
+def _refused_s(fn, *a, **k):
+    try:
+        fn(*a, **k)
+        return False
+    except qe.EditError:
+        return True
+check("design: columns can't nest a multicols the teacher wrote", _refused_s(pst.set_section, _doc, "d", {"columns": 2}))
+_t6, _ = pst.rename_section(_doc, "a", "alpha")
+check("design: a rename reaches \\setgroupmode and \\element", "\\setgroupmode{alpha}" in _t6 and "\\element{alpha}" in _t6 and "{a}" not in _t6.replace("\\ptsA", ""))
+check("design: a rename can't take a group name of another file", _refused_s(pst.rename_section, _doc, "a", "other", other_groups={"other"}))
+check("design: an existing group with an odd name can get a section, a new section can't",
+      "%%AMCUI:SECTION part_1%%" in pst.add_section(_doc, {"name": "part_1"}, existing={"part_1"})[0] and _refused_s(pst.add_section, _doc, {"name": "part_1"}))
+check("design: a macro's value comes from its definition, not a use", pst._macro_value(_doc, "ptsA") == "b=3,m=-1" and pst._macro_value("\\ptsA{x}", "ptsA") is None)
+check("design: a bare % in a heading is escaped", "100\\% marks" in pst.set_section(_doc, "a", {"heading": "Total 100% marks"}))
+_simple = "\\documentclass{article}\\begin{document}\n\\onecopy{10}{\n\\noindent Header\n\n\\begin{question}{p}\n  T\n  \\begin{choices}\n    \\correctchoice{a}\n  \\end{choices}\n\\end{question}\n\n% \\AMCaddpagesto{3}\n\n\\begin{questionmult}{q}\n    T2\n  \\begin{choices}\n    \\correctchoice{a}\n  \\end{choices}\n\\end{questionmult}\n\n}\n\\end{document}\n"
+_t9, _ = pst.convert_inline(_simple)
+check("design: organising moves the questions as written", "\\element{main}{\n\\begin{question}{p}\n  T\n  \\begin{choices}\n    \\correctchoice{a}\n  \\end{choices}\n\\end{question}\n}" in _t9)
+check("design: organising is refused when LaTeX sits between the questions", _refused_s(pst.convert_inline, _simple.replace("% \\AMCaddpagesto{3}", "\\section*{Part B}")))
+_summ = _doc.replace("\\onecopy{3}{ % note: { here", "\\onecopy{3}{\n%%AMCUI:SUMMARY%%\n%%AMCUI:END SUMMARY%%")
+_t10, _, _ = pst.apply(_summ, [{"op": "summary"}], [])
+check("design: the summary defines the macro its lines use", "\\providecommand{\\amcuiPoint}" in _t10 and "\\amcuiPoint{" in _t10)
 
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

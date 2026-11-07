@@ -223,6 +223,25 @@ def _plain_text(latex, limit=160):
     return t if len(t) <= limit else t[:limit - 1].rstrip() + "…"
 
 
+_ELEMENT_OPEN = re.compile(r"\\element\s*\{([^{}]*)\}")
+
+
+def _shared_elements(text, questions):
+    """Questions inside an \\element{}{} that holds several of them: they
+    belong to the group too, but the block is the question alone."""
+    for m in _ELEMENT_OPEN.finditer(text):
+        if _in_comment(text, m.start()):
+            continue
+        body = _braced(text, m.end())
+        if not body:
+            continue
+        inside = [q for q in questions if body[1] <= q["span"][0] and q["span"][1] <= body[2]]
+        if len(inside) > 1:
+            for q in inside:
+                if q.get("element") != "own":
+                    q["group"], q["element"] = m.group(1).strip(), "shared"
+
+
 def read_latex(text, filename=""):
     """The questions of a LaTeX source, each with the spans the marking
     panel and the question editor edit: the block (and its \\element{}{}
@@ -234,7 +253,8 @@ def read_latex(text, filename=""):
         if _in_comment(text, m.start()):
             continue
         env, qid = m.group(1), m.group(2).strip()
-        end = re.compile(r"\\end\s*\{" + env + r"\}").search(text, m.end())
+        end = next((e for e in re.compile(r"\\end\s*\{" + env + r"\}").finditer(text, m.end())
+                    if not _in_comment(text, e.start())), None)
         if not end:
             continue
         line_start = text.rfind("\n", 0, m.start()) + 1
@@ -250,6 +270,7 @@ def read_latex(text, filename=""):
             close = re.compile(r"\s*\}").match(text, end.end())
             if close:
                 q["group"] = em.group(1).strip()
+                q["element"] = "own"  # an \element{}{} of its own: the block is the wrapper
                 q["block_span"] = (em.start(), close.end())
         lo, hi = m.end(), end.start()
         spans, depth, start, first = [], 0, None, None
@@ -337,6 +358,7 @@ def read_latex(text, filename=""):
         if not q["answers"] and not q["numeric"]:
             q["problem"] = q["problem"] or "No \\correctchoice or \\wrongchoice found."
         questions.append(q)
+    _shared_elements(text, questions)
     return questions
 
 

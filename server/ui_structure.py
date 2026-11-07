@@ -37,12 +37,15 @@ Standard library only.
 import re
 
 import ui_scale as scale
+import ui_questions
 from ui_questions import EditError
 
-NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9-]{0,39}$")
+NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9-]{0,39}$")  # names the panel gives
+# names it can manage when the LaTeX already has them (\element{Part 1}): anything a marker line can hold
+LOOSE_NAME_RE = re.compile(r"^[^%{}\\\n\r]{1,60}$")
 MAX_TEXT = 5000
 
-_SECTION_BEGIN = re.compile(r"^([ \t]*)%%AMCUI:SECTION[ \t]+([A-Za-z0-9-]+)[ \t]*%%[ \t]*$", re.M)
+_SECTION_BEGIN = re.compile(r"^([ \t]*)%%AMCUI:SECTION[ \t]+([^%\n]+?)[ \t]*%%[ \t]*$", re.M)
 _SECTION_END = re.compile(r"^[ \t]*%%AMCUI:END SECTION%%[ \t]*$", re.M)
 _SUMMARY_BEGIN = re.compile(r"^([ \t]*)%%AMCUI:SUMMARY%%[ \t]*$", re.M)
 _SUMMARY_END = re.compile(r"^[ \t]*%%AMCUI:END SUMMARY%%[ \t]*$", re.M)
@@ -61,6 +64,9 @@ MACROS = ("%%AMCUI:MACROS%%\n"
           "\\providecommand{\\amcuiSectionHeading}[1]{\\par\\vspace{2ex}{\\centering\\bfseries\\Large #1\\par}\\vspace{1ex}\\hrule\\vspace{2ex}}\n"
           "\\providecommand{\\amcuiSectionText}[1]{\\noindent #1\\par\\vspace{1.5ex}\\hrule\\vspace{2ex}}\n"
           "%%AMCUI:END MACROS%%\n")
+# One line of the instructions summary: an item inside a list, a paragraph elsewhere.
+POINT_MACRO = ("\\makeatletter\\providecommand{\\amcuiPoint}[1]{\\ifnum\\@listdepth>0 \\item #1\\else\\par\\noindent #1\\par\\smallskip\\fi}\\makeatother"
+               "  % the Paper design panel's summary lines\n")
 
 _ESCAPES = {"\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#",
             "_": r"\_", "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}"}
@@ -126,11 +132,37 @@ def _latex(value, what="This text"):
     s = str(value if value is not None else "").replace("\r\n", "\n").strip()
     if len(s) > MAX_TEXT:
         raise EditError(f"{what} is too long.")
-    if s.count("{") != s.count("}"):
-        raise EditError("The braces { } don't match up.")
+    s = ui_questions._latex(s)  # braces by depth, a bare % escaped, no question structure
     if "%%AMCUI" in s:
         raise EditError("This text can't hold a panel marker.")
     return s
+
+
+def _braced(text, i):
+    """The {...} group at text[i] (after spaces), skipping % comments:
+    (content, start, end)."""
+    while i < len(text) and text[i] in " \t":
+        i += 1
+    if i >= len(text) or text[i] != "{":
+        return None
+    depth, j = 0, i
+    while j < len(text):
+        c = text[j]
+        if c == "\\":
+            j += 2
+            continue
+        if c == "%":
+            nl = text.find("\n", j)
+            j = len(text) if nl < 0 else nl
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[i + 1:j], i, j + 1
+        j += 1
+    return None
 
 
 def onecopy(text):
@@ -138,10 +170,19 @@ def onecopy(text):
     for m in _ONECOPY.finditer(text):
         if scale._in_comment(text, m.start()):
             continue
-        b = scale._braced(text, m.end() - 1)
+        b = _braced(text, m.end() - 1)
         if b:
             return int(m.group(1)), (m.end(), b[2] - 1), m.start()
     return None
+
+
+def _in_multicols(text, pos):
+    """Whether POS sits inside a \\begin{multicols} the teacher wrote."""
+    depth = 0
+    for m in re.finditer(r"\\(begin|end)\s*\{multicols\*?\}", text[:pos]):
+        if not scale._in_comment(text, m.start()):
+            depth += 1 if m.group(1) == "begin" else -1
+    return depth > 0
 
 
 def _body(text):
@@ -160,6 +201,16 @@ def ensure_macros(text):
     return text[:m.start()] + MACROS + "\n" + text[m.start():]
 
 
+def ensure_point_macro(text):
+    """\\amcuiPoint, used by the instructions summary's lines."""
+    if re.search(r"\\(?:providecommand|newcommand|renewcommand|def)\s*\{?\\amcuiPoint(?![A-Za-z])", text):
+        return text
+    m = re.search(r"^[ \t]*\\begin\s*\{document\}", text, re.M)
+    if not m:
+        raise EditError("The file has no \\begin{document}.")
+    return text[:m.start()] + POINT_MACRO + text[m.start():]
+
+
 def ensure_package(text, package):
     for m in re.finditer(r"\\usepackage\s*(?:\[[^\]]*\])?\s*\{([^{}]*)\}", text):
         if not scale._in_comment(text, m.start()) and package in [p.strip() for p in m.group(1).split(",")]:
@@ -172,27 +223,68 @@ def ensure_package(text, package):
 
 # ---------------------------------------------------------------- sections
 
+# The lines of a region the panel writes itself, in the order it writes them.
+# Anything else between the markers (a \\vspace, a note, another command) is
+# kept where it was, anchored to the panel line it followed.
+_KINDS = ("begin", "newpage", "heading", "text", "shuffle", "cols_begin", "insert", "cols_end")
+
+
+def _owned_kind(line, name):
+    """Which of the panel's lines this is, or None."""
+    t = line.strip()
+    n = re.escape(name)
+    if re.fullmatch(r"\\(?:clearpage|newpage|pagebreak)", t):
+        return "newpage"
+    if re.fullmatch(r"\\shufflegroup\s*\{\s*" + n + r"\s*\}", t):
+        return "shuffle"
+    if re.fullmatch(r"\\begin\s*\{multicols\*?\}\s*\{\s*\d+\s*\}", t):
+        return "cols_begin"
+    if re.fullmatch(r"\\end\s*\{multicols\*?\}", t):
+        return "cols_end"
+    if re.fullmatch(r"\\insertgroup\s*(?:\[\s*\d+\s*\])?\s*\{\s*" + n + r"\s*\}", t):
+        return "insert"
+    return None
+
+
 def _parse_region(text, r):
     a, b = r["inner"]
     inner = text[a:b]
     sec = {"name": r["m"].group(2), "heading": None, "text": None, "count": None, "shuffle": False,
            "columns": 0, "newpage": False, "markers": True, "span": (r["start"], r["end"]),
-           "line": r["line"], "indent": r["indent"]}
-    hm = _HEADING.search(inner)
-    if hm:
-        g = scale._braced(inner, hm.end())
-        sec["heading"] = g[0].strip() or None if g else None
-    tm = _TEXT.search(inner)
-    if tm:
-        g = scale._braced(inner, tm.end())
-        sec["text"] = g[0].strip() or None if g else None
-    im = _INSERT.search(inner)
-    if im:
-        sec["count"] = int(im.group(1)) if im.group(1) else None
-    sec["shuffle"] = bool(_SHUFFLE.search(inner))
-    mm = _MULTICOLS.search(inner)
-    sec["columns"] = int(mm.group(1)) if mm else 0
-    sec["newpage"] = bool(_NEWPAGE.search(inner))
+           "line": r["line"], "indent": r["indent"], "extras": []}
+    lines = inner.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    last, i = "begin", 0
+    while i < len(lines):
+        line = lines[i]
+        t = line.strip()
+        kind = _owned_kind(line, sec["name"])
+        if kind is None and (_HEADING.match(t) or _TEXT.match(t)):
+            # \amcuiSectionHeading{...}: the braces may run over several lines
+            which = "heading" if _HEADING.match(t) else "text"
+            rest = "\n".join(lines[i:])
+            m = (_HEADING if which == "heading" else _TEXT).match(rest.lstrip())
+            g = _braced(rest.lstrip(), m.end())
+            if g and rest.lstrip()[g[2]:].split("\n", 1)[0].strip() == "":
+                sec[which] = g[0].strip() or None
+                i += rest.lstrip()[:g[2]].count("\n") + 1
+                last = which
+                continue
+        if kind == "insert":
+            im = _INSERT.search(line)
+            sec["count"] = int(im.group(1)) if im.group(1) else None
+        elif kind == "shuffle":
+            sec["shuffle"] = True
+        elif kind == "cols_begin":
+            sec["columns"] = int(_MULTICOLS.search(line).group(1))
+        elif kind == "newpage":
+            sec["newpage"] = True
+        if kind:
+            last = kind
+        elif t != "":
+            sec["extras"].append((last, line))
+        i += 1
     return sec
 
 
@@ -216,13 +308,19 @@ def read_sections(text):
         span = (ls, le)
         if ls > 0:  # a \shufflegroup{name} on the line before belongs to it
             ps = text.rfind("\n", 0, ls - 1) + 1
-            if re.fullmatch(r"[ \t]*\\shufflegroup\s*\{" + re.escape(name) + r"\}[ \t]*\n", text[ps:ls]):
+            if re.fullmatch(r"[ \t]*\\shufflegroup\s*\{\s*" + re.escape(name) + r"\s*\}[ \t]*\n", text[ps:ls]):
                 span = (ps, le)
+        # whatever else shares the line (\newpage before, \end{multicols} after) is kept around the command
+        extras = []
+        if text[ls:m.start()].strip():
+            extras.append(("begin", text[ls:m.start()].rstrip()))
+        if text[m.end():le].strip():
+            extras.append(("insert", re.match(r"[ \t]*", text[ls:]).group(0) + text[m.end():le].strip()))
         sections.append({"name": name, "heading": None, "text": None,
                          "count": int(m.group(1)) if m.group(1) else None, "shuffle": name in shuffled,
                          "columns": 0, "newpage": False, "markers": False, "span": span,
                          "line": text.count("\n", 0, m.start()) + 1,
-                         "indent": re.match(r"[ \t]*", text[ls:]).group(0)})
+                         "indent": re.match(r"[ \t]*", text[ls:]).group(0), "extras": extras})
     sections.sort(key=lambda s: s["span"][0])
     return sections
 
@@ -234,24 +332,26 @@ def _section(sections, name):
     raise EditError(f"The section \"{name}\" isn't in the paper any more.")
 
 
-def region_text(sec, indent=""):
+def region_text(sec, indent="", extras=()):
+    """The region's lines from the section's fields; EXTRAS, lines the
+    teacher wrote between the markers, stay after the panel line they
+    followed."""
     name = sec["name"]
-    lines = [f"{indent}%%AMCUI:SECTION {name}%%"]
-    if sec.get("newpage"):
-        lines.append(f"{indent}\\clearpage")
-    if sec.get("heading"):
-        lines.append(f"{indent}\\amcuiSectionHeading{{{sec['heading']}}}")
-    if sec.get("text"):
-        lines.append(f"{indent}\\amcuiSectionText{{{sec['text']}}}")
-    if sec.get("shuffle"):
-        lines.append(f"{indent}\\shufflegroup{{{name}}}")
     cols = int(sec.get("columns") or 0)
-    if cols > 1:
-        lines.append(f"{indent}\\begin{{multicols}}{{{cols}}}")
     n = sec.get("count")
-    lines.append(f"{indent}\\insertgroup" + (f"[{int(n)}]" if n else "") + f"{{{name}}}")
-    if cols > 1:
-        lines.append(f"{indent}\\end{{multicols}}")
+    own = {"begin": f"{indent}%%AMCUI:SECTION {name}%%",
+           "newpage": f"{indent}\\clearpage" if sec.get("newpage") else None,
+           "heading": f"{indent}\\amcuiSectionHeading{{{sec['heading']}}}" if sec.get("heading") else None,
+           "text": f"{indent}\\amcuiSectionText{{{sec['text']}}}" if sec.get("text") else None,
+           "shuffle": f"{indent}\\shufflegroup{{{name}}}" if sec.get("shuffle") else None,
+           "cols_begin": f"{indent}\\begin{{multicols}}{{{cols}}}" if cols > 1 else None,
+           "insert": f"{indent}\\insertgroup" + (f"[{int(n)}]" if n else "") + f"{{{name}}}",
+           "cols_end": f"{indent}\\end{{multicols}}" if cols > 1 else None}
+    lines = []
+    for kind in _KINDS:
+        if own[kind]:
+            lines.append(own[kind])
+        lines += [line for anchor, line in extras if anchor == kind]
     lines.append(f"{indent}%%AMCUI:END SECTION%%")
     return "\n".join(lines) + "\n"
 
@@ -306,12 +406,18 @@ def _drop_stray_shuffle(text, name):
 
 def set_section(text, name, fields):
     """Rewrite one section's region from its fields (adding the markers
-    to a plain \\insertgroup)."""
+    to a plain \\insertgroup); what else the teacher wrote between the
+    markers stays."""
     sec = _section(read_sections(text), name)
+    if not LOOSE_NAME_RE.match(name):
+        raise EditError(f"The group \"{name}\" has a name the panel can't write; rename it in the LaTeX tab.")
     new = _fields(sec, fields)
+    if new["columns"] and (_in_multicols(text, sec["span"][0])
+                           or any(_MULTICOLS.search(line) for _, line in sec.get("extras") or ())):
+        raise EditError("This section is already inside a \\begin{multicols} written in the LaTeX; set its columns there.")
     text = _prepare(text, new)
     sec = _section(read_sections(text), name)
-    out = text[:sec["span"][0]] + region_text(new, sec["indent"]) + text[sec["span"][1]:]
+    out = text[:sec["span"][0]] + region_text(new, sec["indent"], sec.get("extras") or ()) + text[sec["span"][1]:]
     return _drop_stray_shuffle(out, name) if not sec["markers"] else out
 
 
@@ -353,9 +459,11 @@ def group_names(text):
     return names
 
 
-def _check_name(name, text, others=()):
+def _check_name(name, text, others=(), existing=()):
+    """A new section's name: a plain word; or a group the LaTeX already
+    has (EXISTING), whatever it is called, for a section that prints it."""
     name = str(name or "").strip()
-    if not NAME_RE.match(name):
+    if not NAME_RE.match(name) and not (name in existing and LOOSE_NAME_RE.match(name)):
         raise EditError("A section's name is a word of letters, digits and - (40 at most), starting with a letter.")
     if name in {s["name"] for s in read_sections(text)} or name in others:
         raise EditError(f"A section named \"{name}\" exists already.")
@@ -380,8 +488,8 @@ def _insert_point(text):
     return m.start(), ""
 
 
-def add_section(text, fields, after=None):
-    name = _check_name(fields.get("name"), text)
+def add_section(text, fields, after=None, existing=()):
+    name = _check_name(fields.get("name"), text, existing=existing)
     base = {"name": name, "shuffle": False, "columns": 0}
     secs = read_sections(text)
     if "newpage" not in fields and secs:
@@ -404,13 +512,15 @@ def add_section(text, fields, after=None):
 
 def rename_elements(text, old, new):
     """\\element{old}{ -> \\element{new}{ (also for the other source files)."""
-    return re.sub(r"(\\element\s*\{)" + re.escape(old) + r"(\s*\})", lambda m: m.group(1) + new + m.group(2), text)
+    return re.sub(r"(\\element\s*\{\s*)" + re.escape(old) + r"(\s*\})", lambda m: m.group(1) + new + m.group(2), text)
 
 
-def rename_section(text, old, new):
+def rename_section(text, old, new, other_groups=()):
+    """OTHER_GROUPS: the groups named in the other source files, which the
+    new name mustn't take either."""
     sec = _section(read_sections(text), old)
-    new = _check_name(new, text, group_names(text) - {sec["name"]})
-    out = re.sub(r"(\\(?:insertgroup|shufflegroup|cleargroup)(?![A-Za-z])\s*(?:\[[^\]]*\])?\s*\{)" + re.escape(old) + r"(\s*\})",
+    new = _check_name(new, text, (group_names(text) | set(other_groups)) - {sec["name"]})
+    out = re.sub(r"(\\(?:insertgroup|shufflegroup|cleargroup|setgroupmode)(?![A-Za-z])\s*(?:\[[^\]]*\])?\s*\{\s*)" + re.escape(old) + r"(\s*\})",
                  lambda m: m.group(1) + new + m.group(2), text)
     out = re.sub(r"(%%AMCUI:SECTION[ \t]+)" + re.escape(old) + r"([ \t]*%%)", lambda m: m.group(1) + new + m.group(2), out)
     return rename_elements(out, old, new), new
@@ -466,13 +576,16 @@ def convert_inline(text, name="main"):
         name = f"{base}{k}"
     first_ls = _line_bounds(text, inline[0]["block_span"][0])[0]
     indent = re.match(r"[ \t]*", text[first_ls:]).group(0)
+    # between the questions, only blank lines and comments: anything else would change place
+    for a, b in zip(inline, inline[1:]):
+        between = text[a["block_span"][1]:b["block_span"][0]]
+        if any(l.strip() and not l.strip().startswith("%") for l in between.split("\n")):
+            raise EditError("There is LaTeX between the questions (a heading, a space...). Organising would move the "
+                            "questions away from it: move it before or after them in the LaTeX tab first.")
     elements, out = [], text
     for q in reversed(inline):
         s, e = _lines_around(out, q["block_span"])
-        lines = out[s:e].rstrip("\n").split("\n")
-        common = min((len(re.match(r"[ \t]*", l).group(0)) for l in lines if l.strip()), default=0)
-        lines = [l[common:] if l.strip() else "" for l in lines]
-        elements.append(f"\\element{{{name}}}{{\n" + "\n".join(("  " + l) if l else "" for l in lines) + "\n}")
+        elements.append(f"\\element{{{name}}}{{\n" + out[s:e].rstrip("\n") + "\n}")
         out = _tidy_blank(out[:s] + out[e:], s)
     elements.reverse()
     out = out[:first_ls] + region_text({"name": name, "count": None, "shuffle": False, "columns": 0}, indent) + out[first_ls:]
@@ -502,12 +615,14 @@ def set_copies(text, n):
 # ---------------------------------------------------------------- marks and the summary
 
 def _macro_value(text, name):
-    m = re.search(r"\\(?:def\\|newcommand\*?\{\\|renewcommand\*?\{\\|providecommand\*?\{\\)?" + re.escape(name) + r"(?![A-Za-z])\}?\s*\{", text)
+    """The value \\def or \\newcommand gives macro NAME, or None."""
+    pat = re.compile(r"\\(?:def|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*\\" + re.escape(name) + r"(?![A-Za-z])\s*\}?\s*(?:\[\d\])?\s*\{")
+    m = pat.search(text)
     while m and scale._in_comment(text, m.start()):
-        m = re.compile(r"\\(?:def\\|newcommand\*?\{\\|renewcommand\*?\{\\|providecommand\*?\{\\)?" + re.escape(name) + r"(?![A-Za-z])\}?\s*\{").search(text, m.end())
+        m = pat.search(text, m.end())
     if not m:
         return None
-    g = scale._braced(text, m.end() - 1)
+    g = _braced(text, m.end() - 1)
     return g[0] if g else None
 
 
@@ -552,7 +667,7 @@ def marks(text, rule, kind, numeric_options=""):
         while d and scale._in_comment(text, d.start()):
             d = re.compile(r"\\scoringDefault" + ("M" if kind == "multiple" else "S") + r"\s*\{").search(text, d.end())
         if d:
-            g = scale._braced(text, d.end() - 1)
+            g = _braced(text, d.end() - 1)
             rule = g[0] if g else ""
     rule = expand_macros(text, rule)
     vals = dict(re.findall(r"([a-zA-Z]+)\s*=\s*([-0-9.]+)", rule))
@@ -692,6 +807,7 @@ def apply(text, ops, others=()):
     the summary."""
     if not isinstance(ops, list) or not ops or len(ops) > 100:
         raise EditError("Nothing to change.")
+    other_groups = {q["group"] for q in others if q.get("group")}
     done, renames = [], []
     for op in ops:
         if not isinstance(op, dict):
@@ -702,10 +818,10 @@ def apply(text, ops, others=()):
             text = set_section(text, name, op)
             done.append(f"section {name} changed")
         elif kind == "section_add":
-            text, new = add_section(text, op, after=op.get("after") or None)
+            text, new = add_section(text, op, after=op.get("after") or None, existing=group_names(text) | other_groups)
             done.append(f"section {new} added")
         elif kind == "section_rename":
-            text, new = rename_section(text, name, op.get("new"))
+            text, new = rename_section(text, name, op.get("new"), other_groups)
             renames.append((name, new))
             done.append(f"section {name} renamed to {new}")
         elif kind == "section_move":
@@ -735,7 +851,7 @@ def apply(text, ops, others=()):
             done.append(f"{n} versions")
         elif kind == "summary":
             qs = scale.read_latex(text) + list(others)
-            text = regenerate_summary(text, _with_pools(text, read_sections(text), pools(qs)))
+            text = regenerate_summary(ensure_point_macro(text), _with_pools(text, read_sections(text), pools(qs)))
             done.append("instructions summary updated")
         else:
             raise EditError("Unknown change.")
