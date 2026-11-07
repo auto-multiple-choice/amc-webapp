@@ -29,6 +29,7 @@ The **Paper builder** tab lays out the paper. It changes the exam's files like t
 
 - **Questions per copy:** all of them, or fewer. With fewer, each copy draws its own questions from the section: "15 of 18 per copy" prints 15 questions chosen among 18. A warning shows when a section has fewer questions than it should print.
 - **Shuffle** the questions in each copy, **columns** (1 to 4), **start on a new page**.
+- **Page breaks**, for the whole paper, above the list: each section after the first **starts on a new page** or **continues after the previous section**, and a box says whether the first section starts on a new page or follows the header and instructions on the same page. The choice is kept when a section is added, moved or removed. A section's own **start on a new page** can still differ; the panel then says how many start on a new page.
 - **Heading** and **instructions** printed above the questions.
 - **Add a question** to a section opens it in the form. **Add a section**, move sections up and down, rename or remove one. A removed section's questions stay in the source and are listed as not printed, with a button to give them a section again.
 - In an exam written by hand (AMC's own templates, for example), a heading printed above a section in the LaTeX stays as it is; a heading set here is printed in addition.

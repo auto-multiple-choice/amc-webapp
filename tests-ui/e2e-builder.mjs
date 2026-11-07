@@ -132,6 +132,15 @@ async function main_() {
   await settle(`S.builder.design.kind === 'separate'`);
   await b.shot('b5-page');
 
+  // ---- page breaks between sections
+  await b.click('[data-act="pb-tab"][data-v="sections"]');
+  b.check('The Sections tab sets the page breaks for the whole paper', await b.waitFor(`!!document.querySelector('.d-breaks [data-act="d-breaks"][data-v="new"][aria-pressed="true"]') && document.querySelector('[data-dbreak="first"]').checked`, 10000));
+  await b.click('.d-breaks [data-act="d-breaks"][data-v="continue"]');
+  b.check('Each section after the first continues after the previous one', await settle(`S.design.breaks.between === false && S.design.breaks.first === true && S.design.sections.map(s => s.newpage).join() === 'true,false,false'`) && ((await main()).match(/\\clearpage\n\\amcuiSectionHeading/g) || []).length === 1);
+  await b.click('[data-dbreak="first"]');
+  b.check('...and the first one follows the instructions', await settle(`S.design.breaks.first === false && !document.querySelector('[data-dbreak="first"]').checked`) && !(await main()).includes('\\clearpage\n\\amcuiSectionHeading'));
+  await b.shot('b5b-breaks');
+
   // ---- the layout file edited by hand
   await b.click('[data-act="qtab"][data-v="latex"]');
   await b.waitFor(`S.qtab === 'latex' && S.source.loaded`, 15000);

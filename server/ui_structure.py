@@ -23,6 +23,12 @@ markers), and an exam whose questions sit inside \\onecopy can be
 organised: each question moves into an \\element and one section takes
 their place.
 
+Page breaks: each section starts on a new page (the \\clearpage line) or
+not. The panel also sets them for the whole paper: the first section,
+and every later one (on a new page, or right after the previous
+section). That choice is kept when a section is added, moved or removed,
+unless the sections have their own, differing settings.
+
 An instructions summary, one line per section made from the sections'
 counts and marks, is kept up to date between %%AMCUI:SUMMARY%% markers
 when the paper has them. Everything else in the file is left as written.
@@ -309,6 +315,35 @@ def set_section(text, name, fields):
     return _drop_stray_shuffle(out, name) if not sec["markers"] else out
 
 
+def breaks(sections):
+    """The page breaks as the panel shows them: (first, between). FIRST:
+    whether the first section starts on a new page; BETWEEN: whether each
+    later section does, None when they differ or there is only one."""
+    if not sections:
+        return None, None
+    rest = {bool(s["newpage"]) for s in sections[1:]}
+    return bool(sections[0]["newpage"]), (rest.pop() if len(rest) == 1 else None)
+
+
+def set_breaks(text, first=None, between=None):
+    """The first section on a new page or not (FIRST), every later one on
+    a new page or right after the previous one (BETWEEN); None leaves it."""
+    for i, sec in enumerate(read_sections(text)):
+        want = first if i == 0 else between
+        if want is None or bool(sec["newpage"]) == bool(want):
+            continue
+        text = set_section(text, sec["name"], {"newpage": bool(want)})
+    return text
+
+
+def _keep_breaks(text, before):
+    """After a section is moved or removed: the paper-wide choice stays
+    (the first section and the later ones), unless the sections had
+    their own, differing choices."""
+    first, between = before
+    return text if between is None else set_breaks(text, first, between)
+
+
 def group_names(text):
     """Every group named in the file: sections and \\element wrappers."""
     names = {s["name"] for s in read_sections(text)}
@@ -347,7 +382,12 @@ def _insert_point(text):
 
 def add_section(text, fields, after=None):
     name = _check_name(fields.get("name"), text)
-    new = _fields({"name": name, "shuffle": False, "columns": 0}, fields)
+    base = {"name": name, "shuffle": False, "columns": 0}
+    secs = read_sections(text)
+    if "newpage" not in fields and secs:
+        # a section added after others follows their page breaks
+        base["newpage"] = bool(breaks(secs)[1]) if len(secs) > 1 else False
+    new = _fields(base, fields)
     new["name"] = name
     text = _prepare(text, new)
     sections = read_sections(text)
@@ -639,6 +679,7 @@ def read(text, main, questions):
                                              "markers", "line", "pool", "kinds", "rule", "marks", "problem", "file")}
                          for s in sections],
             "inline": len(inline), "unused": unused,
+            "breaks": dict(zip(("first", "between"), breaks(sections))),
             "summary": bool(_regions(text, _SUMMARY_BEGIN, _SUMMARY_END))}
 
 
@@ -668,11 +709,24 @@ def apply(text, ops, others=()):
             renames.append((name, new))
             done.append(f"section {name} renamed to {new}")
         elif kind == "section_move":
-            text = move_section(text, name, op.get("before") or None)
+            before = breaks(read_sections(text))
+            text = _keep_breaks(move_section(text, name, op.get("before") or None), before)
             done.append(f"section {name} moved")
         elif kind == "section_delete":
-            text = delete_section(text, name)
+            before = breaks(read_sections(text))
+            text = _keep_breaks(delete_section(text, name), before)
             done.append(f"section {name} removed")
+        elif kind == "sections_break":
+            first, between = op.get("first"), op.get("between")
+            if first is None and between is None:
+                raise EditError("Nothing to change.")
+            if not read_sections(text):
+                raise EditError("No section yet.")
+            text = set_breaks(text, None if first is None else bool(first), None if between is None else bool(between))
+            if between is not None:
+                done.append("every section on a new page" if between else "each section right after the previous one")
+            if first is not None:
+                done.append("the first section on a new page" if first else "the first section right after what comes before it")
         elif kind == "convert":
             text, new = convert_inline(text, op.get("name") or "main")
             done.append(f"questions organised into section {new}")

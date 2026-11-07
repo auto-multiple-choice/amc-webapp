@@ -525,6 +525,28 @@ for bad in ({"op": "section_add", "name": "part B"}, {"op": "section_add", "name
         st.apply(t2, [bad]); check(f"structure: refused {bad}", False)
     except st.EditError:
         check(f"structure: refused {bad['op']} {bad.get('name')} {bad.get('new', bad.get('count', bad.get('heading', '')))}", True)
+# page breaks between sections: the builder starter has three sections, each on a new page
+pb_src = open(os.path.join(SERVER, "school_templates/builder/exam.tex")).read()
+br = lambda t: st.breaks(st.read_sections(t))
+check("structure: page breaks read from the sections", br(pb_src) == (True, True) and st.read(pb_src, "exam.tex", [])["breaks"] == {"first": True, "between": True})
+p1, what, _ = st.apply(pb_src, [{"op": "sections_break", "between": False}])
+check("structure: each section right after the previous one, the first still on a new page", br(p1) == (True, False) and p1.count("\\clearpage\n\\amcuiSectionHeading") == 1 and what == "Paper design: each section right after the previous one")
+p2, what, _ = st.apply(p1, [{"op": "sections_break", "first": False}])
+check("structure: the first section's break on its own", br(p2) == (False, False) and "\\clearpage\n\\amcuiSectionHeading" not in p2 and "first section right after" in what)
+p3, _, _ = st.apply(p1, [{"op": "section_add", "name": "extra", "heading": "Extra"}])
+check("structure: a new section follows the later sections' choice", [x["newpage"] for x in st.read_sections(p3)] == [True, False, False, False] and st.read_sections(st.apply(pb_src, [{"op": "section_add", "name": "extra"}])[0])[-1]["newpage"])
+p4, _, _ = st.apply(p1, [{"op": "section_move", "name": "numerical", "before": "sectionI"}])
+check("structure: moving a section keeps the paper's page breaks", [x["name"] for x in st.read_sections(p4)] == ["numerical", "sectionI", "sectionII"] and br(p4) == (True, False))
+p5, _, _ = st.apply(p1, [{"op": "section_delete", "name": "sectionI"}])
+check("structure: removing the first section keeps the paper's page breaks", [x["name"] for x in st.read_sections(p5)] == ["sectionII", "numerical"] and br(p5) == (True, False))
+p6, _, _ = st.apply(pb_src, [{"op": "section_set", "name": "sectionII", "newpage": False}])
+p7, _, _ = st.apply(p6, [{"op": "section_move", "name": "numerical", "before": "sectionI"}])
+check("structure: sections' own differing choices are left as they are", br(p6) == (True, None) and [x["newpage"] for x in st.read_sections(p7)] == [True, True, False])
+for bad in ({"op": "sections_break"}, ):
+    try:
+        st.apply(pb_src, [bad]); check("structure: refused a page-break change without a choice", False)
+    except st.EditError:
+        check("structure: refused a page-break change without a choice", True)
 inline_src = src.replace("\\begin{question}{q1}", "\\noindent Exam\n\n\\begin{question}{q1}")
 r = st.read(inline_src, "exam.tex", sc.read_latex(inline_src, "exam.tex"))
 check("structure: questions inside \\onecopy are counted as inline", r["inline"] == 2 and r["sections"] == [])

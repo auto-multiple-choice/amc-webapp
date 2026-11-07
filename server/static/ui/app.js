@@ -1908,6 +1908,7 @@ function renderDSections(d, L) {
   if (!d.onecopy) html += banner('warning', 'warning-triangle', 'The main file has no \\onecopy{…}{…} block.', 'Sections are laid out inside it. Add one in the LaTeX tab, or start a new exam from a template.');
   if (d.inline) html += banner('info', 'info-circle', `${d.inline} question${d.inline > 1 ? 's are' : ' is'} written directly in the paper, outside any section.`, 'Organise them into a section to count, shuffle and lay them out from here. The questions themselves don\'t change.', L ? '' : `<button class="btn btn-sm btn-primary" data-act="d-convert">Organise into a section</button>`);
   if (!d.sections.length && !d.inline && d.onecopy) html += '<p class="muted" style="margin:0">No section yet. A section is a group of questions printed together: add one, then add questions to it.</p>';
+  if (d.sections.length) html += renderDBreaks(d, L);
   d.sections.forEach((s, i) => {
     const isOpen = s.name === open;
     const per = s.count ? `${s.count} of ${s.pool} per copy` : `all ${s.pool}`;
@@ -1926,6 +1927,23 @@ function renderDSections(d, L) {
   });
   (d.unused || []).forEach((u) => { html += banner('info', 'info-circle', `${u.pool} question${u.pool > 1 ? 's' : ''} in the group "${esc(u.name)}" ${u.pool > 1 ? 'aren\'t' : 'isn\'t'} printed.`, 'No section uses this group.', L ? '' : `<button class="btn btn-sm" data-act="d-sec-adopt" data-name="${esc(u.name)}">Add a section for it</button>`); });
   return html + '</div>';
+}
+
+/* Page breaks for the whole paper: every section after the first, and the first one. */
+function renderDBreaks(d, L) {
+  const dis = L ? 'disabled' : '';
+  const br = d.breaks || {};
+  const later = d.sections.slice(1);
+  const before = S.builder && S.builder.builder ? 'the rows above the Questions block (the header, the instructions)' : 'what the paper prints before the sections';
+  let html = `<div class="d-block d-breaks"><div class="d-row"><b>Page breaks</b></div>`;
+  if (later.length) {
+    html += `<div class="field"><span class="field-label">Each section after the first</span><div class="segmented full" role="group" aria-label="Each section after the first">
+      <button aria-pressed="${br.between === true}" data-act="d-breaks" data-v="new" ${dis}>Starts on a new page</button>
+      <button aria-pressed="${br.between === false}" data-act="d-breaks" data-v="continue" ${dis}>Continues after the previous section</button></div>
+      ${br.between == null ? `<span class="field-hint">Set section by section at the moment: ${later.filter((s) => s.newpage).length} of ${later.length} start on a new page. A choice here applies to all of them.</span>` : ''}</div>`;
+  }
+  html += `<label class="check"><input type="checkbox" data-dbreak="first" ${br.first ? 'checked' : ''} ${dis}><span>The first section starts on a new page<br><span class="subtle">Otherwise it follows ${before} on the same page.</span></span></label></div>`;
+  return html;
 }
 
 function renderDSectionForm(s, L) {
@@ -3558,6 +3576,7 @@ const ACTIONS = {
   'd-sec-adopt': (el) => addSection(el.dataset.name, { heading: el.dataset.name }),
   'd-sec-addq': (el) => addQuestionTo(el.dataset.name),
   'd-sec-rename': (el) => { const v = (($('#df-rename') || {}).value || '').trim(); if (v && v !== el.dataset.name) dop({ op: 'section_rename', name: el.dataset.name, new: v }, { now: true }); },
+  'd-breaks': (el) => { const v = el.dataset.v === 'new'; if (!S.dform || (S.design.breaks && S.design.breaks.between === v)) return; dop({ op: 'sections_break', between: v }, { now: true }); },
   'd-convert': () => dop({ op: 'convert' }, { now: true }),
   'd-summary': () => dop({ op: 'summary' }, { now: true }),
   'd-latex': (el) => editInLatex(S.design.file, +el.dataset.line),
@@ -3614,6 +3633,7 @@ document.addEventListener('change', async (e) => {
     else if (k === 'shuffle' || k === 'newpage') dop({ op: 'section_set', name, [k]: t.checked }, { now: true });
     else if (k === 'columns') dop({ op: 'section_set', name, columns: +t.value }, { now: true });
   }
+  if (t.dataset.dbreak === 'first' && S.dform) dop({ op: 'sections_break', first: t.checked }, { now: true });
   if (t.id === 'd-copies' && S.dform) dop({ op: 'copies', n: +t.value }, { now: true });
   if (t.id === 'qf-id' && S.qform) { const v = t.value.trim(); if (v && v !== S.qform.id) qop({ op: 'rename', new_id: v }, { now: true }); }
   if (t.classList.contains('qf-ans-correct') && S.qform) qop({ op: 'answer_correct', i: +t.dataset.i, correct: t.checked }, { now: true });

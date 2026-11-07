@@ -218,7 +218,7 @@ function renderBlockForm(b, where, L) {
     case 'text':
       return `<label class="field"><span class="field-label">LaTeX</span><textarea class="input mono" rows="8" data-pbb="latex" ${dis}>${esc(b.latex)}</textarea><span class="field-hint">Anything LaTeX: a notation list, a table of values, a note. Maths between $ signs.</span></label><div class="b-preview q-preview" data-pb-preview="latex"></div>`;
     case 'questions':
-      return '<p class="field-hint" style="margin:0">The sections are printed here, in the order of the Sections tab. Rows above this one come before the questions; rows below come after them.</p>';
+      return '<p class="field-hint" style="margin:0">The sections are printed here, in the order of the Sections tab. Rows above this one come before the questions; rows below come after them. Whether each section starts on a new page is set in the Sections tab, under Page breaks.</p>';
     case 'rule':
       return `<label class="field"><span class="field-label">Thickness</span><input class="input" data-pbb="thickness" value="${esc(b.thickness)}" ${dis}></label>`;
     case 'space':

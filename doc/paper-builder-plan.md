@@ -441,6 +441,16 @@ Question banks (phase 9) come after B4, or before B1 (section 14, point 3).
   followed the previous column's `%` on the same line and was a comment.
   It is now `\hspace*` on a line of its own, so the row can't wrap
   there when the widths add up to the line exactly.)
+- **Page breaks between sections** (asked for on 7 November). The
+  Sections tab (`renderDBreaks`, shared with exams not made from the
+  builder) has a paper-wide choice: each section after the first starts
+  on a new page or continues after the previous one, and whether the
+  first section starts on a new page or follows the rows above the
+  Questions block. It is the sections' own `\clearpage` line, set by
+  the `sections_break` operation of `ui_structure`; nothing is stored
+  besides. A section added after others follows their choice, and the
+  choice is put back after a move or a removal, unless the sections
+  differ (then each keeps its own).
 - **Writing boxes.** A box for one handwritten letter or digit (the
   registration number, the class, the level, the grey prefix) is
   `\amcuiCharBox`: an `\fcolorbox` with `\fboxsep` at 0pt around a

@@ -377,6 +377,8 @@ input[type="color"] { width: 44px; height: 34px; padding: 2px; border: 1px solid
 .d-name { font-family: var(--mono); font-weight: 650; font-size: 13px; }
 .d-sub { color: var(--text-2); font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .d-problem { color: var(--warning); font-size: 12.5px; }
+.d-breaks { gap: 8px; }
+.d-breaks .field, .d-breaks .check { margin: 0; }
 .d-form { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; margin-top: 4px; border-top: 1px solid var(--border); }
 .d-form .field { margin: 0; }
 .d-form .form-grid { align-items: start; }
