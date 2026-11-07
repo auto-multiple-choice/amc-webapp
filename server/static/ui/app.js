@@ -155,7 +155,10 @@ const projectState = () => {
   if (st.layout_pages) return 'tocheck';
   return 'draft';
 };
-const locked = () => !!(S.status && S.status.lock);
+const locked = () => S.route.kind !== 'bank' && !!(S.status && S.status.lock);
+/* The question editor's server: the open exam's, or a question bank's (banks.js). */
+const inBank = () => S.route.kind === 'bank';
+const qApi = (what) => (inBank() ? `/ui/api/bank/${enc(S.route.name)}${what ? '/' + what : ''}` : `/ui/api/${what}`);
 
 /* ---------- Server connection ---------- */
 
@@ -373,6 +376,8 @@ function parsePath(path) {
   const parts = path.split('/').filter(Boolean).map((p) => { try { return decodeURIComponent(p); } catch { return p; } });
   if (parts[0] === 'new' && parts.length === 1) return { kind: 'new' };
   if (parts[0] === 'appearance' && parts.length === 1) return { kind: 'appearance' };
+  if (parts[0] === 'banks' && parts.length === 1) return { kind: 'banks' };
+  if (parts[0] === 'bank' && parts[1]) return { kind: 'bank', name: parts[1] };
   if (parts[0] === 'exam' && parts[1]) {
     const step = STEPS.some((s) => s.id === parts[2]) || parts[2] === 'settings' ? parts[2] : null;
     return { kind: 'exam', name: parts[1], step };
@@ -417,6 +422,13 @@ function onRoute() {
   S.previewMode = keepGuide ? 'guide' : null;
   S.review = null; S.previewImage = null; S.previewList = null;
   if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) { dropEditor(); S.history = null; S.qdata = null; S.qform = null; S.design = null; S.dform = null; S.builder = null; S.bform = null; }
+  if (r.kind === 'banks' || r.kind === 'bank') {
+    S.project = null; S.status = null; S.files = null; S.qdata = null; S.qform = null; S.ql = null;
+    document.title = `${r.kind === 'bank' ? r.name : 'Question banks'} · ${BRAND}`;
+    render();
+    if (r.kind === 'banks') loadBanks(); else loadBank();
+    return;
+  }
   if (r.kind === 'exams' || r.kind === 'new' || r.kind === 'appearance') {
     S.project = null; S.status = null; S.files = null;
     document.title = `${{ new: 'New exam', appearance: 'Appearance' }[r.kind] || 'Exams'} · ${BRAND}`;
@@ -633,6 +645,7 @@ function renderTop() {
   if (r.kind === 'exam') crumbs.push(`<span class="current">${esc(r.name)}</span>`);
   if (r.kind === 'new') crumbs.push('<span class="current">New exam</span>');
   if (r.kind === 'appearance') crumbs.push('<span class="current">Appearance</span>');
+  if (r.kind === 'banks' || r.kind === 'bank') { crumbs[0] = '<a href="/banks" data-nav>Question banks</a>'; if (r.kind === 'bank') crumbs.push(`<span class="current">${esc(r.name)}</span>`); }
   const hasPreview = r.kind === 'exam';
   $('#topbar').innerHTML = `
     <a class="brandmark" href="/exams" data-nav><span class="brandmark-logo">${LOGO ? `<img src="${esc(LOGO)}" alt="">` : 'AMC'}</span><span class="brandmark-name">${esc(BRAND)}</span></a>
@@ -641,6 +654,7 @@ function renderTop() {
     ${S.online ? '' : `<span class="chip chip-danger" title="The connection to the server was lost. It reconnects by itself.">${ic('cloud-xmark')} Offline</span>`}
     <span class="topbar-spacer"></span>
     <div class="topbar-actions">
+      ${r.kind === 'banks' || r.kind === 'bank' ? `<a class="btn btn-ghost" href="/exams" data-nav>${ic('multiple-pages')}<span class="hide-narrow">Exams</span></a>` : `<a class="btn btn-ghost" href="/banks" data-nav title="Your question banks">${ic('book-stack')}<span class="hide-narrow">Question banks</span></a>`}
       ${hasPreview ? `<button class="btn btn-ghost btn-icon" data-act="toggle-preview" aria-pressed="${S.previewOpen}" title="Show or hide the preview panel" aria-label="Preview panel">${ic(S.previewOpen ? 'sidebar-collapse' : 'sidebar-expand')}</button>` : ''}
       <div style="position:relative"><button class="btn btn-ghost" data-act="menu" data-menu="guide" aria-haspopup="menu" aria-expanded="${S.menu === 'guide'}">${ic('help-circle')}<span class="hide-narrow">Guide</span></button>
         ${S.menu === 'guide' ? `<div class="menu" role="menu" style="right:0;left:auto">
@@ -684,7 +698,11 @@ function renderMain(keepScroll = false) {
   if (r.kind === 'exams') html = viewExams();
   else if (r.kind === 'new') html = viewNew();
   else if (r.kind === 'appearance') html = viewAppearance();
-  else if (!S.project || !r.step) html = `<div class="page"><div class="skeleton" style="height:40px;width:40%;margin-bottom:16px"></div><div class="skeleton"></div></div>`;
+  else if (r.kind === 'banks') html = viewBanks();
+  else if (r.kind === 'bank') {
+    if ($('#q-editor') && $('#bank-head') && S.qdata) { $('#bank-head').innerHTML = bankHead(); renderQList(); return; }
+    html = viewBank();
+  } else if (!S.project || !r.step) html = `<div class="page"><div class="skeleton" style="height:40px;width:40%;margin-bottom:16px"></div><div class="skeleton"></div></div>`;
   else if (r.step === 'questions') html = viewQuestions();
   else if (r.step === 'marking-scheme') html = viewMarking();
   else if (r.step === 'papers') html = viewPapers();
@@ -762,7 +780,7 @@ const fsUrl = (path, attach = false) => `/fs/${enc(S.project)}/${path.split('/')
 
 function renderPreview() {
   const exam = S.route.kind === 'exam';
-  const open = exam ? S.previewOpen : S.previewMode === 'guide';
+  const open = exam ? S.previewOpen : (S.previewMode === 'guide' || (inBank() && S.previewMode === 'history' && !!S.history));
   APP.classList.toggle('preview-closed', !open);
   APP.classList.toggle('preview-max', open && S.previewMax);
   APP.style.setProperty('--preview-w', S.previewW + 'px');
@@ -1211,8 +1229,9 @@ function latexEditor(hostId, { readOnly = false, onSave = null } = {}) {
   return ed;
 }
 async function loadCompletions() {
-  if (S.completions && S.completions.project === S.project && Date.now() - S.completions.at < 30000) return;
-  try { const r = await getJSON('/ui/api/completions'); if (r.project) S.completions = { ...r, at: Date.now() }; } catch { /* none */ }
+  const key = inBank() ? `bank:${S.route.name}` : S.project;
+  if (S.completions && S.completions.key === key && Date.now() - S.completions.at < 30000) return;
+  try { const r = await getJSON(qApi('completions')); if (r.project) S.completions = { ...r, key, at: Date.now() }; } catch { /* none */ }
 }
 
 function mountEditor() {
@@ -1359,6 +1378,7 @@ const KIND_CHIP = { restore: ['chip-brand', 'restore'], undo: ['chip-brand', 'un
 const FILE_STATUS = { added: 'added', removed: 'removed', changed: 'changed' };
 const IMAGE_RE = /\.(png|jpe?g|gif)$/i;
 
+const histApi = () => (inBank() ? `/ui/api/bank/${enc(S.route.name)}/history` : '/ui/api/history');
 async function postJSON(url, body) {
   try {
     const resp = await fetch(url, { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -1385,7 +1405,7 @@ async function loadHistory({ more = false, select = null } = {}) {
   const project = S.project;
   const skip = more && h.versions ? h.versions.length : 0;
   try {
-    const r = await getJSON(`/ui/api/history?skip=${skip}${h.file ? `&file=${enc(h.file)}` : ''}`);
+    const r = await getJSON(`${histApi()}?skip=${skip}${h.file ? `&file=${enc(h.file)}` : ''}`);
     if (S.history !== h || S.project !== project) return;
     if (r.error) throw new Error(r.error);
     if (r.project === null || !r.versions) throw new Error('gone');
@@ -1419,7 +1439,7 @@ async function loadVersion() {
   h.detail = null;
   renderPreview();
   try {
-    const r = await getJSON(`/ui/api/history/${enc(id)}?against=${enc(against)}${h.file ? `&file=${enc(h.file)}` : ''}`);
+    const r = await getJSON(`${histApi()}/${enc(id)}?against=${enc(against)}${h.file ? `&file=${enc(h.file)}` : ''}`);
     if (S.history !== h || h.selected !== id || h.against !== against) return;
     if (r.error) throw new Error(r.error);
     if (r.project === null || !r.entry) throw new Error('This version isn\'t there any more.');
@@ -1456,11 +1476,11 @@ function versionRow(v, h, nested) {
 
 function historyPreview() {
   const h = S.history;
-  const title = `History · ${h.file || 'whole exam'}`;
+  const title = `History · ${h.file || (inBank() ? 'whole bank' : 'whole exam')}`;
   const label = (f) => (f.exists ? f.file : `${f.file} (deleted)`);
   const files = h.files.some((f) => f.file === h.file) || !h.file ? h.files : [{ file: h.file, exists: true }, ...h.files];
   const tabs = `<div class="preview-tabs"><label class="sr-only" for="hist-file">Show the history of</label><select class="select input-sm" id="hist-file">
-      <option value="" ${h.file ? '' : 'selected'}>Whole exam</option>${files.map((f) => `<option value="${esc(f.file)}" ${f.file === h.file ? 'selected' : ''}>${esc(label(f))}</option>`).join('')}</select>
+      <option value="" ${h.file ? '' : 'selected'}>${inBank() ? 'Whole bank' : 'Whole exam'}</option>${files.map((f) => `<option value="${esc(f.file)}" ${f.file === h.file ? 'selected' : ''}>${esc(label(f))}</option>`).join('')}</select>
     <span class="spacer"></span><button data-act="preview-docs">Documents</button></div>`;
   if (h.loading || !h.versions) return { title, body: '<div class="preview-empty">Loading…</div>', tabs };
   const sessions = historySessions(h.versions);
@@ -1535,11 +1555,11 @@ function fileDiffHtml(f, d, h) {
   const stat = f.binary ? (f.status === 'changed' ? 'replaced' : f.status) : `${f.status === 'changed' ? '' : `${f.status} · `}<span class="diff-plus">+${f.added ?? '?'}</span> <span class="diff-minus">−${f.removed ?? '?'}</span>`;
   const isHead = d.entry.id === h.head;
   const head = `<div class="hist-file-head"><b>${esc(f.file)}</b><span class="subtle">${stat}</span><span class="spacer"></span>
-    ${inV ? `<a class="btn btn-ghost btn-sm" href="/ui/api/history/${enc(d.entry.id)}?raw=1&file=${enc(f.file)}" title="Download ${esc(f.file)} as it is in this version" aria-label="Download">${ic('download')}</a>` : ''}
+    ${inV ? `<a class="btn btn-ghost btn-sm" href="${histApi()}/${enc(d.entry.id)}?raw=1&file=${enc(f.file)}" title="Download ${esc(f.file)} as it is in this version" aria-label="Download">${ic('download')}</a>` : ''}
     ${inV && !isHead && !h.file ? `<button class="btn btn-ghost btn-sm" data-act="hist-restore" data-mode="file" data-file="${esc(f.file)}" title="Only this file comes back as it was in this version">${ic('undo')} Restore this file</button>` : ''}</div>`;
   let body;
   if (f.binary) {
-    const img = (id, label) => (id ? `<figure><figcaption>${label}</figcaption><img src="/ui/api/history/${enc(id)}?raw=1&inline=1&file=${enc(f.file)}" alt="${esc(f.file)}, ${label}"></figure>` : `<figure><figcaption>${label}</figcaption><p class="subtle">Not there</p></figure>`);
+    const img = (id, label) => (id ? `<figure><figcaption>${label}</figcaption><img src="${histApi()}/${enc(id)}?raw=1&inline=1&file=${enc(f.file)}" alt="${esc(f.file)}, ${label}"></figure>` : `<figure><figcaption>${label}</figcaption><p class="subtle">Not there</p></figure>`);
     body = IMAGE_RE.test(f.file)
       ? `<div class="hist-imgs">${img(f.status === 'added' ? null : d.base, 'Before')}${img(f.status === 'removed' ? null : d.target, 'After')}</div>`
       : `<p class="subtle" style="padding:6px 14px;margin:0">${f.old_size != null ? fmtSize(f.old_size) : '—'} → ${f.new_size != null ? fmtSize(f.new_size) : '—'}</p>`;
@@ -1558,7 +1578,7 @@ async function historyRestore(mode, file) {
   await flushQ(); await flushD(); await flushB();
   const id = h.selected;
   let p;
-  try { p = await getJSON(`/ui/api/history/${enc(id)}/plan?mode=${mode}${file ? `&file=${enc(file)}` : ''}`); } catch { toast('The server couldn\'t be reached.', 'warning-triangle'); return; }
+  try { p = await getJSON(`${histApi()}/${enc(id)}/plan?mode=${mode}${file ? `&file=${enc(file)}` : ''}`); } catch { toast('The server couldn\'t be reached.', 'warning-triangle'); return; }
   if (p.error) { notice('Not possible', p.error); return; }
   if (p.project === null || !p.files) { notice('Not possible', 'This exam or version isn\'t there any more.'); return; }
   if (p.problem) { notice(mode === 'undo' ? 'This change can\'t be undone on its own' : 'Not possible', p.problem); return; }
@@ -1577,7 +1597,7 @@ async function historyRestore(mode, file) {
   });
   if (!ok) return;
   const label = new Date(p.entry.at * 1000).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const r = await postJSON('/ui/api/history/restore', { mode, id, file, head: p.head, label }); // the version's time as the teacher reads it, for the new version's title
+  const r = await postJSON(`${histApi()}/restore`, { mode, id, file, head: p.head, label }); // the version's time as the teacher reads it, for the new version's title
   if (!r.ok) { await notice('Not restored', r.error || 'Unknown error'); if (r.conflict) loadHistory(); return; }
   if (r.nothing) { toast(r.what, 'info-circle'); return; }
   toast(`${r.what}. Undo it from History if needed.`, 'undo');
@@ -1591,13 +1611,13 @@ async function historyName() {
     body: '<label class="field"><span class="field-label">Name</span><input class="input" name="name" maxlength="80" placeholder="Checked by the head of department"></label><p class="field-hint">The name stays on this version in History, to find it and compare with it later.</p>',
     validate: (x) => ((x.name || '').trim() ? '' : 'Give the version a name.') });
   if (!data) return;
-  const r = await postJSON('/ui/api/history/name', { id, name: data.name.trim() });
+  const r = await postJSON(`${histApi()}/name`, { id, name: data.name.trim() });
   if (!r.ok) { toast(r.error || 'Not saved.', 'warning-triangle'); return; }
   if (S.history === h) loadHistory({ select: id });
 }
 async function historyUnname(name) {
   const h = S.history;
-  const r = await postJSON('/ui/api/history/name', { id: h.selected, name, remove: true });
+  const r = await postJSON(`${histApi()}/name`, { id: h.selected, name, remove: true });
   if (!r.ok) { toast(r.error || 'Not saved.', 'warning-triangle'); return; }
   loadHistory({ select: h.selected });
 }
@@ -1618,11 +1638,11 @@ async function openTrash() {
   try { r = await getJSON('/ui/api/trash'); } catch { toast('The trash couldn\'t be read.', 'warning-triangle'); return; }
   if (r.error) { toast(r.error, 'warning-triangle'); return; }
   const items = r.items || [];
-  openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('trash')}</span><div><h2 id="dlg-title">Trash</h2><p class="subtle" style="margin:2px 0 0">Deleted exams stay here for ${r.days} days with their history, then go for good.</p></div></div>
-    <div class="dialog-body">${items.length ? `<div class="list trash-list">${items.map((x) => `<div class="list-row"><span class="list-icon">${ic('page')}</span><div class="list-row-main"><div class="list-row-title">${esc(x.name)}</div>
-      <div class="subtle">Deleted ${esc(fmtWhen(x.deleted_at))}${x.by ? ` by ${esc(x.by)}` : ''} · ${fmtSize(x.size || 0)} · ${x.days_left} day${x.days_left === 1 ? '' : 's'} left</div></div>
-      <button class="btn btn-sm" data-act="trash-restore" data-id="${esc(x.id)}" data-name="${esc(x.name)}">${ic('undo')} Restore</button>
-      <button class="btn btn-sm btn-ghost" data-act="trash-delete" data-id="${esc(x.id)}" data-name="${esc(x.name)}" title="Delete for good" aria-label="Delete ${esc(x.name)} for good">${ic('trash')}</button></div>`).join('')}</div>`
+  openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('trash')}</span><div><h2 id="dlg-title">Trash</h2><p class="subtle" style="margin:2px 0 0">Deleted exams and question banks stay here for ${r.days} days with their history, then go for good.</p></div></div>
+    <div class="dialog-body">${items.length ? `<div class="list trash-list">${items.map((x) => `<div class="list-row"><span class="list-icon">${ic(x.target === 'bank' ? 'book-stack' : 'page')}</span><div class="list-row-main"><div class="list-row-title">${esc(x.name)}</div>
+      <div class="subtle">${x.target === 'bank' ? 'Question bank · ' : ''}Deleted ${esc(fmtWhen(x.deleted_at))}${x.by ? ` by ${esc(x.by)}` : ''} · ${fmtSize(x.size || 0)} · ${x.days_left} day${x.days_left === 1 ? '' : 's'} left</div></div>
+      <button class="btn btn-sm" data-act="trash-restore" data-id="${esc(x.id)}" data-name="${esc(x.name)}" data-target="${esc(x.target || 'exam')}">${ic('undo')} Restore</button>
+      <button class="btn btn-sm btn-ghost" data-act="trash-delete" data-id="${esc(x.id)}" data-name="${esc(x.name)}" data-target="${esc(x.target || 'exam')}" title="Delete for good" aria-label="Delete ${esc(x.name)} for good">${ic('trash')}</button></div>`).join('')}</div>`
     : '<p class="subtle">The trash is empty.</p>'}</div>
     <div class="dialog-foot"><button class="btn btn-primary" data-act="dialog-ok">Close</button></div>`);
 }
@@ -1636,13 +1656,15 @@ async function trashRestore(id, was) {
   if (trashBusy(id)) return;
   const r = await postJSON('/ui/api/trash/restore', { id });
   if (!r.ok) { toast(r.error || 'Not restored.', 'warning-triangle'); openTrash(); return; }
-  toast(was && r.name !== was ? `Restored as "${r.name}" (an exam named "${was}" exists), with its history.` : `"${r.name}" is back with its history.`, 'undo');
-  loadProjects();
+  const kind = r.target === 'bank' ? 'bank' : 'exam';
+  toast(was && r.name !== was ? `Restored as "${r.name}" (${kind === 'bank' ? 'a bank' : 'an exam'} named "${was}" exists), with its history.` : `"${r.name}" is back with its history.`, 'undo');
+  if (r.target === 'bank') { if (S.route.kind === 'banks') loadBanks(); } else loadProjects();
   openTrash();
 }
-async function trashDelete(id, name) {
+async function trashDelete(id, name, target) {
   const ok = await confirmDialog({ danger: true, icon: 'trash', title: `Delete "${esc(name)}" for good?`, ok: 'Delete for good',
-    body: '<p>The exam, its scans, marks and history are removed. This can\'t be undone.</p>' });
+    body: target === 'bank' ? '<p>The bank, its questions and history are removed. Exams that took questions from it keep their copies. This can\'t be undone.</p>'
+      : '<p>The exam, its scans, marks and history are removed. This can\'t be undone.</p>' });
   if (!ok) { openTrash(); return; }
   if (trashBusy(id)) return;
   const r = await postJSON('/ui/api/trash/delete', { id });
@@ -1696,6 +1718,7 @@ function viewSettings() {
       <div class="card-foot"><button class="btn btn-primary" data-act="save-meta">${ic('floppy-disk')} Save details</button></div></section>
     <section class="card"><div class="card-header"><h2>Copy or remove</h2></div><div class="list">
       <div class="list-row"><span class="list-icon">${ic('copy')}</span><div class="list-row-main"><div class="list-row-title">Duplicate</div><div class="subtle">A full copy of this exam, including any scans and marks.</div></div><button class="btn btn-sm" data-act="clone-exam" data-name="${esc(S.project)}">Duplicate</button></div>
+      <div class="list-row"><span class="list-icon">${ic('book-stack')}</span><div class="list-row-main"><div class="list-row-title">Save as a question bank</div><div class="subtle">A new bank with a group for each section, holding copies of the questions.</div></div><button class="btn btn-sm" data-act="bank-save-exam">Save as a bank…</button></div>
       <div class="list-row"><span class="list-icon">${ic('download')}</span><div class="list-row-main"><div class="list-row-title">Download</div><div class="subtle">Everything in this exam as a zip file.</div></div><a class="btn btn-sm" href="/fs/${enc(S.project)}">Download</a></div>
       <div class="list-row"><span class="list-icon bad">${ic('trash')}</span><div class="list-row-main"><div class="list-row-title">Delete</div><div class="subtle">Moves the exam, with its scans, marks and history, to the Trash for 30 days.</div></div><button class="btn btn-sm btn-danger" data-act="delete-exam" data-name="${esc(S.project)}">Delete</button></div>
     </div></section>
@@ -1902,7 +1925,7 @@ const itemEntries = () => (S.qdata ? S.qdata.files.filter((f) => f.item && f.que
 const loneItem = (file) => { const f = qfile(file); return f && f.item && f.questions.length === 1 ? f : null; };
 async function itemOp(body) {
   await flushQ();
-  const r = await postJSON('/ui/api/items', body);
+  const r = await postJSON(qApi('items'), body);
   if (!r.ok) { toast(r.error || 'Not saved.', 'warning-triangle'); if (r.conflict) loadEditor(); return null; }
   S.qdata = r;
   return r;
@@ -1920,12 +1943,13 @@ function enterQuestions() {
 async function loadEditor() {
   const project = S.project;
   let r;
-  try { r = await getJSON('/ui/api/editor'); } catch (e) {
+  try { r = await getJSON(inBank() ? qApi('') : '/ui/api/editor'); } catch (e) {
     console.error(e);
     if (S.project === project) { S.qdata = { error: 'The questions couldn\'t be read.', files: [], main: null }; renderQuestionsForm(); }
     return;
   }
-  if (S.project !== project || r.project !== project) return;
+  if (!inBank() && (S.project !== project || r.project !== project)) return;
+  if (inBank() && (!r.bank || r.bank.name !== S.route.name)) return;
   S.qdata = r;
   if (!qsel()) {
     const first = r.files.flatMap((f) => f.questions.map((q) => ({ file: f.file, id: q.id })))[0];
@@ -1939,13 +1963,14 @@ function renderQuestionsForm() { renderQList(); renderQForm(); }
 function renderQList() {
   const host = $('#q-list');
   if (!host) return;
+  if (inBank()) { renderBankList(host); return; }
   const d = S.qdata;
   if (!d) { host.innerHTML = '<div class="skeleton" style="height:200px;margin:12px"></div>'; return; }
   const L = locked();
   const total = d.files.reduce((n, f) => n + f.questions.length, 0);
   let files = d.files.filter((f) => f.questions.length);
   if (!files.length) files = d.files.filter((f) => f.file === d.main);
-  let html = `<div class="q-list-head"><b>Questions</b><span class="chip">${total}</span><span class="spacer"></span>${L || d.error ? '' : `<button class="btn btn-sm" data-act="q-add" title="Add a question after the selected one">${ic('plus')} Add</button>`}</div>`;
+  let html = `<div class="q-list-head"><b>Questions</b><span class="chip">${total}</span><span class="spacer"></span>${L || d.error ? '' : `${d.modular ? `<button class="btn btn-sm btn-ghost" data-act="bank-pick" title="Add questions from one of your question banks">${ic('book-stack')} From a bank…</button>` : ''}<button class="btn btn-sm" data-act="q-add" title="Add a question after the selected one">${ic('plus')} Add</button>`}</div>`;
   let group; let started = false;
   files.forEach((f) => {
     if (!f.item && files.length > 1) { html += `<div class="q-file">${esc(f.file)}</div>`; started = false; }
@@ -1992,9 +2017,10 @@ function renderQForm() {
     <div class="seg q-mode" role="group" aria-label="Edit this question as"><button class="btn btn-sm ${S.qmode === 'latex' ? '' : 'is-on'}" data-act="q-mode" data-v="form" aria-pressed="${S.qmode !== 'latex'}">Form</button><button class="btn btn-sm ${S.qmode === 'latex' ? 'is-on' : ''}" data-act="q-mode" data-v="latex" aria-pressed="${S.qmode === 'latex'}" title="Edit the question's LaTeX (your choice is remembered)">${ic('code')} LaTeX</button></div>
     <span class="spacer"></span>
     ${ro ? '' : `<button class="btn btn-ghost btn-icon btn-sm" data-act="q-move" data-d="-1" ${canUp ? '' : 'disabled'} title="Move up" aria-label="Move up">${ic('nav-arrow-up')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="q-move" data-d="1" ${canDown ? '' : 'disabled'} title="Move down" aria-label="Move down">${ic('nav-arrow-down')}</button>`}
-    ${S.qmode === 'latex' ? '' : `<button class="btn btn-ghost btn-sm" data-act="q-latex" data-file="${esc(f.file)}" data-line="${q.line}" title="Open the whole file in the LaTeX tab">${ic('code')} Edit in LaTeX</button>`}
+    ${S.qmode === 'latex' || inBank() ? '' : `<button class="btn btn-ghost btn-sm" data-act="q-latex" data-file="${esc(f.file)}" data-line="${q.line}" title="Open the whole file in the LaTeX tab">${ic('code')} Edit in LaTeX</button>`}
+    ${!inBank() && itemName && !L ? `<button class="btn btn-ghost btn-sm" data-act="bank-save-item" data-item="${esc(itemName)}" title="Copy this question into one of your question banks">${ic('book-stack')} Save to a bank…</button>` : ''}
     ${L ? '' : `<button class="btn btn-ghost btn-sm" data-act="q-delete">${ic('trash')} Delete</button>`}</div>`;
-  if (S.qmode === 'latex') { renderQLatex(host, q, f, head); return; }
+  if (S.qmode === 'latex') { renderQLatex(host, q, f, head + (inBank() ? bankMetaRow(qfile(f.file)) : itemOrigin(qfile(f.file)))); return; }
   if (!q.editable) {
     host.innerHTML = head + banner('warning', 'warning-triangle', 'This question can\'t be changed in the form.', `${esc(q.problem)} Switch to LaTeX above to edit it.`);
     return;
@@ -2014,7 +2040,7 @@ function renderQForm() {
       ${ro ? '' : `<button class="btn btn-sm" data-act="qf-ans-add">${ic('plus')} Add an answer</button>`}
       <p class="field-hint" style="margin:0">${single ? 'Tick the one correct answer.' : 'Tick every correct answer.'}${q.answers.some((a) => a.opts) ? ' Some answers carry their own scoring in the LaTeX.' : ''}</p></div>`;
   }
-  host.innerHTML = `${head}
+  host.innerHTML = `${head}${inBank() ? bankMetaRow(qfile(f.file)) : itemOrigin(qfile(f.file))}
     <div class="form-grid">
       <label class="field"><span class="field-label">Name</span><input class="input mono" id="qf-id" value="${esc(q.id)}" ${dis} autocomplete="off"><span class="field-hint">How the question is called in the marks.</span></label>
       <div class="field"><span class="field-label">Scoring</span><div class="row" style="gap:8px;flex-wrap:wrap"><code>${esc(q.rule || 'default')}</code><button class="btn btn-sm" data-act="qf-scoring">Change…</button></div></div>
@@ -2101,12 +2127,12 @@ async function sendQNow(f) {
   const fl = qfile(file);
   let r;
   try {
-    const resp = await fetch('/ui/api/editor', { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' },
+    const resp = await fetch(qApi('editor'), { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ file, based_on: fl ? fl.digest : '', ops }) });
     r = await resp.json();
   } catch { r = { error: 'The server couldn\'t be reached, so the change isn\'t saved.' }; }
   f.saving = false;
-  if (S.project !== project || !S.qdata) return r;
+  if ((!inBank() && S.project !== project) || !S.qdata) return r;
   if (r.ok) {
     const i = S.qdata.files.findIndex((x) => x.file === file);
     if (i >= 0) S.qdata.files[i] = r.file; else S.qdata.files.push(r.file);
@@ -2185,7 +2211,7 @@ async function qlSave() {
   if (!ql || !ql.dirty || ql.saving || !qlEditor) return true;
   const text = qlEditor.getValue();
   ql.saving = true; qlState();
-  const r = ql.item ? await postJSON('/ui/api/source', { file: ql.file, text, based_on: ql.digest })
+  const r = ql.item ? await postJSON(qApi('source'), { file: ql.file, text, based_on: ql.digest })
     : await postJSON('/ui/api/editor', { file: ql.file, based_on: (qfile(ql.file) || {}).digest || '', ops: [{ op: 'latex', id: ql.id, latex: text }] });
   ql.saving = false;
   if (!r.ok) {
@@ -2212,7 +2238,7 @@ async function qlCheck() {
   const ql = S.ql;
   if (!ql || !qlEditor) return;
   ql.result = { checking: true }; renderQLResult();
-  const r = await postJSON('/ui/api/check', { file: ql.file, id: ql.id, text: qlEditor.getValue() });
+  const r = await postJSON(qApi('check'), { file: ql.file, id: ql.id, text: qlEditor.getValue() });
   if (S.ql !== ql) return;
   ql.result = r.error ? { error: r.error } : r; renderQLResult();
 }
@@ -2443,7 +2469,7 @@ function renderDSections(d, L) {
       <div class="d-sub">${per}${chips.length ? ' · ' + chips.join(' · ') : ''}${marks}</div>
       ${s.problem ? `<div class="d-problem">${ic('warning-triangle')} ${esc(s.problem)}</div>` : ''}
       ${isOpen ? renderDSectionForm(s, L) : ''}
-      ${!L && !isOpen ? `<div class="d-row"><button class="btn btn-ghost btn-sm" data-act="d-sec-addq" data-name="${esc(s.name)}">${ic('plus')} Add a question</button>${S.design.modular && s.pool ? `<button class="btn btn-ghost btn-sm" data-act="d-sec-latex" data-name="${esc(s.name)}" title="All the section's questions as one LaTeX document">${ic('code')} Edit as LaTeX</button>` : ''}</div>` : ''}
+      ${!L && !isOpen ? `<div class="d-row"><button class="btn btn-ghost btn-sm" data-act="d-sec-addq" data-name="${esc(s.name)}">${ic('plus')} Add a question</button>${S.design.modular && s.pool ? `<button class="btn btn-ghost btn-sm" data-act="d-sec-latex" data-name="${esc(s.name)}" title="All the section's questions as one LaTeX document">${ic('code')} Edit as LaTeX</button>` : ''}${S.design.modular ? `<button class="btn btn-ghost btn-sm" data-act="bank-pick" data-section="${esc(s.name)}" title="Add questions from one of your question banks">${ic('book-stack')} From a bank…</button>${s.pool ? `<button class="btn btn-ghost btn-sm" data-act="bank-save-section" data-section="${esc(s.name)}" title="Copy this section's questions into a bank, as a group">${ic('book-stack')} Save to a bank…</button>` : ''}` : ''}</div>` : ''}
     </div>`;
   });
   (d.unused || []).forEach((u) => { html += banner('info', 'info-circle', `${u.pool} question${u.pool > 1 ? 's' : ''} in the group "${esc(u.name)}" ${u.pool > 1 ? 'aren\'t' : 'isn\'t'} printed.`, 'No section uses this group.', L ? '' : `<button class="btn btn-sm" data-act="d-sec-adopt" data-name="${esc(u.name)}">Add a section for it</button>`); });
@@ -4157,7 +4183,7 @@ const ACTIONS = {
   'hist-unname': (el) => historyUnname(el.dataset.name),
   'trash-open': () => openTrash(),
   'trash-restore': (el) => trashRestore(el.dataset.id, el.dataset.name),
-  'trash-delete': (el) => trashDelete(el.dataset.id, el.dataset.name),
+  'trash-delete': (el) => trashDelete(el.dataset.id, el.dataset.name, el.dataset.target),
   'draft-use': () => {
     const d = S.source.draft; if (!d || !editor) return;
     // Typed against an earlier version of the file: save against that version, so the conflict dialog asks which to keep.
@@ -4231,12 +4257,13 @@ document.addEventListener('click', (e) => {
   if (!el) return;
   const act = el.dataset.act;
   if (act === 'dialog-backdrop') { if (e.target === el && !el.querySelector('.sticky')) closeDialog(false); return; }
-  const fn = ACTIONS[act] || (typeof BUILDER_ACTIONS !== 'undefined' ? BUILDER_ACTIONS[act] : null);
+  const fn = ACTIONS[act] || (typeof BUILDER_ACTIONS !== 'undefined' ? BUILDER_ACTIONS[act] : null) || (typeof BANK_ACTIONS !== 'undefined' ? BANK_ACTIONS[act] : null);
   if (fn) { e.preventDefault(); fn(el); }
 });
 
 document.addEventListener('change', async (e) => {
   const t = e.target;
+  if (typeof bankChange === 'function' && bankChange(t)) return;
   if (t.id === 'file-select' && t.value !== S.source.name) {
     if (S.source.dirty && !(await confirmLeave())) { t.value = S.source.name; return; }
     saveDraft(); S.source.loaded = false; S.source.dirty = false; loadSource(t.value);
@@ -4327,6 +4354,7 @@ document.addEventListener('change', async (e) => {
 
 document.addEventListener('input', (e) => {
   const t = e.target;
+  if (typeof bankInput === 'function' && bankInput(t)) return;
   if (t.id === 'qf-text' && S.qform) { qop({ op: 'text', latex: t.value }); scheduleQPreview(); }
   if (t.dataset.df && S.dform && (t.dataset.df === 'heading' || t.dataset.df === 'text')) dop({ op: 'section_set', name: t.dataset.name, [t.dataset.df]: t.value });
   if (t.id === 'qf-explain' && S.qform) qop({ op: 'explain', latex: t.value });
@@ -4447,5 +4475,6 @@ window.addEventListener('resize', resizeEditor);
 /* ---------- Start ---------- */
 
 applyTheme();
-onRoute();
-loadGuide();
+// After builder.js and banks.js have loaded too (they come after this file).
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { onRoute(); loadGuide(); });
+else { onRoute(); loadGuide(); }

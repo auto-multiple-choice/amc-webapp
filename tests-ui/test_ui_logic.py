@@ -463,7 +463,7 @@ try:
           and os.path.isdir(os.path.join(home, "trash", info["id"], "exam")) and os.path.isdir(repo.git_dir))
     new_exam("Exam one", {"exam.tex": b"another\n"})
     items = vcs.list_trash(home)
-    name = vcs.restore_trash(home, items[0]["id"], root, by="ann")
+    name, _target = vcs.restore_trash(home, items[0]["id"], root, by="ann")
     back = os.path.join(root, name)
     rb = vcs.Repo(back, root).open()
     check("vcs: a restored exam takes a free name and keeps its history", name == "Exam one (restored)" and rb.uid == repo.uid
@@ -725,6 +725,85 @@ for _bad, _why in (("\\begin{question}{a}x {\\end{question}", "Line 1"), ("\\beg
         _qe.apply(_inl, [{"op": "latex", "id": "a", "latex": _bad}]); check(f"latex: a LaTeX edit is refused: {_why}", False)
     except _qe.EditError as e:
         check(f"latex: a LaTeX edit is refused: {_why}", _why in str(e))
+
+# question banks (ui_banks.py)
+import ui_banks as bk
+_tmpb = tempfile.mkdtemp()
+try:
+    _root = os.path.join(_tmpb, "MC-Projects")
+    _bd = bk.bank_dir(os.path.join(_root, "ann"), "Olympiad algebra")
+    check("banks: a bank lives in the teacher's _banks folder; odd names are refused",
+          _bd == os.path.join(_root, "ann", "_banks", "Olympiad algebra")
+          and all(not bk.NAME_RE.match(n) for n in ("../x", ".hidden", "a/b", "", "x" * 81)))
+    os.makedirs(os.path.join(_bd, "items", "alg-1")); os.makedirs(os.path.join(_bd, "items", "alg-2")); os.makedirs(os.path.join(_bd, "items", "geo-1"))
+    for _n, _t in (("alg-1", "\\begin{question}{alg-1}A\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n"),
+                   ("alg-2", "\\begin{question}{alg-2}B\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n"),
+                   ("geo-1", "\\begin{question}{geo-1}C\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n")):
+        open(os.path.join(_bd, "items", _n, "item.tex"), "w").write(_t)
+    _b = bk.new_bank("Olympiad algebra")
+    _b["groups"] = [{"name": "algebra", "title": "Algebra", "items": ["alg-2", "alg-1", "gone"]}]
+    open(os.path.join(_bd, "bank.json"), "w").write(bk.to_json(_b))
+    _r = bk.read(_bd)
+    check("banks: bank.json is read tidied: missing items dropped, items in no group kept apart", _r["groups"][0]["items"] == ["alg-2", "alg-1"]
+          and _r["loose"] == ["geo-1"] and _r["all"] == ["alg-2", "alg-1", "geo-1"] and _r["uid"] == _b["uid"])
+    _r["groups"].append({"name": "geometry", "title": "Geometry", "instructions": "", "scoring": "", "items": []})
+    bk.place(_r, "geo-1", "geometry"); bk.place(_r, "alg-1", "algebra", before="alg-2")
+    check("banks: items are placed in groups and ordered", _r["groups"][0]["items"] == ["alg-1", "alg-2"] and _r["groups"][1]["items"] == ["geo-1"]
+          and bk.group_of(_r, "geo-1") == "geometry" and bk.group_map(_r)["alg-2"] == "algebra")
+    check("banks: free group names", bk.free_group(_r, "algebra") == "algebra-2" and bk.free_group(_r, "2nd part") == "g-2nd-part")
+    check("banks: the bank lists with its counts", [(x["name"], x["groups"], x["items"]) for x in bk.list_banks(os.path.join(_root, "ann"))] == [("Olympiad algebra", 1, 3)])
+    try:
+        bk.check_name(os.path.join(_root, "ann"), "olympiad ALGEBRA"); check("banks: a second bank of the same name (any case) is refused", False)
+    except bk.BankError:
+        check("banks: a second bank of the same name (any case) is refused", True)
+    _t2 = "\\begin{question}{q1}A\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n\\begin{question}{q2}B\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n"
+    _m = bk.free_ids(_t2, {"q1", "q1-2"})
+    check("banks: question names the exam already uses get free ones", _m == {"q1": "q1-3"})
+    _ren = bk.rename_ids(_t2, {"q1": "q2", "q2": "q1"})
+    check("banks: renaming questions, even swapping two names", bk.question_ids(_ren) == ["q2", "q1"])
+    _f = bk.fingerprint(_t2, {"fig.png": b"x"})
+    check("banks: a fingerprint ignores spacing at line ends and follows renamed questions back",
+          bk.fingerprint(_t2.replace("\n", "  \n"), {"fig.png": b"x"}) == _f and bk.fingerprint(bk.rename_ids(_t2, {"q1": "q9"}), {"fig.png": b"x"}, ids={"q1": "q9"}) == _f
+          and bk.fingerprint(_t2, {"fig.png": b"y"}) != _f and bk.fingerprint(_t2.replace("A", "Z"), {"fig.png": b"x"}) != _f)
+    check("banks: a random pick is made once (same seed, same pick) and never more than there is",
+          bk.pick(["a", "b", "c", "d"], 2, seed=7) == bk.pick(["a", "b", "c", "d"], 2, seed=7) and len(bk.pick(["a"], 5)) == 1)
+    check("banks: tags tidied", bk.tidy_tags("algebra, Algebra ; hard,, polynomials ") == ["algebra", "hard", "polynomials"])
+    _pre = "% c\n\\newcommand{\\N}{\\mathbb{N}}\n\\newcommand{\\Z}{\\mathbb{Z}}\n% \\newcommand{\\old}{x}\n"
+    check("banks: the macros an item uses that the exam lacks are found in the bank's preamble",
+          bk.needed(["Sides in $\\N$, not \\old"], _pre, ["Q"]) == ["\\newcommand{\\N}{\\mathbb{N}}"] and bk.needed(["$\\N$"], _pre, ["N"]) == [])
+    _m1 = bk.add_definitions("\\documentclass{article}\n\\begin{document}\nx\n\\end{document}\n", ["\\newcommand{\\N}{\\mathbb{N}}"])
+    check("banks: ...and added before \\begin{document}, in a marked region, never twice",
+          _m1.index(bk.MACROS_BEGIN) < _m1.index("\\begin{document}") and bk.add_definitions(_m1, ["\\newcommand{\\N}{\\mathbb{N}}"]) == _m1
+          and bk.add_definitions(_m1, ["\\newcommand{\\Z}{\\mathbb{Z}}"]).count("newcommand") == 2)
+    check("banks: the packages of the bank's preamble the exam doesn't load are found, comments ignored",
+          bk.needed_packages("\\usepackage{amsmath,amssymb}\n% \\usepackage{tikz}\n\\usepackage[x]{pifont}", "\\usepackage{amsmath}")
+          == ["\\usepackage{amssymb}", "\\usepackage[x]{pifont}"] and bk.packages_of("\\usepackage[utf8]{inputenc} % \\usepackage{a}") == {"inputenc"})
+    # a bank's own history and trash
+    open(os.path.join(_bd, "bank.json"), "w").write(bk.to_json(_r))
+    _rb = vcs.Repo(_bd, _root, "bank").open()
+    check("banks: a bank has its own history, outside the teacher's folder", _rb.git_dir.startswith(os.path.join(_root, "_amcweb", "ann", "history", "banks") + os.sep)
+          and _rb.uid == _b["uid"] and "items/alg-1/item.tex" in _rb.meta["tree"])
+    vcs.write(_bd, _root, "items/alg-1/item.tex", b"\\begin{question}{alg-1}A2\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n", by="ann", what="edited", target="bank")
+    check("banks: a change to an item is a version of the bank", _rb.log()[0][0]["what"] == "edited")
+    _info = vcs.trash_exam(_bd, _root, by="ann", target="bank")
+    _home = vcs.amcweb_dir(_bd, _root, "bank")
+    check("banks: a deleted bank goes to the trash", not os.path.exists(_bd) and vcs.list_trash(_home)[0]["target"] == "bank")
+    _nm, _tg = vcs.restore_trash(_home, _info["id"], os.path.join(_root, "ann"), by="ann")
+    check("banks: ...and comes back into _banks with its history", _tg == "bank" and os.path.isfile(os.path.join(_bd, "bank.json"))
+          and vcs.Repo(_bd, _root, "bank").open().log()[0][0]["what"] == "edited")
+    _pre = "\\usepackage{amssymb}\n\\newcommand{\\foo}[1]{%\n  \\mathrm{#1}%\n}\n\\newcommand{\\bar}{\\foo{x}}\n\\def\\Z#1{z#1}\n\\let\\a=\\b\n% \\newcommand{\\hidden}{}\n\\RequirePackage{tikz}\n"
+    _defs = bk.definitions(_pre)
+    check("banks: a definition is taken whole (several lines, [n], #1, \\let), comments left out",
+          _defs["foo"] == "\\newcommand{\\foo}[1]{%\n  \\mathrm{#1}%\n}" and _defs["Z"] == "\\def\\Z#1{z#1}" and _defs["a"] == "\\let\\a=\\b" and "hidden" not in _defs)
+    check("banks: a macro's own macros come along, in the preamble's order", bk.needed(["\\bar"], _pre, []) == [_defs["foo"], _defs["bar"]]
+          and bk.needed(["\\bar"], _pre, ["foo"]) == [_defs["bar"]] and "tikz" in bk.packages_of(_pre))
+    check("banks: a region with a marker missing is made again, not misread",
+          bk.add_definitions("\\documentclass{a}\n" + bk.MACROS_BEGIN + "\n\\begin{document}", ["\\newcommand{\\r}{2}"]).count(bk.MACROS_END) == 1
+          and bk.add_definitions("\\documentclass{a}\n" + bk.MACROS_BEGIN + "\n\\begin{document}", ["\\newcommand{\\r}{2}"]).index(bk.MACROS_END) < len("\\documentclass{a}\n" + bk.MACROS_BEGIN) + 200)
+    check("banks: an imported group name is the same for every item of the group", bk.group_name("Algebra_1") == "Algebra-1" == bk.group_name("Algebra_1")
+          and bk.group_name("ok") == "ok" and bk.seed_of([1]) is None and bk.seed_of("s") == "s")
+finally:
+    shutil.rmtree(_tmpb, ignore_errors=True)
 
 # the question editor (ui_scale.read_latex spans and ui_questions edits)
 import ui_questions as qe

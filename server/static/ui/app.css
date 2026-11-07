@@ -487,3 +487,23 @@ input[type="color"] { width: 44px; height: 34px; padding: 2px; border: 1px solid
 .dialog.dialog-wide { width: min(1000px, calc(100vw - 32px)); max-width: none; }
 .sl-host { height: min(60vh, 560px); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 #sl-msg { margin-top: 8px; }
+
+/* Question banks (banks.js) */
+.b-group { display: flex; align-items: center; gap: 4px; }
+.b-group .spacer { flex: 1; }
+.btn-xs { height: 24px; min-width: 24px; padding: 0 4px; }
+.btn-xs svg { width: 14px; height: 14px; }
+.b-tags { color: var(--text-3); font-size: 11.5px; }
+.b-meta { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin: 8px 0 4px; }
+.b-meta .field { margin: 0; }
+.b-meta .field.grow { flex: 1 1 220px; }
+.b-origin { font-size: 12.5px; }
+.b-origin svg { width: 14px; height: 14px; vertical-align: -2px; }
+.bp-modes { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.bp-modes .check { align-items: center; flex-wrap: wrap; gap: 6px; }
+.bp-modes .select, .bp-modes .input { display: inline-block; width: auto; }
+.bp-list { max-height: 42vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.bp-row { display: grid; grid-template-columns: auto auto auto 1fr auto; gap: 8px; align-items: center; padding: 7px 10px; border-top: 1px solid var(--border); font-size: 13px; }
+.bp-row:first-child { border-top: 0; }
+.bp-row.is-chosen { background: var(--accent-soft); }
+.bp-text { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

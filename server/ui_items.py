@@ -272,6 +272,25 @@ def _find_figure(ref, search, exists):
     return None
 
 
+def relocate_figures(text, name, exists, search=()):
+    """TEXT (an item's LaTeX) with its figures renamed after the item NAME
+    (name-1.png, name-2.pdf...), and where each comes from: (text, [(from,
+    to)]). A figure that isn't in the exam (EXISTS) is left as named."""
+    moved, k = [], 0
+    for f in reversed(list(scale._FIGURE.finditer(text))):
+        ref = f.group(2).strip()
+        src = _find_figure(ref, search, exists)
+        if not src:
+            continue
+        k += 1
+        ext = "." + src.rsplit(".", 1)[-1].lower()
+        new = f"{name}-{k}{ext}"
+        moved.append((src, f"{ITEMS_DIR}/{name}/{new}"))
+        shown = new if "." in ref.rsplit("/", 1)[-1] else new[:-len(ext)]
+        text = text[:f.start(2)] + shown + text[f.end(2):]
+    return text, list(reversed(moved))
+
+
 def _questions_by_group(files, pools_text, items):
     """(id, group) of every question, for checking that a split moved them all."""
     pmap = pool_map(pools_text)
@@ -324,19 +343,8 @@ def split(files, main, exists, taken=()):
                 continue  # an element without a question stays where it is
             group = m.group(1).strip()
             name = free_name(qs[0]["id"] + ("-set" if len(qs) > 1 else ""), taken | set(items))
-            item = _dedent(content)
-            k = 0
-            for f in reversed(list(scale._FIGURE.finditer(item))):
-                ref = f.group(2).strip()
-                src = _find_figure(ref, search, exists)
-                if not src:
-                    continue
-                k += 1
-                ext = "." + src.rsplit(".", 1)[-1].lower()
-                new = f"{name}-{k}{ext}"
-                figures.append((src, f"{ITEMS_DIR}/{name}/{new}"))
-                shown = new if "." in ref.rsplit("/", 1)[-1] else new[:-len(ext)]
-                item = item[:f.start(2)] + shown + item[f.end(2):]
+            item, moved = relocate_figures(_dedent(content), name, exists, search)
+            figures += moved
             items[name] = item
             groups.setdefault(group, []).append(name)
             s, e = _block_span(text, m.start(), body[2])

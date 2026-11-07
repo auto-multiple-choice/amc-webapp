@@ -84,6 +84,16 @@ An exam made in the app keeps each question in its own file, `items/<name>/item.
 
 In the form, **Add**, the arrows and **Delete** add, move and delete items; moving past the first or last question of a section moves it into the next one. **Edit in LaTeX** opens the question's own file. An older exam, or one made from one of AMC's templates, keeps its questions in its main file: **Move questions into item files** (under the list of questions) moves them, figures included, in one step that History can undo. Question banks will take questions from these files.
 
+## Question banks
+
+Your **question banks** (top right, next to the Guide) keep questions to use again, in **groups** (Algebra, Geometry…), the way an exam keeps them in sections. Only you see your banks.
+
+- **From a bank…** (above the list of questions, or on a section in Paper design) adds questions to this exam: a whole group as a new section (its title becomes the heading, its instructions and default scoring come along), a whole group into a section, the questions you tick, or a number of them picked at random from the group (shown first, then added as shown). The exam gets **copies**: changing them doesn't change the bank. A question whose name the exam already uses gets a new name in the copy. Macros and packages the questions need come into the exam's preamble.
+- **Save to a bank…** copies questions the other way: one question (above it in the form), a whole section (in Paper design, as a group), or the whole exam as a new bank with a group per section (Exam settings). A question that came from that bank can update the bank's copy or be saved as a new one.
+- Both only work on questions kept in item files; an older exam first needs **Move questions into item files**.
+
+On a bank's page the questions are edited with the same form, LaTeX view and History as in an exam; each one also has a difficulty and tags. **Import LaTeX…** reads files whose questions are `\element{group}{…}` blocks (like the RJ question files), with their figures. A deleted bank goes to the Trash for 30 days.
+
 ## LaTeX for those who prefer it
 
 Every question has a **Form | LaTeX** switch above it. **LaTeX** shows the question's own LaTeX: the item's file (for a set, all its questions), or, in an exam written in one file, the question from `\begin{question}` to `\end{question}`. The choice is remembered, so the questions keep opening in LaTeX.

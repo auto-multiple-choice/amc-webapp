@@ -137,14 +137,36 @@ def is_text_name(path):
     return "." in path and path.rsplit(".", 1)[-1].lower() in TEXT_EXTENSIONS
 
 
+BANKS_DIR = "_banks"   # an instructor's question banks: MC-Projects/<user>/_banks/<bank>/
+BANK_FILE = "bank.json"
+# What a history can belong to: an exam folder (options.xml, its uid in
+# amcweb.json) or a question bank (bank.json, which holds its uid).
+TARGETS = {"exam": ("options.xml", RECORD, "exams"), "bank": (BANK_FILE, BANK_FILE, "banks")}
+
+
 def is_exam(pdir):
     return os.path.isfile(os.path.join(pdir, "options.xml"))
 
 
-def amcweb_dir(pdir, root):
-    """The server-only folder of whoever owns the exam folder PDIR, under
-    the projects root ROOT (MC-Projects)."""
-    owner = os.path.dirname(os.path.abspath(pdir))
+def is_target(pdir, target="exam"):
+    return os.path.isfile(os.path.join(pdir, TARGETS[target][0]))
+
+
+def owner_of(pdir, target="exam"):
+    """The folder of whoever owns PDIR: an exam's parent; a bank's
+    parent's parent (<owner>/_banks/<bank>)."""
+    d = os.path.dirname(os.path.abspath(pdir))
+    if target == "bank":
+        if os.path.basename(d) != BANKS_DIR:
+            raise HistoryError(f"{pdir} isn't a bank folder")
+        d = os.path.dirname(d)
+    return d
+
+
+def amcweb_dir(pdir, root, target="exam"):
+    """The server-only folder of whoever owns PDIR (an exam folder, or a
+    bank folder), under the projects root ROOT (MC-Projects)."""
+    owner = owner_of(pdir, target)
     root = os.path.abspath(root)
     if owner == root:
         sub = LOCAL_OWNER
@@ -190,21 +212,21 @@ def _lock(path):
     return lk
 
 
-def read_uid(pdir):
-    rec = _read_json(os.path.join(pdir, RECORD)) or {}
+def read_uid(pdir, target="exam"):
+    rec = _read_json(os.path.join(pdir, TARGETS[target][1])) or {}
     uid = rec.get("uid")
     return uid if isinstance(uid, str) and UID_RE.match(uid) else None
 
 
-def write_uid(pdir, uid=None, unless=None):
+def write_uid(pdir, uid=None, unless=None, target="exam"):
     """Set the exam's uid in its amcweb.json (a new one when UID is None),
     under the same lock as the app's other changes to that file. UNLESS:
     keep a valid uid already there that isn't this one (so two requests
     giving an exam its uid at once agree). Returns the uid now there;
     uid=False drops it."""
-    path = os.path.join(pdir, RECORD)
-    if not is_exam(pdir):
-        raise FileNotFoundError(f"{pdir}: the exam doesn't exist any more")
+    path = os.path.join(pdir, TARGETS[target][1])
+    if not is_target(pdir, target):
+        raise FileNotFoundError(f"{pdir}: the {target} doesn't exist any more")
     with FileLock(path + ".lock"):
         rec = {}
         if os.path.exists(path):
@@ -276,11 +298,12 @@ def _trailers(body):
 class Repo:
     """The history of the exam at PDIR (ROOT: the projects root)."""
 
-    def __init__(self, pdir, root):
+    def __init__(self, pdir, root, target="exam"):
         self.pdir = os.path.abspath(pdir)
         self.root = os.path.abspath(root)
-        self.home = amcweb_dir(self.pdir, self.root)
-        self.dir = os.path.join(self.home, "history", "exams")
+        self.target = target
+        self.home = amcweb_dir(self.pdir, self.root, target)
+        self.dir = os.path.join(self.home, "history", TARGETS[target][2])
         self.uid = None
         self.meta = None
         self._data = {}  # bytes read from disk during this request, by path
@@ -304,20 +327,21 @@ class Repo:
         the old per-file history (.history/), then the files as they are,
         as FIRST_WHAT. An exam copied outside the app (same uid as an exam
         that still exists elsewhere) gets a new uid and its own history."""
-        if not is_exam(self.pdir):
-            raise FileNotFoundError(f"{self.pdir}: the exam doesn't exist any more")
+        t = self.target
+        if not is_target(self.pdir, t):
+            raise FileNotFoundError(f"{self.pdir}: the {t} doesn't exist any more")
         os.makedirs(self.dir, exist_ok=True)
-        uid = read_uid(self.pdir)
+        uid = read_uid(self.pdir, t)
         copy_of = None
         if uid:
             meta = _read_json(os.path.join(self.dir, uid + ".json"))
             folder = (meta or {}).get("folder")
-            if folder and folder != self.pdir and is_exam(folder) and read_uid(folder) == uid:
+            if folder and folder != self.pdir and is_target(folder, t) and read_uid(folder, t) == uid:
                 copy_of = os.path.basename(folder)
         if copy_of:
-            uid = write_uid(self.pdir, unless=read_uid(self.pdir))
+            uid = write_uid(self.pdir, unless=read_uid(self.pdir, t), target=t)
         elif not uid:
-            uid = write_uid(self.pdir, unless="")
+            uid = write_uid(self.pdir, unless="", target=t)
         self.uid = uid
         with self.lock:
             if not os.path.isdir(self.git_dir):
@@ -945,7 +969,7 @@ class ChangeSet:
 
 
 @contextlib.contextmanager
-def change(pdir, root, by=None, what="Saved", kind="save", extra=None):
+def change(pdir, root, by=None, what="Saved", kind="save", extra=None, target="exam"):
     """One version for every write made inside (also by nested calls for
     the same exam). Changes made outside the app since the last version
     are committed first, as their own version."""
@@ -958,7 +982,7 @@ def change(pdir, root, by=None, what="Saved", kind="save", extra=None):
         return
     lock = None
     try:
-        repo = Repo(pdir, root).open(by=by)
+        repo = Repo(pdir, root, target).open(by=by)
         lock = repo.lock
         lock.acquire()
         try:
@@ -990,21 +1014,21 @@ def change(pdir, root, by=None, what="Saved", kind="save", extra=None):
         lock.release()
 
 
-def write(pdir, root, path, data, by=None, what="Saved", based_on=None):
+def write(pdir, root, path, data, by=None, what="Saved", based_on=None, target="exam"):
     """Write one file as its own version (or as part of the change set
-    open for this exam). Returns the digest of what is on disk."""
-    with change(pdir, root, by=by, what=what) as cs:
+    open for this exam or bank). Returns the digest of what is on disk."""
+    with change(pdir, root, by=by, what=what, target=target) as cs:
         return cs.write(path, data, based_on=based_on)
 
 
-def delete(pdir, root, path, by=None, what=None):
-    with change(pdir, root, by=by, what=what or f"File deleted: {path}", kind="delete") as cs:
+def delete(pdir, root, path, by=None, what=None, target="exam"):
+    with change(pdir, root, by=by, what=what or f"File deleted: {path}", kind="delete", target=target) as cs:
         cs.delete(path)
 
 
-def snapshot(pdir, root, by=None, what=OUTSIDE, kind="outside"):
+def snapshot(pdir, root, by=None, what=OUTSIDE, kind="outside", target="exam"):
     """Commit whatever changed on disk; returns the newest version's id."""
-    repo = Repo(pdir, root).open(by=by, first_what=what if kind != "outside" else None,
+    repo = Repo(pdir, root, target).open(by=by, first_what=what if kind != "outside" else None,
                                  first_kind=kind if kind != "outside" else "start")
     with repo.lock:
         repo._load()
@@ -1114,10 +1138,10 @@ def _size(path):
     return total
 
 
-def trash_exam(pdir, root, by=None):
-    """Move the exam to its owner's trash (its history stays). Returns the
-    trash entry."""
-    repo = Repo(pdir, root).open(by=by)
+def trash_exam(pdir, root, by=None, target="exam"):
+    """Move the exam (or bank) to its owner's trash (its history stays).
+    Returns the trash entry."""
+    repo = Repo(pdir, root, target).open(by=by)
     name = os.path.basename(repo.pdir)
     with repo.lock:
         repo._load()
@@ -1126,7 +1150,7 @@ def trash_exam(pdir, root, by=None):
         dest = os.path.join(repo.home, "trash", tid)
         os.makedirs(dest)
         info = {"id": tid, "name": name, "uid": repo.uid, "deleted_at": int(time.time()), "by": by,
-                "size": _size(repo.pdir)}
+                "size": _size(repo.pdir), "target": target}
         _write_json(os.path.join(dest, "info.json"), info)
         try:
             shutil.move(repo.pdir, os.path.join(dest, "exam"))
@@ -1138,7 +1162,7 @@ def trash_exam(pdir, root, by=None):
             raise
         repo.meta["folder"] = os.path.join(dest, "exam")
         repo._save_meta()
-    audit(repo.home, by, "exam deleted (moved to the trash)", exam=name, uid=repo.uid, trash=tid)
+    audit(repo.home, by, f"{target} deleted (moved to the trash)", **{target: name}, uid=repo.uid, trash=tid)
     purge_trash(repo.home)
     return info
 
@@ -1174,40 +1198,44 @@ def _free_name(projects_dir, name):
 
 
 def restore_trash(home, tid, projects_dir, by=None):
-    """Put an exam back, under its name or a free one. Returns the name."""
+    """Put an exam (or a bank, into _banks/) back, under its name or a free
+    one. Returns (name, target)."""
     if not isinstance(tid, str) or not TRASH_ID_RE.match(tid):
         raise HistoryError("No such exam in the trash.")
     d = os.path.join(home, "trash", tid)
     info = _read_json(os.path.join(d, "info.json"))
     if not info or not os.path.isdir(os.path.join(d, "exam")):
         raise HistoryError("No such exam in the trash.")
-    name = str(info.get("name") or "Restored exam")
+    target = info.get("target") if info.get("target") in TARGETS else "exam"
+    name = str(info.get("name") or f"Restored {target}")
     if name.startswith((".", "_", "-")) or "/" in name or "\\" in name:
-        name = "Restored exam"
-    name = _free_name(projects_dir, name)
-    src, target = os.path.join(d, "exam"), os.path.join(projects_dir, name)
+        name = f"Restored {target}"
+    into = os.path.join(projects_dir, BANKS_DIR) if target == "bank" else projects_dir
+    os.makedirs(into, exist_ok=True)
+    name = _free_name(into, name)
+    src, dest = os.path.join(d, "exam"), os.path.join(into, name)
     try:
-        os.rename(src, target)  # fails if the name was taken meanwhile, never nests the exam inside
+        os.rename(src, dest)  # fails if the name was taken meanwhile, never nests the exam inside
     except OSError as e:
         if e.errno != errno.EXDEV:
             raise
-        if os.path.exists(target):
-            raise HistoryError(f"An exam named \"{name}\" appeared meanwhile. Try again.")
-        shutil.move(src, target)
+        if os.path.exists(dest):
+            raise HistoryError(f"A {target} named \"{name}\" appeared meanwhile. Try again.")
+        shutil.move(src, dest)
     shutil.rmtree(d, ignore_errors=True)
-    audit(home, by, "exam restored from the trash", exam=name, uid=info.get("uid"), trash=tid)
-    return name
+    audit(home, by, f"{target} restored from the trash", **{target: name}, uid=info.get("uid"), trash=tid)
+    return name, target
 
 
-def _drop_history(home, uid):
-    """Remove the history of UID unless an exam still uses it."""
+def _drop_history(home, uid, target="exam"):
+    """Remove the history of UID unless an exam (or bank) still uses it."""
     if not isinstance(uid, str) or not UID_RE.match(uid):
         return
-    hdir = os.path.join(home, "history", "exams")
+    hdir = os.path.join(home, "history", TARGETS[target][2])
     meta = _read_json(os.path.join(hdir, uid + ".json")) or {}
     folder = meta.get("folder")
     in_trash = os.path.abspath(folder or "").startswith(os.path.join(os.path.abspath(home), "trash") + os.sep)
-    if folder and is_exam(folder) and read_uid(folder) == uid and not in_trash:
+    if folder and is_target(folder, target) and read_uid(folder, target) == uid and not in_trash:
         return
     shutil.rmtree(os.path.join(hdir, uid + ".git"), ignore_errors=True)
     for ext in (".json", ".lock"):
@@ -1226,8 +1254,9 @@ def delete_trash(home, tid, by=None, why="deleted for good"):
     if not os.path.isdir(d):
         raise HistoryError("No such exam in the trash.")
     shutil.rmtree(d)
-    _drop_history(home, info.get("uid"))
-    audit(home, by, f"exam {why}", exam=info.get("name"), uid=info.get("uid"), trash=tid)
+    target = info.get("target") if info.get("target") in TARGETS else "exam"
+    _drop_history(home, info.get("uid"), target)
+    audit(home, by, f"{target} {why}", **{target: info.get("name")}, uid=info.get("uid"), trash=tid)
 
 
 def purge_trash(home, now=None):
