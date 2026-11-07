@@ -62,6 +62,8 @@ OUTSIDE = "Changed outside the app"
 UID_RE = re.compile(r"^[0-9a-f]{32}\Z")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}\Z")
 TRASH_ID_RE = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{12}\Z")
+ITEMS_DIR = "items"           # questions in their own folders (ui_items.py)
+ITEM_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,63}\Z")
 _OLD_ID = re.compile(r"^\d{8}T\d{6}Z(-\d+)?\Z")
 GIT = shutil.which("git") or "/usr/bin/git"
 GC_EVERY = 100               # commits between two "git gc --auto"
@@ -109,12 +111,18 @@ def new_uid():
 
 
 def tracked(path):
-    """Whether versions of this file are kept: a plain name (no folder, no
-    dot-file) with a source, class list, design or image extension, and
-    not something AMC or the app writes itself."""
-    if not isinstance(path, str) or not path or "/" in path or "\\" in path:
+    """Whether versions of this file are kept: a plain name (no dot-file)
+    in the exam folder or in an item's folder (items/<name>/), with a
+    source, class list, design or image extension, and not something AMC
+    or the app writes itself."""
+    if not isinstance(path, str) or not path or "\\" in path:
         return False
-    if path.startswith((".", '"')) or re.search(r"[\x00-\x1f\x7f]", path):
+    parts = path.split("/")
+    if len(parts) == 3 and parts[0] == ITEMS_DIR and ITEM_NAME_RE.match(parts[1]):
+        path = parts[2]
+    elif len(parts) != 1:
+        return False
+    if not path or path.startswith((".", '"')) or re.search(r"[\x00-\x1f\x7f]", path):
         return False
     try:
         path.encode("utf-8")  # a name the file system couldn't decode (lone surrogates) can't go to git
@@ -387,6 +395,12 @@ class Repo:
             names = os.listdir(self.pdir)
         except OSError:
             names = []
+        idir = os.path.join(self.pdir, ITEMS_DIR)
+        if os.path.isdir(idir) and not os.path.islink(idir):
+            for item in sorted(os.listdir(idir)):
+                d = os.path.join(idir, item)
+                if ITEM_NAME_RE.match(item) and os.path.isdir(d) and not os.path.islink(d):
+                    names += [f"{ITEMS_DIR}/{item}/{f}" for f in sorted(os.listdir(d))]
         for name in names:
             if not tracked(name):
                 continue
@@ -873,7 +887,15 @@ class ChangeSet:
     def _path(self, path):
         if not tracked(path):
             raise ValueError(f"{path}: no history is kept for this file")
-        return os.path.join(self.pdir, path)
+        full = os.path.join(self.pdir, path)
+        if "/" in path:  # an item's folder: made when needed, never through a link
+            d = os.path.dirname(full)
+            if os.path.islink(d) or os.path.islink(os.path.dirname(d)):
+                raise ValueError(f"{path}: not a folder of this exam")
+            os.makedirs(d, exist_ok=True)
+            if not os.path.realpath(d).startswith(os.path.realpath(self.pdir) + os.sep):
+                raise ValueError(f"{path}: not a folder of this exam")
+        return full
 
     def write(self, path, data, based_on=None):
         """Write DATA (bytes). BASED_ON is the digest of the file the edit
@@ -903,6 +925,11 @@ class ChangeSet:
                 if digest(f.read()) != based_on:
                     raise Conflict(path)
         os.unlink(full)
+        if "/" in path:  # the item's folder goes with its last file
+            try:
+                os.rmdir(os.path.dirname(full))
+            except OSError:
+                pass
         if self.repo:
             self.changes[path] = None
             self.repo.meta.get("stat", {}).pop(path, None)

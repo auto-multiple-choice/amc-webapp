@@ -20,6 +20,7 @@ The app's icon file only keeps icons named in `server/templates/*.html`, so icon
 - the marking scheme panel (`server/ui_scale.py`): question maximums the way AMC computes them, reading questions from LaTeX and AMC-TXT, and answer key and scoring edits;
 - branding: the contrast-checked palette, logo file types, and the starters' school header.
 - the version history (`server/ui_vcs.py`): a git repository per exam outside the teacher's folder, change sets (a builder save is one version), the "changed meanwhile" check, changes made outside the app, restoring one file, the whole exam or one change (with a three-way merge, refused when changes overlap), undoing a restore, built and named versions, a planted `.gitattributes` or `.git` config that does nothing, copies (in and outside the app) and renames, the conversion of the old `.history/` folders, a damaged repository started again, the trash (restore under a free name, removal after 30 days) and the audit log; and the changes in words (`server/ui_changes.py`) for questions, the paper design and other files.
+- questions kept in items (`server/ui_items.py`): pools.tex read, added to, moved in, removed from and renamed; item names and paths; an item's questions in its section; pools counted by element (a set is one), inline exams too; the item-file check; and splitting an exam (items per `\element`, sets kept together, figures moved and renamed, a file that only held questions removed, questions outside sections left in place), the two starters included.
 - the question editor (`server/ui_questions.py`): the spans the parser finds (text, answers, choices, numeric, explanation, figure, `\element` groups) and every edit operation, including where new questions go;
 - the annotated sheets' symbols and key (`server/ui_legend.py`): AMC's settings read back as a preset, the default and custom choices, refused schemes, and the key stamped once on each file, with a file whose key failed left for the next run.
 
@@ -104,6 +105,14 @@ node tests-ui/e2e-results.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 ```
 
 With `AMC_E2E_KEEP=1`, the test exam is kept afterwards, to look at it.
+
+### Questions in items
+
+`e2e-items.mjs`: a new exam from the blank starter keeps its questions in items listed by `pools.tex`; the form edits an item's file, adds a numeric question as a new item after the selected one, moves an item down and up, and deletes it (History keeps it); Paper design counts items and adds one to a section; a question can't take a name another item uses; the paper builds, and the marking scheme panel reads each question from its item file; after printing, items can't be added but an answer key can still be corrected. Then an exam made from AMC's Groups template is split into items (same questions, same sections, same pools), builds, and the split is undone from History.
+
+```
+node tests-ui/e2e-items.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
+```
 
 ### Version history and trash
 

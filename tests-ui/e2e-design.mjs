@@ -23,6 +23,7 @@ const J = JSON.stringify;
 
 const main = () => b.js(`getJSON('/ui/api/source?file=' + encodeURIComponent(S.status.source)).then(r => r.text)`);
 const structure = () => b.js(`getJSON('/ui/api/structure')`);
+const poolsTex = () => b.js(`getJSON('/ui/api/source?file=pools.tex').then(r => r.text || '')`);
 const saved = () => b.waitFor('S.dform && !S.dform.saving && !S.dform.pending.length', 15000);
 const typeInto = (selector, text) => b.js(`(() => { const t = document.querySelector(${J(selector)}); t.focus(); t.value = ${J(text)}; t.dispatchEvent(new Event('input', {bubbles: true})); return true; })()`);
 async function settle(check) { await saved(); return b.waitFor(check, 15000); }
@@ -78,8 +79,8 @@ async function main_() {
   await b.click('[data-act="d-sec-addq"][data-name="section2"]');
   await b.waitFor(`!!document.querySelector('.dialog [data-act="dialog-result"][data-v="single"]')`, 3000);
   await b.click('.dialog [data-act="dialog-result"][data-v="single"]');
-  b.check('Adding a question opens it in the form', await b.waitFor(`S.qtab === 'form' && qsel() && qsel().group === 'section2' && S.qform.file === S.status.source && !!document.querySelector('#qf-text')`, 15000));
-  b.check('...wrapped in the section\'s \\element', (await main()).includes('\\element{section2}{'));
+  b.check('Adding a question opens it in the form', await b.waitFor(`S.qtab === 'form' && qsel() && qsel().group === 'section2' && /^items\\/[^/]+\\/item\\.tex$/.test(S.qform.file) && !!document.querySelector('#qf-text')`, 15000));
+  b.check('...as an item of the section (the blank starter keeps its questions in items)', (await poolsTex()).includes('\\element{section2}{\\amcuiItem{'));
   await b.click('[data-act="qtab"][data-v="design"]');
   b.check('Back in Paper design the section has its question', await b.waitFor(`S.qtab === 'design' && S.design && S.design.sections.length === 2 && S.design.sections[1].pool === 1 && !S.design.sections[1].problem`, 15000));
 
@@ -89,7 +90,7 @@ async function main_() {
   await b.waitFor(`!!document.querySelector('#df-rename')`, 5000);
   await b.setValue('#df-rename', 'extra');
   await b.click('[data-act="d-sec-rename"][data-name="section2"]');
-  b.check('Renaming a section renames its questions\' group', await settle(`S.design.sections[0].name === 'extra'`) && (await main()).includes('\\element{extra}{') && !(await main()).includes('section2'));
+  b.check('Renaming a section renames its questions\' group', await settle(`S.design.sections[0].name === 'extra'`) && (await poolsTex()).includes('\\element{extra}{\\amcuiItem{') && !(await poolsTex()).includes('section2') && !(await main()).includes('section2'));
   await b.click('[data-act="d-sec-delete"][data-name="extra"]');
   await b.waitFor(`!!document.querySelector('.dialog [data-act="dialog-ok"]')`, 3000);
   await b.click('.dialog [data-act="dialog-ok"]');

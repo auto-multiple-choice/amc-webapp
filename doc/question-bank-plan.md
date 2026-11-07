@@ -112,9 +112,10 @@ other ids.
 %%AMCUI:END POOL%%
 ```
 
-`\amcuiItem` is defined in a managed region of the preamble
-(`%%AMCUI:ITEMS%%`). The exam stays plain LaTeX, so the desktop app and a
-downloaded copy of the folder build it unchanged.
+`\amcuiItem` is defined at the top of `pools.tex` itself (a managed
+region `%%AMCUI:ITEMS%%`), so an exam only needs `\input{pools}` before
+its `\insertgroup` lines. The exam stays plain LaTeX, so the desktop app
+and a downloaded copy of the folder build it unchanged.
 
 - **Figures** live in the item's folder and are named after the item
   (`alg-017-1.png`). LaTeX looks in the main folder before
@@ -577,3 +578,15 @@ Tests to add:
   folder), blame, "Download with history" (git bundle), the admins' view
   of another instructor's trash, and a start-up check of all
   repositories (`./amc doctor`).
+- **P1a (items in exams): built** on `feature/items-p1`, based on P0.
+  `server/ui_items.py` (pools.tex, item folders, split); item files are
+  among the exam's sources, so the parser, the form editor, Paper design,
+  the marking scheme panel, the builder's summary and the lock follow
+  them; pools count elements; new exams from the app's starters keep
+  their questions in items; "Move questions into item files" splits an
+  exam in one version (undo from History). Item names are letters,
+  digits and `-` (folder names that work everywhere); a renamed question
+  keeps its item's name.
+- **P1b (next):** Form | LaTeX switch per question, a section edited as
+  one LaTeX document, "Check this question", build errors pointing to
+  item files.

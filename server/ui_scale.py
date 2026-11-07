@@ -240,6 +240,7 @@ def _shared_elements(text, questions):
             for q in inside:
                 if q.get("element") != "own":
                     q["group"], q["element"] = m.group(1).strip(), "shared"
+                    q["element_id"] = f"{q.get('file') or ''}#{m.start()}"  # one element: \insertgroup draws it whole
 
 
 def read_latex(text, filename=""):
@@ -272,6 +273,7 @@ def read_latex(text, filename=""):
                 q["group"] = em.group(1).strip()
                 q["element"] = "own"  # an \element{}{} of its own: the block is the wrapper
                 q["block_span"] = (em.start(), close.end())
+                q["element_id"] = f"{filename}#{em.start()}"
         lo, hi = m.end(), end.start()
         spans, depth, start, first = [], 0, None, None
         for e in _CHOICES_ENV.finditer(text, lo, hi):

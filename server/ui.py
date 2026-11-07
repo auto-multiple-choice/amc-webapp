@@ -33,6 +33,7 @@ import ui_builder as paper_builder
 import ui_questions as questions_edit
 import ui_scale as scale
 import ui_changes as changes
+import ui_items as items
 import ui_vcs as vcs
 
 HISTORY_DIR = vcs.OLD_HISTORY_DIR  # the old per-file history: kept out of exam downloads until converted (amc.py)
@@ -399,11 +400,23 @@ def save_source(pdir, filename, data, what, based_on=None):
     return vcs.write(pdir, _root(), filename, data, by=_who(), what=what, based_on=based_on)
 
 
+def _exam_and_rel(path):
+    """(exam folder, path inside it) for a file in an exam folder or in one
+    of its items' folders, else (None, None)."""
+    d, fn = os.path.split(path)
+    if _is_exam(d):
+        return d, fn
+    up = os.path.dirname(os.path.dirname(d))
+    if os.path.basename(os.path.dirname(d)) == items.ITEMS_DIR and _is_exam(up):
+        return up, f"{items.ITEMS_DIR}/{os.path.basename(d)}/{fn}"
+    return None, None
+
+
 def store_upload(path, upload, what):
     """Save an uploaded file (/upload, /fs): as a version when it is a
     file of an exam that history keeps, plainly otherwise."""
-    pdir, fn = os.path.split(path)
-    if _is_exam(pdir) and vcs.tracked(fn):
+    pdir, fn = _exam_and_rel(path)
+    if pdir and vcs.tracked(fn):
         upload.stream.seek(0)
         save_source(pdir, fn, upload.stream.read(), f"{what}: {fn}" if what in ("Uploaded", "Saved") else what)
     else:
@@ -413,8 +426,8 @@ def store_upload(path, upload, what):
 def delete_file(path):
     """Delete a project file (project-delete-file): a file history keeps
     stays in it and can be restored."""
-    pdir, fn = os.path.split(path)
-    if _is_exam(pdir) and vcs.tracked(fn):
+    pdir, fn = _exam_and_rel(path)
+    if pdir and vcs.tracked(fn):
         vcs.delete(pdir, _root(), fn, by=_who())
         add_activity(pdir, f"File deleted: {fn} (kept in History)")
     else:
@@ -562,6 +575,9 @@ def option_refused(name):
 
 def delete_refused(filename):
     filename = str(filename)
+    if items.item_of(filename):
+        core.dialog_msg(warn="This is a question's own file. Delete the question in Questions instead, so the sections follow.")
+        return True
     if filename == core.main_source_file():
         core.dialog_msg(warn="This is the exam's main source file, so it can't be deleted.")
         return True
@@ -1112,15 +1128,60 @@ def _db_for(pdir, *modules):
 
 
 def _source_files(pdir):
-    """The main source and the other LaTeX files next to it (\\input).
-    For AMC-TXT only the main source: AMC writes LaTeX files of its own
-    next to it each time it reads it."""
+    """The main source, the other LaTeX files next to it (\\input), and
+    the items' files (items/<name>/item.tex) in the order pools.tex lists
+    them. For AMC-TXT only the main source: AMC writes LaTeX files of its
+    own next to it each time it reads it."""
     main = core.main_source_file()
     if core.get_option("filter") == "plain":
         return [main] if main and os.path.isfile(os.path.join(pdir, main)) else []
-    return [f for f in sorted(os.listdir(pdir))
-            if (f == main or f.rsplit(".", 1)[-1].lower() in ("tex", "latex"))
-            and os.path.isfile(os.path.join(pdir, f))]
+    top = [f for f in sorted(os.listdir(pdir))
+           if (f == main or f.rsplit(".", 1)[-1].lower() in ("tex", "latex"))
+           and os.path.isfile(os.path.join(pdir, f))]
+    return top + items.ordered_files(_item_names(pdir), _pools_text(pdir))
+
+
+# ---------------------------------------------------------------- questions in their own files (ui_items.py)
+
+_pool_cache = {}  # pools.tex path -> (mtime, size, text)
+
+
+def _pools_text(pdir):
+    path = os.path.join(pdir, items.POOLS_FILE)
+    try:
+        st = os.stat(path)
+    except OSError:
+        return ""
+    c = _pool_cache.get(path)
+    if c and c[0] == st.st_mtime_ns and c[1] == st.st_size:
+        return c[2]
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except (OSError, UnicodeDecodeError):
+        text = ""
+    _pool_cache[path] = (st.st_mtime_ns, st.st_size, text)
+    return text
+
+
+def _item_names(pdir):
+    """The items of the exam: folders of items/ holding an item.tex."""
+    d = os.path.join(pdir, items.ITEMS_DIR)
+    if not os.path.isdir(d) or os.path.islink(d):
+        return []
+    return sorted(n for n in os.listdir(d) if items.NAME_RE.match(n) and not os.path.islink(os.path.join(d, n))
+                  and os.path.isfile(os.path.join(d, n, items.ITEM_FILE)) and not os.path.islink(os.path.join(d, n, items.ITEM_FILE)))
+
+
+def _read_questions(pdir, fn, text):
+    """The questions of one LaTeX file of the exam: an item's questions
+    belong to the section pools.tex puts the item in."""
+    return items.annotate(scale.read_latex(text, fn), fn, items.pool_map(_pools_text(pdir)))
+
+
+def modular(pdir):
+    """Whether the exam keeps (some of) its questions in items."""
+    return bool(_item_names(pdir)) or os.path.isfile(os.path.join(pdir, items.POOLS_FILE))
 
 
 def source_digest(pdir):
@@ -1850,7 +1911,7 @@ def source_questions(pdir):
         except UnicodeDecodeError:
             text = raw.decode("utf-8", "replace")
             problem = "The file isn't UTF-8 text."  # shown read-only
-        for item in (scale.read_txt(text, f) if fmt == "plain" else scale.read_latex(text, f)):
+        for item in (scale.read_txt(text, f) if fmt == "plain" else _read_questions(pdir, f, text)):
             item["problem"] = item["problem"] or problem
             found.setdefault(item["id"], []).append(item)
     return found
@@ -2059,7 +2120,9 @@ def on_question_edit(data):
 
 def _editable_file(pdir, name):
     """A file the editor may open: a plain name of an editable file (or a
-    new one) in the exam folder."""
+    new one) in the exam folder, or an item's file."""
+    if items.item_of(name):
+        return name.split("/")[1] in _item_names(pdir)
     if not name or "/" in name or "\\" in name or name.startswith("."):
         return False
     return core.file_level(pdir, core.main_source_file(), name) <= 0
@@ -2105,6 +2168,16 @@ def api_source_save():
         return jsonify(error="Not a file of this exam.")
     raw = text.encode("utf-8")
     path = os.path.join(pdir, fn)
+    if items.item_of(fn):
+        if problem := items.check_item_text(text, items.item_of(fn)):
+            return jsonify(error=problem)
+        try:
+            with open(path, encoding="utf-8") as f:
+                old = f.read()
+        except (OSError, UnicodeDecodeError):
+            old = ""
+        if clash := _new_ids_clash(pdir, fn, old, text):
+            return jsonify(error=f"A question is already named \"{clash}\" in another file of this exam.")
     if refusal := write_refusal_bytes(path, raw):
         return jsonify(error=refusal)
     try:
@@ -2463,13 +2536,13 @@ def _editor_file(pdir, fn):
     order, with what each form field edits."""
     with open(os.path.join(pdir, fn), "rb") as f:
         raw = f.read()
-    out = {"file": fn, "digest": vcs.digest(raw), "problem": None, "questions": [], "groups": []}
+    out = {"file": fn, "digest": vcs.digest(raw), "problem": None, "questions": [], "groups": [], "item": items.item_of(fn)}
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         out["problem"] = "The file isn't UTF-8 text, so it can only be read."
         return out
-    qs = scale.read_latex(text, fn)
+    qs = _read_questions(pdir, fn, text)
     counts = {}
     for q in qs:
         counts[q["id"]] = counts.get(q["id"], 0) + 1
@@ -2499,9 +2572,11 @@ def api_editor():
     pdir = core.project_dir()
     fmt, _ = _main_source()
     out = {"project": name, "format": fmt, "main": core.main_source_file(), "files": [],
-           "lock": bool(exam_lock(pdir))}
+           "lock": bool(exam_lock(pdir)), "modular": False, "can_split": False}
     if fmt == "latex":
         out["files"] = [_editor_file(pdir, fn) for fn in _source_files(pdir)]
+        out["modular"] = modular(pdir)
+        out["can_split"] = any(q["group"] for f in out["files"] if not f["item"] for q in f["questions"])
     return jsonify(out)
 
 
@@ -2534,6 +2609,10 @@ def api_editor_edit():
         new, what = questions_edit.apply(text, data.get("ops"))
     except questions_edit.EditError as e:
         return jsonify(error=str(e))
+    if clash := _new_ids_clash(pdir, fn, text, new):
+        return jsonify(error=f"A question is already named \"{clash}\" in another file of this exam.")
+    if items.item_of(fn) and not scale.read_latex(new):
+        return jsonify(error="This is the item's only question: delete the item instead.")
     out = new.encode("utf-8")
     if refusal := write_refusal_bytes(path, out):
         return jsonify(error=refusal, locked=True)
@@ -2548,6 +2627,195 @@ def api_editor_edit():
     return jsonify(ok=True, digest=dg, what=what, file=_editor_file(pdir, fn))
 
 
+# ---------------------------------------------------------------- items: add, delete, move, split
+
+GROUP_RE = re.compile(r"^[^{}\\%\s#$&~^\x00-\x1f\x7f]{1,60}\Z")  # a section's name as AMC takes it (\insertgroup)
+
+
+def _top_sources(pdir):
+    """The exam's own LaTeX files next to the main one (not pools.tex or
+    the builder's generated layout), as text."""
+    out = {}
+    for fn in _source_files(pdir):
+        if "/" in fn or fn in (items.POOLS_FILE, paper_builder.LAYOUT_FILE):
+            continue
+        with open(os.path.join(pdir, fn), encoding="utf-8") as f:
+            out[fn] = f.read()
+    return out
+
+
+def _safe_exam_file(pdir, rel):
+    """REL names a regular file inside the exam folder (a figure)."""
+    full = os.path.realpath(os.path.join(pdir, rel))
+    return full.startswith(os.path.realpath(pdir) + os.sep) and os.path.isfile(full) and not os.path.islink(os.path.join(pdir, rel))
+
+
+def split_into_items(pdir, write, delete):
+    """Move the exam's \\element blocks into items (ui_items.split), writing
+    through WRITE(path, bytes) and DELETE(path). Returns the split's report."""
+    main = core.main_source_file()
+    files = _top_sources(pdir)
+    files[items.POOLS_FILE] = _pools_text(pdir)
+    r = items.split(files, main, lambda rel: _safe_exam_file(pdir, rel), taken=_item_names(pdir))
+    # items and figures first, the main file last: should a write fail midway, the paper still builds as before
+    for name, text in r["items"].items():
+        write(items.item_file(name), text.encode("utf-8"))
+        write(f"{items.ITEMS_DIR}/{name}/{items.META_FILE}", items.meta_json().encode("utf-8"))
+    moved = set()
+    for src, dst in r["figures"]:
+        with open(os.path.join(pdir, src), "rb") as f:
+            write(dst, f.read())
+        moved.add(src)
+    write(items.POOLS_FILE, r["pools"].encode("utf-8"), vcs.digest(files[items.POOLS_FILE].encode("utf-8")) if files[items.POOLS_FILE] else None)
+    for fn, text in sorted(r["files"].items(), key=lambda x: x[0] == main):
+        if fn == items.POOLS_FILE:
+            continue
+        if text is None:
+            delete(fn)
+        else:
+            write(fn, text.encode("utf-8"))
+    # a figure that only those questions used goes with them
+    remaining = [t for t in r["files"].values() if t] + [t for fn, t in _top_sources(pdir).items() if fn not in r["files"]]
+    try:
+        with open(os.path.join(pdir, paper_builder.DESIGN_FILE), encoding="utf-8") as f:
+            remaining.append(f.read())
+    except (OSError, UnicodeDecodeError):
+        pass
+    for src in sorted(moved):
+        stem = os.path.splitext(os.path.basename(src))[0]
+        if "/" not in src and not any(stem in t for t in remaining):
+            delete(src)
+    return r
+
+
+def _items_payload(pdir, name):
+    files = [_editor_file(pdir, fn) for fn in _source_files(pdir)]
+    return {"project": name, "format": "latex", "main": core.main_source_file(), "files": files, "lock": bool(exam_lock(pdir)),
+            "modular": modular(pdir), "can_split": any(q["group"] for f in files if not f["item"] for q in f["questions"])}
+
+
+@bp.route("/ui/api/items", methods=["POST"])
+def api_items():
+    """Questions kept in items, as a whole: "add" a question as a new item
+    (after another item, or at the end of a section), "delete" an item,
+    "move" it (before another item, or to the end of a section), or
+    "split" the exam's \\element blocks into items. Each is one version."""
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    pdir = core.project_dir()
+    if _main_source()[0] != "latex":
+        return jsonify(error="Items work with LaTeX exams.")
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+    op = data.get("op")
+    if exam_lock(pdir):
+        return jsonify(error=LOCKED.format(what="Questions can't be added, removed, moved or split now."), locked=True)
+    names = _item_names(pdir)
+    pools = _pools_text(pdir)
+    pmap = items.pool_map(pools)
+    try:
+        if op == "split":
+            with history_change(pdir, "Questions moved into item files") as cs:
+                r = split_into_items(pdir, lambda p, d, based_on=None: save_source(pdir, p, d, "Questions moved into item files", based_on=based_on),
+                                     lambda p: cs.delete(p) if vcs.tracked(p) else os.unlink(os.path.join(pdir, p)))
+            what = f"Questions moved into {len(r['items'])} item files" + (f"; {r['kept']} left in place (not in a section)" if r["kept"] else "")
+            add_activity(pdir, what)
+            out = _items_payload(pdir, name)
+            out.update(ok=True, what=what)
+            core.emit_msg("ui-changed", "questions")
+            return jsonify(out)
+        if not items.includes_pools(_main_text(pdir)) and not any(items.includes_pools(t) for t in _top_sources(pdir).values()):
+            return jsonify(error="This exam keeps its questions in its main file. Move them into item files first.")
+        if op == "add":
+            kind = data.get("kind") if data.get("kind") in questions_edit.ENVS else "single"
+            after = str(data.get("after") or "") or None
+            if after and after not in pmap:
+                return jsonify(error=f"The item \"{after}\" isn't in a section any more.")
+            group = str(data.get("group") or "") or (pmap.get(after) if after else None) or next(iter(pmap.values()), None)
+            if not group or not GROUP_RE.match(group):
+                return jsonify(error="Choose a section for the question.")
+            qid = questions_edit._free_id(_all_questions(pdir, _source_files(pdir)), kind)
+            iname = items.free_name(qid, names + [n for n in os.listdir(os.path.join(pdir, items.ITEMS_DIR))]
+                                    if os.path.isdir(os.path.join(pdir, items.ITEMS_DIR)) else names)
+            what = f"{qid}: question added to {group}"
+            with history_change(pdir, what):
+                # pools.tex first: an add that crossed another one (two tabs) is refused there, before any file is made
+                save_source(pdir, items.POOLS_FILE, items.pools_insert(pools, group, iname, after=after).encode("utf-8"), what,
+                            based_on=vcs.digest(pools.encode("utf-8")))
+                save_source(pdir, items.item_file(iname), items.new_item_text(kind, qid).encode("utf-8"), what)
+                save_source(pdir, f"{items.ITEMS_DIR}/{iname}/{items.META_FILE}", items.meta_json().encode("utf-8"), what)
+            out = _items_payload(pdir, name)
+            out.update(ok=True, what=what, added={"file": items.item_file(iname), "id": qid})
+        elif op in ("delete", "move"):
+            iname = str(data.get("item") or "")
+            if iname not in names:
+                return jsonify(error=f"The item \"{iname}\" isn't in this exam any more.")
+            if op == "delete":
+                what = f"Item {iname} deleted"
+                folder = os.path.join(pdir, items.ITEMS_DIR, iname)
+                named_in = next((fn for fn, t in _top_sources(pdir).items()
+                                 if any(not scale._in_comment(t, m.start()) for m in re.finditer(r"\\amcuiItem\s*\{\s*" + re.escape(iname) + r"\s*\}", t))), None)
+                if named_in:
+                    return jsonify(error=f"{named_in} names this item (\\amcuiItem{{{iname}}}); take that line out first, or the paper won't build.")
+                with history_change(pdir, what, kind="delete") as cs:
+                    if iname in pmap:
+                        save_source(pdir, items.POOLS_FILE, items.pools_remove(pools, iname).encode("utf-8"), what,
+                                    based_on=vcs.digest(pools.encode("utf-8")))
+                    for f in sorted(os.listdir(folder)):
+                        rel = f"{items.ITEMS_DIR}/{iname}/{f}"
+                        if vcs.tracked(rel) or f == items.META_FILE:
+                            cs.delete(rel) if vcs.tracked(rel) else os.unlink(os.path.join(folder, f))
+                try:
+                    os.rmdir(folder)  # files history doesn't keep (a big image, an odd extension) stay, with the folder
+                except OSError:
+                    core.app.logger.info(f"{folder}: kept, it still holds files history doesn't keep")
+            else:
+                before = str(data.get("before") or "") or None
+                if before and before not in pmap:
+                    return jsonify(error=f"The item \"{before}\" isn't in a section any more.")
+                group = str(data.get("group") or "") or (pmap.get(before) if before else None) or pmap.get(iname)
+                if not group or not GROUP_RE.match(group):
+                    return jsonify(error="Choose a section.")
+                new = items.pools_insert(items.pools_remove(pools, iname), group, iname, before=before)
+                what = f"Item {iname} moved" + (f" to {group}" if group != pmap.get(iname) else "")
+                save_source(pdir, items.POOLS_FILE, new.encode("utf-8"), what, based_on=vcs.digest(pools.encode("utf-8")))
+            out = _items_payload(pdir, name)
+            out.update(ok=True, what=what)
+        else:
+            return jsonify(error="Unknown action.")
+    except vcs.Conflict:
+        return jsonify(error="The sections were changed meanwhile. Reload to see the changes.", conflict=True)
+    except (questions_edit.EditError, ValueError) as e:
+        return jsonify(error=str(e))
+    except OSError as e:
+        core.app.logger.error(f"Items ({op}): {e}")
+        return jsonify(error="A file couldn't be written. Look at History to see what was changed, and at the server log.")
+    add_activity(pdir, what)
+    refresh_layout(pdir)  # a builder paper's summary follows the sections
+    core.emit_msg("ui-changed", "questions")
+    return jsonify(out)
+
+
+def _main_text(pdir):
+    try:
+        with open(os.path.join(pdir, core.main_source_file()), encoding="utf-8") as f:
+            return f.read()
+    except (OSError, UnicodeDecodeError, TypeError):
+        return ""
+
+
+def _new_ids_clash(pdir, fn, old_text, new_text):
+    """A question id the edit adds to FN that another file of the exam
+    already uses, or None."""
+    added = {q["id"] for q in scale.read_latex(new_text)} - {q["id"] for q in scale.read_latex(old_text)}
+    if not added:
+        return None
+    others = {q["id"] for q in _all_questions(pdir, [f for f in _source_files(pdir) if f != fn])}
+    clash = sorted(added & others)
+    return clash[0] if clash else None
+
+
 # ---------------------------------------------------------------- paper design: sections
 
 def _all_questions(pdir, files):
@@ -2555,7 +2823,7 @@ def _all_questions(pdir, files):
     for fn in files:
         try:
             with open(os.path.join(pdir, fn), encoding="utf-8") as f:
-                out += scale.read_latex(f.read(), fn)
+                out += _read_questions(pdir, fn, f.read())
         except (OSError, UnicodeDecodeError):
             continue
     return out
@@ -2576,7 +2844,8 @@ def _structure(pdir):
         return None
     files = _source_files(pdir)
     out = paper_structure.read(text, main, _all_questions(pdir, files))
-    out.update(file=main, digest=vcs.digest(raw), files=[fn for fn in files if fn != main])
+    out.update(file=main, digest=vcs.digest(raw), files=[fn for fn in files if fn != main and "/" not in fn],
+               modular=modular(pdir) and items.includes_pools(text + "".join(_top_sources(pdir).values())))
     return out
 
 
@@ -2649,7 +2918,8 @@ def api_structure_edit():
             continue
         t3 = t2
         for old, new_name in renames:
-            t3 = paper_structure.rename_elements(t3, old, new_name)
+            t3 = (items.pools_rename_group(t3, old, new_name) if fn == items.POOLS_FILE
+                  else paper_structure.rename_elements(t3, old, new_name))
         if t3 != t2:
             if refusal := write_refusal_bytes(p2, t3.encode("utf-8")):
                 return jsonify(error=refusal, locked=True)
@@ -3282,6 +3552,16 @@ def on_create_exam(data):
         title = next((t.get("title") for t in core.templates if t["gid"] == gid and t["id"] == tid), tid)
     core.create_project_dirs(rep)
     name, _ = core.set_project(name)
+    if gid == STARTER_GROUP and not tid.endswith("-txt"):
+        try:  # the app's own starters keep their questions in items (doc/question-bank-plan.md, section 4)
+            def _write(rel, data, based_on=None):  # the split writes pools.tex with its digest; a new exam has none to check
+                full = os.path.join(rep, rel)
+                os.makedirs(os.path.dirname(full), exist_ok=True)
+                with open(full, "wb") as f:
+                    f.write(data)
+            split_into_items(rep, _write, lambda rel: os.unlink(os.path.join(rep, rel)))
+        except (questions_edit.EditError, OSError) as e:
+            core.app.logger.error(f"New exam {name}: questions left in the main file ({e})")
     core.amc_command("db", "upgrade")
     core.remove_uuid(name)
     if copies:
