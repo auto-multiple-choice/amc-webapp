@@ -469,3 +469,21 @@ input[type="color"] { width: 44px; height: 34px; padding: 2px; border: 1px solid
 .q-item.in-set { border-left: 3px solid var(--accent-soft); }
 .q-split { padding: 10px 12px; border-top: 1px solid var(--border); }
 .q-form-head .chip svg { width: 12px; height: 12px; vertical-align: -2px; }
+
+/* LaTeX for pro users (ui_latex.py): a question's LaTeX view, checks, the section document */
+.q-mode { display: inline-flex; }
+.q-mode .btn { border-radius: 0; }
+.q-mode .btn:first-child { border-radius: 7px 0 0 7px; }
+.q-mode .btn:last-child { border-radius: 0 7px 7px 0; margin-left: -1px; }
+.q-mode .btn.is-on { background: var(--accent-soft); border-color: var(--brand); }
+.ql { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.ql-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ql-host { height: 340px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.ql-note { margin: 0; }
+.ql-err { margin: 2px 0; }
+.ql-err code, .banner code { font-size: 12px; }
+.ql-pic { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: #fff; overflow: auto; max-height: 360px; }
+.ql-pic img { max-width: 100%; display: block; }
+.dialog.dialog-wide { width: min(1000px, calc(100vw - 32px)); max-width: none; }
+.sl-host { height: min(60vh, 560px); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+#sl-msg { margin-top: 8px; }

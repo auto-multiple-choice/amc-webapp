@@ -10,6 +10,7 @@ what changed, for the exam's history. Standard library only.
 """
 import re
 
+import ui_latex as latex
 import ui_scale as scale
 
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$")
@@ -306,6 +307,26 @@ def add_question(text, qs, kind="single", after=None, group=None, qid=None):
     return text[:m.start()] + new_block(kind, qid, "", group) + "\n\n" + text[m.start():], qid
 
 
+def set_latex(text, q, new):
+    """The question's own LaTeX (\\begin{question}...\\end{question}),
+    replaced as typed in the LaTeX view, once it is checked."""
+    new = str(new or "").strip("\n")
+    if len(new) > 200000:
+        raise EditError("This is too long for one question.")
+    if p := latex.problems(new):
+        raise EditError(f"Line {p[0]['line']}: {p[0]['message']}")
+    qs = scale.read_latex(new)
+    if len(qs) != 1 or qs[0]["span"][0] != len(new) - len(new.lstrip()) or new[qs[0]["span"][1]:].strip():
+        raise EditError("Write exactly one question here, from \\begin{question} to \\end{question}.")
+    if re.search(r"\\element\s*\{", new):
+        raise EditError("The section is set in Paper design, not with \\element here.")
+    out = _replace(text, q["span"], new)
+    ids = [x["id"] for x in scale.read_latex(out)]
+    if ids.count(qs[0]["id"]) > 1:
+        raise EditError(f"A question is already named \"{qs[0]['id']}\" in this file.")
+    return out
+
+
 def delete_question(text, q):
     return _remove_lines(text, q["block_span"])
 
@@ -409,6 +430,9 @@ def _apply_one(text, kind, qid, op):
     elif kind == "rename":
         text = rename(text, q, qs, op.get("new_id"))
         what = f"renamed to {str(op.get('new_id')).strip()}"
+    elif kind == "latex":
+        text = set_latex(text, q, op.get("latex", ""))
+        what = "LaTeX edited"
     elif kind == "delete":
         text = delete_question(text, q)
         what = "deleted"

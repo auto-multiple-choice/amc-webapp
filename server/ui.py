@@ -34,6 +34,7 @@ import ui_questions as questions_edit
 import ui_scale as scale
 import ui_changes as changes
 import ui_items as items
+import ui_latex as ltx
 import ui_vcs as vcs
 
 HISTORY_DIR = vcs.OLD_HISTORY_DIR  # the old per-file history: kept out of exam downloads until converted (amc.py)
@@ -2171,6 +2172,8 @@ def api_source_save():
     if items.item_of(fn):
         if problem := items.check_item_text(text, items.item_of(fn)):
             return jsonify(error=problem)
+        if p := ltx.problems(text):
+            return jsonify(error=f"Line {p[0]['line']}: {p[0]['message']}", line=p[0]["line"])
         try:
             with open(path, encoding="utf-8") as f:
                 old = f.read()
@@ -2530,13 +2533,16 @@ def _editor_file(pdir, fn):
     order, with what each form field edits."""
     with open(os.path.join(pdir, fn), "rb") as f:
         raw = f.read()
-    out = {"file": fn, "digest": vcs.digest(raw), "problem": None, "questions": [], "groups": [], "item": items.item_of(fn)}
+    out = {"file": fn, "digest": vcs.digest(raw), "problem": None, "questions": [], "groups": [], "item": items.item_of(fn),
+           "text": None}
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         out["problem"] = "The file isn't UTF-8 text, so it can only be read."
         return out
     qs = _read_questions(pdir, fn, text)
+    if out["item"]:
+        out["text"] = text  # the LaTeX view edits the item's whole file
     counts = {}
     for q in qs:
         counts[q["id"]] = counts.get(q["id"], 0) + 1
@@ -2552,6 +2558,7 @@ def _editor_file(pdir, fn):
             "explain": q["explain"]["latex"] if q["explain"] else "",
             "figure": q["figure"]["file"] if q["figure"] else None,
             "rule": q["scoring"]["rule"] if q["scoring"] else "",
+            "src": None if out["item"] else text[q["span"][0]:q["span"][1]],  # the LaTeX view of a question written inline
             "problem": problem, "editable": problem is None})
         if q["group"] and q["group"] not in out["groups"]:
             out["groups"].append(q["group"])
@@ -2792,6 +2799,274 @@ def _new_ids_clash(pdir, fn, old_text, new_text):
     others = {q["id"] for q in _all_questions(pdir, [f for f in _source_files(pdir) if f != fn])}
     clash = sorted(added & others)
     return clash[0] if clash else None
+
+
+# ---------------------------------------------------------------- LaTeX for pro users (ui_latex.py)
+
+CHECK_ENGINES = ("pdflatex", "xelatex", "lualatex")
+CHECK_PREFIX = "_amcui-check-"
+
+
+def _sandboxed(cmd):
+    """CMD run like AMC's own LaTeX runs: in landrun, writing only to the
+    teacher's projects folder (and the temporary folders), when the
+    server isolates commands (shared machine)."""
+    if not getattr(core.app, "isolate", False):
+        return cmd
+    import command as amc_command_module  # upstream's runner: the same isolation paths
+    os.environ["AMC_USER_TMP"] = core.amc_user_tmp()
+    amc_command_module.compute_isolate_paths()
+    ip = core.app.isolate_paths
+    return ["landrun", "--best-effort", "--log-level", "error", "--rox", ip["ROX"], "--rw", ip["RW"], "--ro", ip["RO"],
+            "--env", "HOME", "--env", "PATH", "--env", "LANG", "--env", "TMPDIR", "--rw", core.projects_dir(), "--"] + cmd
+
+
+def _engine():
+    engine = core.get_option("moteur_latex_b") or "pdflatex"
+    engine = engine if engine in CHECK_ENGINES else "pdflatex"
+    allowed = [e for e in (os.environ.get("AMC_LATEX_ENGINES") or "").split(",") if e]
+    return engine if not allowed or engine in allowed else (allowed[0] if allowed[0] in CHECK_ENGINES else "pdflatex")
+
+
+def _picture(pdf):
+    """The first page of PDF as a PNG cropped to what is printed, or None."""
+    try:
+        out = pdf[:-4]
+        subprocess.run(["pdftoppm", "-png", "-r", "110", "-f", "1", "-l", "1", "-singlefile", pdf, out],
+                       capture_output=True, timeout=30, check=True)
+        from PIL import Image, ImageOps
+        with Image.open(out + ".png") as img:
+            gray = ImageOps.invert(img.convert("L"))
+            box = gray.point(lambda v: 255 if v > 24 else 0).getbbox()
+            if box:
+                m = 12
+                img = img.crop((max(0, box[0] - m), max(0, box[1] - m), min(img.width, box[2] + m), min(img.height, box[3] + m)))
+            buf = io.BytesIO()
+            img.save(buf, "PNG", optimize=True)
+            return buf.getvalue()
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def compile_check(pdir, source):
+    """Compile SOURCE in a scratch folder of the exam (the item's \\input and
+    figures resolve as in the real build). Returns (ok, log, png or None)."""
+    d = CHECK_PREFIX + uuid.uuid4().hex[:8]
+    full = os.path.join(pdir, d)
+    os.makedirs(full)
+    try:
+        with open(os.path.join(full, "check.tex"), "w", encoding="utf-8") as f:
+            f.write(source)
+        cmd = _sandboxed([_engine(), "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape",
+                          f"-output-directory={d}", f"{d}/check.tex"])
+        try:
+            p = subprocess.run(cmd, cwd=pdir, capture_output=True, timeout=120, env={**os.environ, "TMPDIR": core.amc_user_tmp()})
+            code = p.returncode
+        except subprocess.TimeoutExpired:
+            return False, "! The check took too long (over 2 minutes).", None
+        try:
+            with open(os.path.join(full, "check.log"), encoding="utf-8", errors="replace") as f:
+                log = f.read()
+        except OSError:
+            log = ""
+        if "\n! " not in "\n" + log:  # an error LaTeX couldn't write to its log (a file it may not read)
+            log += "\n" + (p.stdout or b"").decode("utf-8", "replace")
+        pdf = os.path.join(full, "check.pdf")
+        ok = code == 0 and os.path.isfile(pdf)
+        return ok, log, _picture(pdf) if ok else None
+    finally:
+        shutil.rmtree(full, ignore_errors=True)
+
+
+@bp.route("/ui/api/check", methods=["POST"])
+def api_check():
+    """Check this question: the question (or the item), as typed in the
+    LaTeX view, saved or not, compiled alone with the exam's preamble in
+    the sandbox the papers are built in. Returns the problems with their
+    lines (counted from the start of what was checked) and a picture."""
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    pdir = core.project_dir()
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+    fn = str(data.get("file") or "")
+    if _main_source()[0] != "latex" or fn not in _source_files(pdir):
+        return jsonify(error="Not a question of this exam.")
+    body = data.get("text")
+    if not isinstance(body, str) or not body.strip():
+        return jsonify(error="Nothing to check.")
+    pre = ltx.preamble(_main_text(pdir))
+    if pre is None:
+        return jsonify(error="The main file has no \\begin{document}.")
+    if p := ltx.problems(body):
+        return jsonify(ok=False, errors=[{"line": p[0]["line"], "message": p[0]["message"], "file": None}], image=None)
+    src, first = ltx.check_source(pre, body, items.item_of(fn))
+    ok, log, png = compile_check(pdir, src)
+    errors = []
+    if not ok:
+        why = next((l.strip() for l in log.split("\n")
+                    if re.search(r"can't find file|not found|[Pp]ermission denied|Emergency stop|job aborted|Fatal", l)), "")
+        e = ltx.first_error(log, pdir) or {"file": None, "line": None, "context": "", "message": (
+            f"LaTeX stopped: {why[:200]}" if why else
+            "LaTeX stopped. It may have tried to read a file it can't reach (only this exam's own files can be read), or a package is missing.")}
+        if e["file"] and e["file"].startswith(CHECK_PREFIX):
+            if e["line"] and e["line"] >= first:
+                errors.append({"line": e["line"] - first + 1, "message": e["message"], "context": e["context"], "file": None})
+            else:
+                errors.append({"line": None, "message": f"{e['message']} (in the exam's preamble)", "context": e["context"], "file": core.main_source_file()})
+        else:
+            errors.append({"line": e["line"], "message": e["message"], "context": e["context"], "file": e["file"]})
+    return jsonify(ok=ok, errors=errors, image=("data:image/png;base64," + base64.b64encode(png).decode()) if png else None)
+
+
+@bp.route("/ui/api/build-error")
+def api_build_error():
+    """The first error of the last build, traced to its file and line (an
+    item's file rather than a line of the main file), with the question
+    it is in."""
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    try:
+        with open(os.path.join(pdir, "_latex.log"), encoding="utf-8", errors="replace") as f:
+            e = ltx.first_error(f.read(), pdir)
+    except OSError:
+        e = None
+    if e and e["file"] and e["file"] in _source_files(pdir):
+        try:
+            with open(os.path.join(pdir, e["file"]), encoding="utf-8") as f:
+                qs = _read_questions(pdir, e["file"], f.read())
+            at = [q for q in qs if e["line"] and q["line"] <= e["line"]]
+            e["question"] = (at[-1] if at else qs[0])["id"] if qs else None
+        except (OSError, UnicodeDecodeError):
+            e["question"] = None
+        e["item"] = items.item_of(e["file"])
+    return jsonify(project=name, error=e)
+
+
+@bp.route("/ui/api/completions")
+def api_completions():
+    """For the LaTeX editors: the exam's macros, question names and items."""
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    text = _main_text(pdir) + "".join(t for fn, t in _top_sources(pdir).items())
+    return jsonify(project=name, macros=ltx.macros(text),
+                   ids=sorted({q["id"] for q in _all_questions(pdir, _source_files(pdir))}), items=_item_names(pdir))
+
+
+def _section_items(pdir, group):
+    return [p["name"] for p in items.read_pools(_pools_text(pdir)) if p["group"] == group]
+
+
+@bp.route("/ui/api/section-latex")
+def api_section_latex():
+    """A section's items as one LaTeX document, with each item's digest."""
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    group = request.args.get("group") or ""
+    entries, digests = [], {}
+    for n in _section_items(pdir, group):
+        try:
+            with open(os.path.join(pdir, items.item_file(n)), "rb") as f:
+                raw = f.read()
+        except OSError:
+            continue
+        entries.append((n, raw.decode("utf-8", "replace")))
+        digests[n] = vcs.digest(raw)
+    return jsonify(project=name, group=group, text=ltx.section_document(entries), digests=digests, lock=bool(exam_lock(pdir)))
+
+
+@bp.route("/ui/api/section-latex", methods=["POST"])
+def api_section_latex_save():
+    """Save a section document: each item's part goes back to its file, a
+    new separator adds an item there, the order of the separators is the
+    section's order. apply=false only says what would happen. A missing,
+    changed or doubled separator is refused, never guessed."""
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    pdir = core.project_dir()
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+    group, text = str(data.get("group") or ""), data.get("text")
+    digests = data.get("digests") if isinstance(data.get("digests"), dict) else {}
+    if not isinstance(text, str):
+        return jsonify(error="Nothing to save.")
+    if exam_lock(pdir):
+        return jsonify(error=LOCKED.format(what="Correct the answer key in Marking scheme or in the form."), locked=True)
+    current = _section_items(pdir, group)
+    if not current:
+        return jsonify(error="This section has no items.")
+    try:
+        parts = ltx.split_section(text)
+    except ValueError as e:
+        return jsonify(error=str(e))
+    names = [n for n, _, _ in parts]
+    if missing := [n for n in current if n not in names]:
+        return jsonify(error=f"The item {missing[0]} is missing from the document. To take it out of the section, delete it in the form.")
+    pmap = items.pool_map(_pools_text(pdir))
+    all_items = set(_item_names(pdir))
+    changed, added = [], []
+    texts = {}
+    for n, t, line in parts:
+        if not items.NAME_RE.match(n):
+            return jsonify(error=f"Line {line}: \"{n}\" can't be an item's name (letters, digits and - only).")
+        if n in all_items and n not in current:
+            return jsonify(error=f"Line {line}: the item {n} belongs to {pmap.get(n) or 'no section'}; move it in the form.")
+        if problem := items.check_item_text(t, n):
+            return jsonify(error=f"Line {line}: {problem}")
+        if p := ltx.problems(t):
+            return jsonify(error=f"Line {line + p[0]['line']}: {p[0]['message']}")
+        texts[n] = t
+        if n not in current:
+            added.append(n)
+        else:
+            with open(os.path.join(pdir, items.item_file(n)), encoding="utf-8") as f:
+                if f.read() != t:
+                    changed.append(n)
+    ids = [q["id"] for n, t in texts.items() for q in scale.read_latex(t)]
+    others = {q["id"] for q in _all_questions(pdir, [f for f in _source_files(pdir) if items.item_of(f) not in current])}
+    dup = next((i for i in ids if ids.count(i) > 1 or i in others), None)
+    if dup:
+        return jsonify(error=f"A question is named \"{dup}\" twice in the exam.")
+    moved = [n for n in names if n in current] != current
+    plan = {"changed": changed, "added": added, "moved": moved}
+    if not data.get("apply"):
+        return jsonify(ok=True, plan=plan)
+    for n in current:
+        try:
+            with open(os.path.join(pdir, items.item_file(n)), "rb") as f:
+                if digests.get(n) != vcs.digest(f.read()):
+                    return jsonify(error=f"The item {n} was changed meanwhile. Reload the section to see the changes.", conflict=True)
+        except OSError:
+            return jsonify(error=f"The item {n} isn't there any more.", conflict=True)
+    what = f"Section {group} edited as LaTeX" + "".join(f"; {k} {', '.join(v)}" for k, v in (("changed", changed), ("added", added)) if v)
+    pools = _pools_text(pdir)
+    try:
+        with history_change(pdir, what[:200]):
+            for n in changed + added:
+                save_source(pdir, items.item_file(n), texts[n].encode("utf-8"), what)
+                if n in added:
+                    save_source(pdir, f"{items.ITEMS_DIR}/{n}/{items.META_FILE}", items.meta_json().encode("utf-8"), what)
+            if moved or added:
+                new = pools
+                for n in current:
+                    new = items.pools_remove(new, n)
+                for n in names:
+                    new = items.pools_insert(new, group, n)
+                save_source(pdir, items.POOLS_FILE, new.encode("utf-8"), what, based_on=vcs.digest(pools.encode("utf-8")))
+    except vcs.Conflict:
+        return jsonify(error="The sections were changed meanwhile. Reload to see the changes.", conflict=True)
+    add_activity(pdir, what[:200])
+    refresh_layout(pdir)
+    core.emit_msg("ui-changed", "questions")
+    return jsonify(ok=True, plan=plan, what=what)
 
 
 # ---------------------------------------------------------------- paper design: sections

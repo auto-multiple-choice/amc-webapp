@@ -84,6 +84,16 @@ An exam made in the app keeps each question in its own file, `items/<name>/item.
 
 In the form, **Add**, the arrows and **Delete** add, move and delete items; moving past the first or last question of a section moves it into the next one. **Edit in LaTeX** opens the question's own file. An older exam, or one made from one of AMC's templates, keeps its questions in its main file: **Move questions into item files** (under the list of questions) moves them, figures included, in one step that History can undo. Question banks will take questions from these files.
 
+## LaTeX for those who prefer it
+
+Every question has a **Form | LaTeX** switch above it. **LaTeX** shows the question's own LaTeX: the item's file (for a set, all its questions), or, in an exam written in one file, the question from `\begin{question}` to `\end{question}`. The choice is remembered, so the questions keep opening in LaTeX.
+
+- **Save** (or Ctrl+S, or leaving the question) writes it. A save whose braces or environments don't balance, or that gives a question a name already used, is refused with the line, and nothing is written. After printing, only the answer key and scoring can change, as in the form.
+- **Check this question** compiles what is typed, saved or not, alone with the exam's preamble, in a few seconds. It shows how the question prints, or the error at its line (click the line to go there).
+- Typing a backslash offers AMC's environments (`question`, `questionmult`, `questionmultx`, `choices`…) and the exam's own macros; question names are offered too.
+- In Paper design, **Edit as LaTeX** on a section opens all its questions as one document, each starting at a line `%%%% item <name> %%%%`. Move those lines to reorder; add one with a new name to add a question. Saving first says what will change. A missing or changed separator line is refused, never guessed.
+- When a build fails, the Questions step names the file, the line and the question (`items/alg-018/item.tex, line 5`), and **Open it** opens that question's LaTeX there.
+
 ## Earlier versions
 
 Every save is kept as a version of the exam, for good: who saved it, when, and what changed. A save that touches several files (the Paper builder writes the design and its layout) is one version. **History** (in the bar above the editor, in Paper design and in the Paper builder) lists the versions; saves made close together by the same person are grouped into one editing session, which opens with a click. The version the question paper was last built from is marked **built OK**, and printing names the version that was printed.
