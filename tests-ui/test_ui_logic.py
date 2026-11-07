@@ -549,6 +549,16 @@ pt3 = itm.pools_insert(itm.pools_remove(pt, "alg-016"), "sectionII", "alg-016", 
 check("items: moving an item into another section", [(p["group"], p["name"]) for p in itm.read_pools(pt3)][-2:] == [("sectionII", "alg-016"), ("sectionII", "geo-001")])
 check("items: renaming a section renames its pool lines and region", "%%AMCUI:POOL part2%%" in itm.pools_rename_group(pt, "sectionII", "part2")
       and itm.pool_map(itm.pools_rename_group(pt, "sectionII", "part2"))["geo-001"] == "part2")
+check("items: two \\elements on one line, or a comment after one, survive a removal",
+      "amcuiItem{b}" in itm.pools_remove("\\element{A}{\\amcuiItem{a}} \\element{A}{\\amcuiItem{b}}\n", "a")
+      and "% note" in itm.pools_remove("\\element{A}{\\amcuiItem{c}} % note\n", "c")
+      and itm.pools_remove("\\element{A}{\\amcuiItem{a}}\n\\element{A}{\\amcuiItem{b}}\n", "a") == "\\element{A}{\\amcuiItem{b}}\n")
+check("items: figures are found as LaTeX finds them, through \\graphicspath and with an extension added",
+      itm.graphics_paths("\\graphicspath{{img/}{figs/}} % \\graphicspath{{no/}}") == ["img/", "figs/"]
+      and itm._find_figure("fig1", ["img/"], {"img/fig1.png"}.__contains__) == "img/fig1.png"
+      and itm._find_figure("fig.v2", [], {"fig.v2.png"}.__contains__) == "fig.v2.png"
+      and itm._find_figure("../x", ["img/"], lambda c: True) is None)
+check("items: removing a block tidies the blank lines there only", itm._apply("a\n\n\nb\n\n\n\nREMOVE\n\n\nc\n\n\n\nd", [(9, 15, "")]) == "a\n\n\nb\n\nc\n\n\n\nd")
 check("items: lines in comments are ignored", itm.read_pools("% \\element{a}{\\amcuiItem{x}}\n\\element{b}{\\amcuiItem{y}}\n") and [p["name"] for p in itm.read_pools("% \\element{a}{\\amcuiItem{x}}\n\\element{b}{\\amcuiItem{y}}\n")] == ["y"])
 check("items: item names from question ids, unique (whatever the case)", itm.sanitize("alg_017:b") == "alg-017-b" and itm.free_name("Q1", {"q1"}) == "Q1-2" and itm.sanitize("::") == "q")
 check("items: item files are recognised by path only", itm.item_of("items/alg-017/item.tex") == "alg-017" and not itm.item_of("items/../x/item.tex") and not itm.item_of("items/a/b.tex"))

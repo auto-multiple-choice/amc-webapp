@@ -1170,7 +1170,7 @@ def _item_names(pdir):
     if not os.path.isdir(d) or os.path.islink(d):
         return []
     return sorted(n for n in os.listdir(d) if items.NAME_RE.match(n) and not os.path.islink(os.path.join(d, n))
-                  and os.path.isfile(os.path.join(d, n, items.ITEM_FILE)))
+                  and os.path.isfile(os.path.join(d, n, items.ITEM_FILE)) and not os.path.islink(os.path.join(d, n, items.ITEM_FILE)))
 
 
 def _read_questions(pdir, fn, text):
@@ -2623,7 +2623,7 @@ def api_editor_edit():
 
 # ---------------------------------------------------------------- items: add, delete, move, split
 
-GROUP_RE = re.compile(r"^[^{}\\%\s]{1,60}$")
+GROUP_RE = re.compile(r"^[^{}\\%\s#$&~^\x00-\x1f\x7f]{1,60}\Z")  # a section's name as AMC takes it (\insertgroup)
 
 
 def _top_sources(pdir):
@@ -2651,11 +2651,7 @@ def split_into_items(pdir, write, delete):
     files = _top_sources(pdir)
     files[items.POOLS_FILE] = _pools_text(pdir)
     r = items.split(files, main, lambda rel: _safe_exam_file(pdir, rel), taken=_item_names(pdir))
-    for fn, text in r["files"].items():
-        if text is None:
-            delete(fn)
-        else:
-            write(fn, text.encode("utf-8"))
+    # items and figures first, the main file last: should a write fail midway, the paper still builds as before
     for name, text in r["items"].items():
         write(items.item_file(name), text.encode("utf-8"))
         write(f"{items.ITEMS_DIR}/{name}/{items.META_FILE}", items.meta_json().encode("utf-8"))
@@ -2664,6 +2660,14 @@ def split_into_items(pdir, write, delete):
         with open(os.path.join(pdir, src), "rb") as f:
             write(dst, f.read())
         moved.add(src)
+    write(items.POOLS_FILE, r["pools"].encode("utf-8"), vcs.digest(files[items.POOLS_FILE].encode("utf-8")) if files[items.POOLS_FILE] else None)
+    for fn, text in sorted(r["files"].items(), key=lambda x: x[0] == main):
+        if fn == items.POOLS_FILE:
+            continue
+        if text is None:
+            delete(fn)
+        else:
+            write(fn, text.encode("utf-8"))
     # a figure that only those questions used goes with them
     remaining = [t for t in r["files"].values() if t] + [t for fn, t in _top_sources(pdir).items() if fn not in r["files"]]
     try:
@@ -2679,9 +2683,9 @@ def split_into_items(pdir, write, delete):
 
 
 def _items_payload(pdir, name):
-    return {"project": name, "format": "latex", "main": core.main_source_file(),
-            "files": [_editor_file(pdir, fn) for fn in _source_files(pdir)], "lock": bool(exam_lock(pdir)),
-            "modular": modular(pdir), "can_split": False}
+    files = [_editor_file(pdir, fn) for fn in _source_files(pdir)]
+    return {"project": name, "format": "latex", "main": core.main_source_file(), "files": files, "lock": bool(exam_lock(pdir)),
+            "modular": modular(pdir), "can_split": any(q["group"] for f in files if not f["item"] for q in f["questions"])}
 
 
 @bp.route("/ui/api/items", methods=["POST"])
@@ -2707,7 +2711,7 @@ def api_items():
     try:
         if op == "split":
             with history_change(pdir, "Questions moved into item files") as cs:
-                r = split_into_items(pdir, lambda p, d: save_source(pdir, p, d, "Questions moved into item files"),
+                r = split_into_items(pdir, lambda p, d, based_on=None: save_source(pdir, p, d, "Questions moved into item files", based_on=based_on),
                                      lambda p: cs.delete(p) if vcs.tracked(p) else os.unlink(os.path.join(pdir, p)))
             what = f"Questions moved into {len(r['items'])} item files" + (f"; {r['kept']} left in place (not in a section)" if r["kept"] else "")
             add_activity(pdir, what)
@@ -2726,13 +2730,15 @@ def api_items():
             if not group or not GROUP_RE.match(group):
                 return jsonify(error="Choose a section for the question.")
             qid = questions_edit._free_id(_all_questions(pdir, _source_files(pdir)), kind)
-            iname = items.free_name(qid, names)
+            iname = items.free_name(qid, names + [n for n in os.listdir(os.path.join(pdir, items.ITEMS_DIR))]
+                                    if os.path.isdir(os.path.join(pdir, items.ITEMS_DIR)) else names)
             what = f"{qid}: question added to {group}"
             with history_change(pdir, what):
-                save_source(pdir, items.item_file(iname), items.new_item_text(kind, qid).encode("utf-8"), what)
-                save_source(pdir, f"{items.ITEMS_DIR}/{iname}/{items.META_FILE}", items.meta_json().encode("utf-8"), what)
+                # pools.tex first: an add that crossed another one (two tabs) is refused there, before any file is made
                 save_source(pdir, items.POOLS_FILE, items.pools_insert(pools, group, iname, after=after).encode("utf-8"), what,
                             based_on=vcs.digest(pools.encode("utf-8")))
+                save_source(pdir, items.item_file(iname), items.new_item_text(kind, qid).encode("utf-8"), what)
+                save_source(pdir, f"{items.ITEMS_DIR}/{iname}/{items.META_FILE}", items.meta_json().encode("utf-8"), what)
             out = _items_payload(pdir, name)
             out.update(ok=True, what=what, added={"file": items.item_file(iname), "id": qid})
         elif op in ("delete", "move"):
@@ -2742,15 +2748,22 @@ def api_items():
             if op == "delete":
                 what = f"Item {iname} deleted"
                 folder = os.path.join(pdir, items.ITEMS_DIR, iname)
+                named_in = next((fn for fn, t in _top_sources(pdir).items()
+                                 if any(not scale._in_comment(t, m.start()) for m in re.finditer(r"\\amcuiItem\s*\{\s*" + re.escape(iname) + r"\s*\}", t))), None)
+                if named_in:
+                    return jsonify(error=f"{named_in} names this item (\\amcuiItem{{{iname}}}); take that line out first, or the paper won't build.")
                 with history_change(pdir, what, kind="delete") as cs:
                     if iname in pmap:
                         save_source(pdir, items.POOLS_FILE, items.pools_remove(pools, iname).encode("utf-8"), what,
                                     based_on=vcs.digest(pools.encode("utf-8")))
                     for f in sorted(os.listdir(folder)):
                         rel = f"{items.ITEMS_DIR}/{iname}/{f}"
-                        if vcs.tracked(rel):
-                            cs.delete(rel)
-                shutil.rmtree(folder, ignore_errors=True)  # what history doesn't keep (nothing, usually)
+                        if vcs.tracked(rel) or f == items.META_FILE:
+                            cs.delete(rel) if vcs.tracked(rel) else os.unlink(os.path.join(folder, f))
+                try:
+                    os.rmdir(folder)  # files history doesn't keep (a big image, an odd extension) stay, with the folder
+                except OSError:
+                    core.app.logger.info(f"{folder}: kept, it still holds files history doesn't keep")
             else:
                 before = str(data.get("before") or "") or None
                 if before and before not in pmap:
@@ -2769,6 +2782,9 @@ def api_items():
         return jsonify(error="The sections were changed meanwhile. Reload to see the changes.", conflict=True)
     except (questions_edit.EditError, ValueError) as e:
         return jsonify(error=str(e))
+    except OSError as e:
+        core.app.logger.error(f"Items ({op}): {e}")
+        return jsonify(error="A file couldn't be written. Look at History to see what was changed, and at the server log.")
     add_activity(pdir, what)
     refresh_layout(pdir)  # a builder paper's summary follows the sections
     core.emit_msg("ui-changed", "questions")

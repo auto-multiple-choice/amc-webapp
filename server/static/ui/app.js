@@ -2113,9 +2113,10 @@ function moveQuestion(d) {
     const ents = itemEntries(); const i = ents.indexOf(li);
     const t = ents[i + d];
     if (!t) return;
-    const tg = t.questions[0].group;
+    const tg = t.questions[0].group; const cg = li.questions[0].group;
     let before;
-    if (d < 0) before = t.item;
+    if (tg !== cg) before = d < 0 ? null : t.item; // crossing a section's edge: its end going up, its start going down
+    else if (d < 0) before = t.item;
     else { const after = ents[i + 2]; before = after && after.questions[0].group === tg ? after.item : null; }
     itemOp({ op: 'move', item: li.item, before, group: tg }).then((r) => { if (r) renderQuestionsForm(); });
     return;
