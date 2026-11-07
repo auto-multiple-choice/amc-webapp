@@ -606,7 +606,7 @@ updated as each phase lands. ✅ built, ⬜ to build, ✖ not doing (why).
 - ✅ A section edited as one LaTeX document (`%%%% item name %%%%` separators), with "what will happen" before saving
 - ✅ Snippets for AMC environments; completion of question names and the exam's macros
 
-**P2 — Question banks** (#5; P2a built on `feature/banks-p2a`, P2b on `feature/banks-p2b`; P2c: search, usage, archive, zip)
+**P2 — Question banks** (#5; built: P2a on `feature/banks-p2a`, P2b on `feature/banks-p2b`, P2c on `feature/banks-p2c`)
 - ✅ Banks per instructor, in groups, with history (git) and a trash
 - ✅ Bank page: groups, items, difficulty and tags, the item form, LaTeX view and History (search and filters: P2b)
 - ✅ Bank → exam: a whole group as a new section or into one; selected questions; a random pick made once and shown first; sets moved whole
@@ -617,12 +617,12 @@ updated as each phase lands. ✅ built, ⬜ to build, ✖ not doing (why).
 - ✅ A section made from a group offers questions added to the group later, and says when one was removed, until printed (P2b)
 - ✅ A macro defined differently in the exam and the bank flagged with both definitions, never overwritten (P2b)
 - ✅ Macros and packages an item needs, offered to the exam that lacks them
-- ⬜ Usage recorded when papers are printed (P2c)
+- ✅ Usage recorded when papers are printed (or marked as printed), in `_amcweb/<user>/bank-usage.jsonl`; an exam printed again counts once (P2c)
 - ✅ Import of RJ-style LaTeX files (`\element{sectionI}{…}` blocks with figures)
-- ⬜ Search index (SQLite FTS5, outside teachers' folders), with filters in the bank page and "From a bank": text, difficulty, kind, tags, not used since (P2c)
-- ⬜ Archiving an item hides it from "From a bank" (P2c)
-- ⬜ An item's page lists the exams that use it (P2c)
-- ⬜ Bank zip export and import, with its history (git bundle), checked like exam archives (P2c)
+- ✅ Search index (SQLite FTS5 in `_amcweb/<user>/bank-index.sqlite`, rebuilt from the files when missing, damaged or behind), with filters in the bank page and "From a bank": words as prefixes, difficulty, kind, tag, never printed / not printed for 3 months or a year; a random pick from the shown questions; search of all banks on the Question banks page (P2c)
+- ✅ Archiving an item hides it from "From a bank" and a whole group's pull (P2c)
+- ✅ An item lists the exams that printed it and those holding a copy (P2c)
+- ✅ Bank zip export and import, with its history (git bundle, every object checked), checked like exam archives: allowed names only, no links or climbing paths, size limits unpacked (P2c)
 - ✖ `requires` stored in each bank item.json — the macros and packages an item needs are worked out from the bank's preamble each time it is copied, so they can't go stale
 
 **P3 — Analysis and blueprints** (#6)

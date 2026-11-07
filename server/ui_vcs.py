@@ -51,6 +51,7 @@ AMCWEB_DIR = "_amcweb"
 LOCAL_OWNER = "_local"       # single-user mode (account names can't start with "_")
 TRASH_DAYS = 30
 MAX_FILE = 10 * 1024 * 1024  # bigger files (a scanned image dropped in the folder) aren't kept
+BUNDLE_MAX_UNPACKED = 512 * 1024 * 1024  # a history read from a bundle may not take more on disk
 TEXT_EXTENSIONS = ("tex", "latex", "txt", "sty", "cls", "bib", "yml", "yaml", "csv", "json")
 IMAGE_EXTENSIONS = ("png", "jpg", "jpeg", "gif", "svg", "eps", "pdf")
 NOT_TRACKED = ("amcweb.json", "options.xml", "description.xml")
@@ -266,9 +267,39 @@ def _git(git_dir, *args, data=None, ok=(0,)):
     except FileNotFoundError:
         raise GitUnavailable(f"git isn't installed ({GIT})")
     if p.returncode not in ok:
-        raise HistoryError(f"git {args[0]} failed ({p.returncode}): "
+        sub = next((a for i, a in enumerate(args) if not a.startswith("-") and (i == 0 or args[i - 1] != "-c")), "")
+        raise HistoryError(f"git {sub} failed ({p.returncode}): "
                            + p.stderr.decode("utf-8", "replace").strip()[:600])
     return p
+
+
+def import_bundle(pdir, root, bundle, target="bank"):
+    """Start the history of PDIR, whose uid is set and which has no history
+    yet, from a git bundle (a bank's zip). Every object is checked. False
+    when the bundle can't be used: the history then starts from the files."""
+    uid = read_uid(pdir, target)
+    d = os.path.join(amcweb_dir(pdir, root, target), "history", TARGETS[target][2])
+    git_dir = os.path.join(d, f"{uid}.git")
+    if not uid or os.path.exists(git_dir):
+        return False
+    os.makedirs(d, exist_ok=True)
+    tmp = git_dir + ".import"
+    shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        subprocess.run([GIT, *_CONFIG, "init", "-q", "--bare", "--initial-branch=main", tmp],
+                       check=True, capture_output=True, env=_env(), timeout=60)
+        checked = ("-c", "protocol.file.allow=always", "-c", "fetch.fsckObjects=true", "-c", "transfer.fsckObjects=true")
+        _git(tmp, *checked, "bundle", "verify", "-q", bundle)
+        _git(tmp, *checked, "fetch", "-q", "--no-tags", "--no-write-fetch-head", bundle, f"+{BRANCH}:{BRANCH}")
+        _git(tmp, "rev-parse", "--verify", "-q", BRANCH + "^{commit}")
+        if _size(tmp) > BUNDLE_MAX_UNPACKED:  # a small bundle can unpack to a lot (deltas)
+            raise HistoryError(f"the history unpacks to more than {BUNDLE_MAX_UNPACKED // 1024 // 1024} MB")
+        os.replace(tmp, git_dir)
+        return True
+    except (HistoryError, subprocess.SubprocessError, OSError) as e:
+        _log.warning(f"{pdir}: the history in the bundle can't be used: {e}")
+        shutil.rmtree(tmp, ignore_errors=True)
+        return False
 
 
 def merge_text(mine, base, theirs, labels=("mine", "base", "theirs")):
@@ -801,6 +832,11 @@ class Repo:
             else:
                 problems.append((path, "it was changed again since" if n else "it was removed since"))
         return plan, problems
+
+    def bundle(self, path):
+        """The whole history as a git bundle at PATH (a bank's zip)."""
+        with self.lock:
+            _git(self.git_dir, "bundle", "create", "-q", path, BRANCH)
 
     def _merge(self, ours, base, theirs):
         """Three-way merge of blobs: the file now, with the change from BASE

@@ -9,7 +9,7 @@
 /* global S, $, esc, ic, enc, getJSON, postJSON, toast, banner, openDialog, closeDialog, confirmDialog, formDialog, notice,
    navigate, render, renderMain, renderTop, renderQuestionsForm, renderQForm, renderQList, loadEditor, qfile, qsel, flushQ, qlFlush,
    openHistory, inBank, qApi, trunc, plural, fmtWhen, postForm, loadDesign, renderDesign, flushD, dialogResolve:writable,
-   questionsHead, diffRows, latexEditor */
+   questionsHead, diffRows, latexEditor, fmtDate */
 
 const DIFF_LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 
@@ -37,7 +37,8 @@ function viewBanks() {
   }
   return `<div class="page">
     <div class="page-head"><div><h1 class="page-title">Question banks</h1><p class="page-sub">Your own banks of questions, in groups. Only you see them; questions go into an exam as copies.</p></div>
-      <div class="page-actions"><button class="btn btn-ghost" data-act="trash-open">${ic('trash')} Trash</button>${list && list.length ? `<button class="btn btn-primary" data-act="bank-new">${ic('plus')} New bank</button>` : ''}</div></div>
+      <div class="page-actions"><button class="btn btn-ghost" data-act="trash-open">${ic('trash')} Trash</button><button class="btn btn-ghost" data-act="bank-zip-import" title="A bank downloaded as a zip, from this app here or elsewhere">${ic('upload')} Import a bank…</button>${list && list.length ? `<button class="btn btn-primary" data-act="bank-new">${ic('plus')} New bank</button>` : ''}</div></div>
+    ${list && list.length ? `<div class="b-search"><input class="input" type="search" id="bk-search" placeholder="Search all your banks: words of a question, a title, a tag…" value="${esc((S.bks && S.bks.q) || '')}" aria-label="Search all your banks"></div><div id="bk-results">${bankResults()}</div>` : ''}
     ${body}</div>`;
 }
 
@@ -64,11 +65,17 @@ async function loadBank() {
   }
   if (S.route.kind !== 'bank' || S.route.name !== name) return;
   S.qdata = r;
+  if (!S.bf || S.bf.bank !== name) S.bf = { bank: name, q: '', difficulty: '', kind: '', tag: '', unused: '', active: false, info: {} };
+  S.busage = {};
+  const want = S.bankPick && S.bankPick.bank === name ? r.files.find((f) => f.item === S.bankPick.item) : null;
+  S.bankPick = null;
+  if (want && want.questions.length) S.qform = { file: want.file, id: want.questions[0].id, pending: [], saving: false };
   if (!qsel()) {
     const first = r.files.flatMap((f) => f.questions.map((q) => ({ file: f.file, id: q.id })))[0];
     S.qform = first ? { file: first.file, id: first.id, pending: [], saving: false } : null;
   }
-  if (!$('#q-editor')) renderMain(); else { $('#bank-head').innerHTML = bankHead(); renderQuestionsForm(); }
+  if (!$('#q-editor')) renderMain(); else { $('#bank-head').innerHTML = bankHead(); renderBankFilters(); renderQuestionsForm(); }
+  bankFilter();
 }
 
 function bankHead() {
@@ -81,6 +88,7 @@ function bankHead() {
       ${S.menu === 'bank' ? `<div class="menu" role="menu" style="right:0;left:auto">
         <button class="menu-item" role="menuitem" data-act="bank-preamble">${ic('code')} Macros and packages (preamble)…</button>
         <button class="menu-item" role="menuitem" data-act="bank-describe">${ic('edit-pencil')} Description…</button>
+        <a class="menu-item" role="menuitem" href="/ui/api/bank/${enc(S.route.name)}/export" download>${ic('download')} Download as a zip (with its history)</a>
         <button class="menu-item" role="menuitem" data-act="bank-rename">${ic('edit-pencil')} Rename…</button>
         <div class="menu-sep"></div>
         <button class="menu-item" role="menuitem" data-act="bank-delete" style="color:var(--danger)">${ic('trash')} Delete</button></div>` : ''}</div>
@@ -89,8 +97,8 @@ function bankHead() {
 
 function viewBank() {
   if (S.qdata && S.qdata.error) return `<div class="page"><div id="bank-head">${bankHead()}</div>${banner('warning', 'warning-triangle', esc(S.qdata.error), '', '<a class="btn btn-sm" href="/banks" data-nav>All banks</a>')}</div>`;
-  setTimeout(() => { if (S.qdata && $('#q-editor')) renderQuestionsForm(); }, 0);
-  return `<div class="page wide"><div id="bank-head">${bankHead()}</div>
+  setTimeout(() => { if (S.qdata && $('#q-editor')) { renderBankFilters(); renderQuestionsForm(); } }, 0);
+  return `<div class="page wide"><div id="bank-head">${bankHead()}</div><div id="bank-filters"></div>
     <div class="q-editor" id="q-editor"><div class="q-list" id="q-list"><div class="skeleton" style="height:200px;margin:12px"></div></div><div class="q-form" id="q-form"></div></div></div>`;
 }
 
@@ -99,27 +107,32 @@ function renderBankList(host) {
   const d = S.qdata;
   if (!d || !d.bank) { host.innerHTML = '<div class="skeleton" style="height:200px;margin:12px"></div>'; return; }
   const byItem = Object.fromEntries(d.files.map((f) => [f.item, f]));
+  const bf = S.bf && S.bf.bank === S.route.name ? S.bf : null;
+  const shown = (n) => !bf || !bf.active || !!bf.info[n];
   const row = (n) => {
     const f = byItem[n];
-    if (!f) return '';
+    if (!f || !shown(n)) return '';
+    const u = bf && bf.info[n];
     return f.questions.map((q) => {
       const sel = !!(S.qform && S.qform.file === f.file && S.qform.id === q.id);
       const m = f.meta || {};
-      return `<button class="q-item ${sel ? 'is-selected' : ''} ${q.problem ? 'is-problem' : ''} ${f.questions.length > 1 ? 'in-set' : ''}" data-act="q-pick" data-file="${esc(f.file)}" data-id="${esc(q.id)}" aria-pressed="${sel}">
-        <span class="q-item-id">${esc(q.id)}</span><span class="q-item-kind">${m.difficulty ? `${DIFF_LABEL[m.difficulty]} · ` : ''}${q.kind}</span>
+      return `<button class="q-item ${sel ? 'is-selected' : ''} ${q.problem ? 'is-problem' : ''} ${f.questions.length > 1 ? 'in-set' : ''} ${m.archived ? 'is-archived' : ''}" data-act="q-pick" data-file="${esc(f.file)}" data-id="${esc(q.id)}" aria-pressed="${sel}">
+        <span class="q-item-id">${esc(q.id)}</span><span class="q-item-kind">${m.archived ? 'archived · ' : ''}${m.difficulty ? `${DIFF_LABEL[m.difficulty]} · ` : ''}${q.kind}${u && u.used ? ` · printed ${u.used}×` : ''}</span>
         <span class="q-item-text">${q.problem ? `${ic('warning-triangle')} ${esc(q.problem)}` : esc(trunc(m.title || q.text || '(no text yet)', 70))}${(m.tags || []).length ? ` <span class="b-tags">${m.tags.map(esc).join(' · ')}</span>` : ''}</span></button>`;
     }).join('');
   };
   const total = d.files.reduce((n, f) => n + f.questions.length, 0);
   let html = `<div class="q-list-head"><b>Questions</b><span class="chip">${total}</span><span class="spacer"></span><button class="btn btn-sm btn-ghost" data-act="bgroup-add">${ic('plus')} Group</button></div>`;
+  if (bf && bf.active) html += `<p class="subtle q-note">${plural(Object.keys(bf.info).length, 'question matches', 'questions match')} the search.</p>`;
   d.bank.groups.forEach((g, i) => {
+    if (bf && bf.active && !g.items.some(shown)) return;
     html += `<div class="q-group b-group"><span>${esc(g.title || g.name)} <span class="subtle">· ${g.items.length}</span></span><span class="spacer"></span>
       <button class="btn btn-ghost btn-icon btn-xs" data-act="bitem-add" data-group="${esc(g.name)}" title="Add a question to this group" aria-label="Add a question to ${esc(g.name)}">${ic('plus')}</button>
       <button class="btn btn-ghost btn-icon btn-xs" data-act="bgroup-edit" data-group="${esc(g.name)}" title="Title, instructions and scoring of the group" aria-label="Edit the group ${esc(g.name)}">${ic('edit-pencil')}</button>
       <button class="btn btn-ghost btn-icon btn-xs" data-act="bgroup-move" data-group="${esc(g.name)}" data-d="-1" ${i ? '' : 'disabled'} title="Move up" aria-label="Move the group up">${ic('nav-arrow-up')}</button></div>`;
     html += g.items.map(row).join('') || '<p class="subtle q-note">No question yet.</p>';
   });
-  if (d.bank.loose.length) html += `<div class="q-group">Not in a group</div>${d.bank.loose.map(row).join('')}`;
+  if (d.bank.loose.some(shown)) html += `<div class="q-group">Not in a group</div>${d.bank.loose.map(row).join('')}`;
   if (!d.bank.groups.length && !d.bank.loose.length) html += `<div class="q-empty" style="padding:16px"><p class="muted">Start with a group (Algebra, Geometry…), then add questions to it, or import a LaTeX file.</p><button class="btn btn-primary btn-sm" data-act="bgroup-add">${ic('plus')} Add a group</button></div>`;
   host.innerHTML = html;
 }
@@ -131,7 +144,27 @@ function bankMetaRow(f) {
   return `<div class="b-meta" data-item="${esc(f.item)}">
     <label class="field"><span class="field-label">Difficulty</span><select class="select input-sm" data-bmeta="difficulty"><option value="">—</option>${Object.entries(DIFF_LABEL).map(([v, l]) => `<option value="${v}" ${m.difficulty === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     <label class="field grow"><span class="field-label">Tags (comma between them)</span><input class="input input-sm" data-bmeta="tags" value="${esc((m.tags || []).join(', '))}" placeholder="polynomials, olympiad 2025"></label>
-    ${m.origin ? `<span class="subtle b-origin" title="Where it came from">${ic('info-circle')} ${m.origin.exam ? `From the exam ${esc(m.origin.exam)}` : m.origin.file ? `Imported from ${esc(m.origin.file)}` : ''}</span>` : ''}</div>`;
+    <label class="check b-arch" title="An archived question is hidden from &quot;From a bank&quot;; exams that have it and History keep it"><input type="checkbox" data-bmeta="archived" ${m.archived ? 'checked' : ''}><span>Archived</span></label>
+    ${m.origin ? `<span class="subtle b-origin" title="Where it came from">${ic('info-circle')} ${m.origin.exam ? `From the exam ${esc(m.origin.exam)}` : m.origin.file ? `Imported from ${esc(m.origin.file)}` : ''}</span>` : ''}</div>
+    <div class="b-usage subtle" data-item="${esc(f.item)}">${usageText(f.item)}</div>`;
+}
+/* The exams that printed an item (the usage log) and those holding a copy now. */
+function usageText(item) {
+  const u = S.busage && S.busage[item];
+  if (!u) { if (S.busage) { S.busage[item] = 'loading'; loadUsage(item); } return ''; }
+  if (u === 'loading') return '';
+  const exam = (n) => `<a href="/exam/${enc(n)}/questions" data-nav>${esc(n)}</a>`;
+  const parts = [];
+  if (u.printed.length) parts.push(`Printed in ${u.printed.map((x) => `${exam(x.exam)} (${esc(fmtDate(x.at))})`).join(', ')}`);
+  if (u.copies.length) parts.push(`Copies in ${[...new Set(u.copies.map((x) => x.exam))].map(exam).join(', ')}`);
+  return `${ic('book-stack')} ${parts.length ? parts.join(' · ') : 'Not in any exam yet.'}`;
+}
+async function loadUsage(item) {
+  let r;
+  try { r = await getJSON(`${qApi('usage')}?item=${enc(item)}`); } catch { return; }
+  if (r.error || !S.busage) return;
+  S.busage[item] = r;
+  document.querySelectorAll('.b-usage').forEach((el) => { if (el.dataset.item === item) el.innerHTML = usageText(item); });
 }
 /* In an exam: where an item came from (a bank), and that it is a copy. */
 function itemOrigin(f) {
@@ -144,15 +177,17 @@ function itemOrigin(f) {
 }
 let bmetaTimer = null;
 function bankInput(t) {
+  if (filterInput(t) || bankSearchInput(t)) return true;
   if (!t.dataset || !t.dataset.bmeta) return false;
   clearTimeout(bmetaTimer);
   bmetaTimer = setTimeout(() => saveBankMeta(t), t.dataset.bmeta === 'tags' ? 900 : 0);
   return true;
 }
 function bankChange(t) {
+  if (filterInput(t)) return true;
   if (t.dataset && t.dataset.bmeta) { clearTimeout(bmetaTimer); saveBankMeta(t); return true; }
   if (t.id === 'bp-bank') { bpPickBank(t.value); return true; }
-  if (t.id === 'bp-group') { S.bp.group = t.value; S.bp.ticked = []; S.bp.chosen = null; renderPicker(); return true; }
+  if (t.id === 'bp-group') { S.bp.group = t.value; S.bp.ticked = []; S.bp.chosen = null; renderPicker(); bpFilter(); return true; }
   if (t.name === 'bp-mode') { S.bp.mode = t.value; S.bp.chosen = null; renderPicker(); return true; }
   if (t.id === 'bp-section') { S.bp.section = t.value; return true; }
   if (t.id === 'bp-count') { S.bp.count = +t.value || 1; S.bp.chosen = null; return true; }
@@ -167,12 +202,14 @@ async function saveBankMeta(t) {
   if (!box) return;
   const item = box.dataset.item;
   const body = { op: 'describe', item };
-  body[t.dataset.bmeta] = t.value;
+  body[t.dataset.bmeta] = t.type === 'checkbox' ? t.checked : t.value;
   const r = await postJSON(qApi('items'), body);
   if (!r.ok) { toast(r.error || 'Not saved.', 'warning-triangle'); return; }
   const keep = S.qform;
   S.qdata = r; S.qform = keep;
   renderQList();
+  if (t.dataset.bmeta !== 'archived') renderBankFilters();
+  bankFilter();
 }
 
 async function bankAddQuestion(group) {
@@ -296,6 +333,100 @@ async function bankImportGo() {
   S.qdata = r; renderQuestionsForm();
 }
 
+/* ---------- Search and filters (server: ui_bankindex.py) ----------
+   The bank page and "From a bank" filter their list by words (as prefixes), difficulty, kind, tag
+   and "not printed since"; only the list is redrawn, so typing isn't interrupted. */
+
+const KIND_LABEL = { single: 'Single answer', multiple: 'Multiple answers', numeric: 'Numeric', set: 'Set (shared text)' };
+function filterRow(p, f, tags, archived) {
+  const sel = (k, first, opts) => `<select class="select input-sm" id="${p}-${k}" aria-label="${first}"><option value="">${first}</option>${opts.map(([v, l]) => `<option value="${esc(v)}" ${f[k] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  return `<div class="b-filters"><input class="input input-sm" type="search" id="${p}-q" placeholder="Search…" value="${esc(f.q)}" aria-label="Search the questions">
+    ${sel('difficulty', 'Any difficulty', Object.entries(DIFF_LABEL))}${sel('kind', 'Any kind', Object.entries(KIND_LABEL))}
+    ${tags.length ? sel('tag', 'Any tag', tags.map((x) => [x, x])) : ''}
+    ${sel('unused', 'Printed or not', [['never', 'Never printed'], ['90', 'Not printed for 3 months'], ['365', 'Not printed for a year']])}
+    ${archived ? `<label class="check"><input type="checkbox" id="${p}-archived" ${f.archived ? 'checked' : ''}><span>Archived too</span></label>` : ''}</div>`;
+}
+const tagsOf = (files) => [...new Set(files.flatMap((f) => (f.meta && f.meta.tags) || []))].sort((a, b) => a.localeCompare(b));
+async function searchInto(f, bank, group) {
+  const p = new URLSearchParams({ archived: '1' });
+  if (bank) p.set('bank', bank);
+  if (group) p.set('group', group);
+  ['q', 'difficulty', 'kind', 'unused'].forEach((k) => { if (f[k]) p.set(k, f[k]); });
+  if (f.tag) p.append('tag', f.tag);
+  const seq = (f.seq = (f.seq || 0) + 1);
+  let r;
+  try { r = await getJSON(`/ui/api/bank-search?${p}`); } catch { return false; }
+  if (f.seq !== seq) return false;
+  f.info = Object.fromEntries((r.items || []).map((x) => [x.item, x]));
+  f.list = r.items || [];
+  f.active = !!(f.q || f.difficulty || f.kind || f.tag || f.unused);
+  return true;
+}
+function renderBankFilters() {
+  const host = $('#bank-filters');
+  if (!host || !S.qdata || !S.qdata.bank || !S.bf) return;
+  if (host.contains(document.activeElement)) return; // the teacher is typing
+  host.innerHTML = S.qdata.files.length ? filterRow('bf', S.bf, tagsOf(S.qdata.files), false) : '';
+}
+async function bankFilter() {
+  const f = S.bf; if (!f) return;
+  if (await searchInto(f, f.bank, null) && S.route.kind === 'bank' && S.route.name === f.bank) renderQList();
+}
+let filterTimer = null;
+function filterInput(t) {
+  const m = /^(bf|bpf)-(q|difficulty|kind|tag|unused|archived)$/.exec(t.id || '');
+  if (!m) return false;
+  const f = m[1] === 'bf' ? S.bf : S.bp && S.bp.f;
+  if (!f) return true;
+  f[m[2]] = m[2] === 'archived' ? t.checked : t.value;
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => (m[1] === 'bf' ? bankFilter() : bpFilter()), m[2] === 'q' ? 250 : 0);
+  return true;
+}
+
+/* The Question banks page: search all of them. */
+let bksTimer = null;
+function bankResults() {
+  const s = S.bks;
+  if (!s || !s.q) return '';
+  if (!s.items) return '<p class="subtle">Searching…</p>';
+  if (!s.items.length) return '<p class="subtle">No question matches.</p>';
+  return `<div class="bp-list b-results">${s.items.map((x) => `<button class="bp-row b-hit" data-act="bsearch-open" data-bank="${esc(x.bank)}" data-item="${esc(x.item)}">
+    <span class="subtle">${esc(x.bank)}${x.group ? ` › ${esc(x.group)}` : ''}</span><span class="mono">${esc(x.item)}</span>${x.archived ? '<span class="chip">archived</span>' : '<span></span>'}
+    <span class="bp-text">${esc(trunc(x.title || '', 90))}</span><span class="subtle">${x.difficulty ? DIFF_LABEL[x.difficulty] : ''}${x.used ? ` · printed ${x.used}×` : ''}</span></button>`).join('')}</div>`;
+}
+function bankSearchInput(t) {
+  if (t.id !== 'bk-search') return false;
+  S.bks = { q: t.value.trim(), items: null };
+  clearTimeout(bksTimer);
+  bksTimer = setTimeout(async () => {
+    const s = S.bks; if (!s || !s.q) { const h = $('#bk-results'); if (h) h.innerHTML = ''; return; }
+    const f = { q: s.q };
+    if (await searchInto(f, null, null) && S.bks === s) { s.items = f.list; const h = $('#bk-results'); if (h) h.innerHTML = bankResults(); }
+  }, 250);
+  return true;
+}
+
+/* A bank downloaded as a zip, imported here as a new bank. */
+function bankZipImport() {
+  openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('upload')}</span><div><h2 id="dlg-title">Import a bank</h2><p class="subtle" style="margin:2px 0 0">A zip made with "Download as a zip", here or on another computer. It becomes a bank of your own, with its history.</p></div></div>
+    <div class="dialog-body"><input type="file" id="bank-zip-file" accept=".zip,application/zip">
+      <label class="field" style="margin-top:10px"><span class="field-label">Name (optional: the bank's own name is used)</span><input class="input" id="bank-zip-name" maxlength="80"></label>
+      <div id="bank-zip-msg"></div></div>
+    <div class="dialog-foot"><button class="btn" data-act="dialog-cancel">Cancel</button><button class="btn btn-primary" data-act="bank-zip-go">${ic('upload')} Import</button></div>`);
+}
+async function bankZipGo() {
+  const input = $('#bank-zip-file'); const file = input && input.files[0];
+  const msg = (h) => { const m = $('#bank-zip-msg'); if (m) m.innerHTML = h; };
+  if (!file) { msg('<p class="field-hint" style="color:var(--danger)">Choose the zip first.</p>'); return; }
+  let r;
+  try { r = await postForm('/ui/api/banks/import', [[file, file.name]], { name: ($('#bank-zip-name') || {}).value || '' }); } catch (e) { r = e.body || { error: e.message }; }
+  if (!r || !r.ok) { msg(banner('danger', 'warning-triangle', esc((r && r.error) || 'Not imported.'), '')); return; }
+  closeDialog();
+  toast(`"${r.name}" imported: ${plural(r.items, 'question', 'questions')}${r.history ? ', with its history' : ''}.`);
+  navigate(`/bank/${enc(r.name)}`);
+}
+
 /* ---------- In an exam: from a bank ---------- */
 
 async function openPicker(section = null) {
@@ -305,7 +436,7 @@ async function openPicker(section = null) {
   if (!r.banks || !r.banks.length) { notice('No question bank yet', 'Make a bank on the Question banks page (top right), or save this exam\'s questions into one.', 'book-stack'); return; }
   const sel = typeof qsel === 'function' ? qsel() : null;
   if (!S.bcopies) await loadCopies();
-  S.bp = { banks: r.banks, bank: null, data: null, group: null, ticked: [], mode: 'new', section: section || (sel && sel.group) || null, count: 3, chosen: null, scoringAll: false, sections: await examSections() };
+  S.bp = { banks: r.banks, bank: null, data: null, group: null, ticked: [], mode: 'new', section: section || (sel && sel.group) || null, count: 3, chosen: null, scoringAll: false, sections: await examSections(), f: { q: '', difficulty: '', kind: '', tag: '', unused: '', archived: false, active: false, info: {} } };
   if (section) S.bp.mode = 'into';
   await bpPickBank(r.banks[0].name);
 }
@@ -320,20 +451,42 @@ async function bpPickBank(name) {
   if (S.bp !== bp) return;
   bp.group = bp.data.bank && bp.data.bank.groups.length ? bp.data.bank.groups[0].name : null;
   renderPicker();
+  bpFilter();
+}
+async function bpFilter() {
+  const bp = S.bp; if (!bp || !bp.group) return;
+  if (await searchInto(bp.f, bp.bank, bp.group) && S.bp === bp) { bp.chosen = null; const h = $('#bp-listhost'); if (h) h.innerHTML = pickerList(); }
+}
+/* The group's questions as the filters show them: archived ones only when asked. */
+function bpShown() {
+  const bp = S.bp; const d = bp && bp.data;
+  const g = d && d.bank ? d.bank.groups.find((x) => x.name === bp.group) : null;
+  if (!g) return [];
+  const files = Object.fromEntries(d.files.map((f) => [f.item, f]));
+  return g.items.filter((n) => (!bp.f.active || bp.f.info[n]) && (bp.f.archived || !((files[n] || {}).meta || {}).archived));
+}
+function pickerList() {
+  const bp = S.bp; const d = bp.data;
+  const g = d && d.bank ? d.bank.groups.find((x) => x.name === bp.group) : null;
+  if (!d) return '<p class="subtle">Loading…</p>';
+  if (d.error) return `<p>${esc(d.error)}</p>`;
+  if (!g) return '<p class="subtle">This bank has no group yet.</p>';
+  const files = Object.fromEntries(d.files.map((f) => [f.item, f]));
+  const names = bpShown();
+  return `<div class="bp-list">${names.map((n) => { const f = files[n]; const q = f && f.questions[0]; const m = (f && f.meta) || {};
+      const chosen = bp.chosen && bp.chosen.includes(n);
+      const here = !!(S.bcopies && m.uid && S.bcopies.copies.some((c) => c.bank_uid === d.bank.uid && c.item_uid === m.uid));
+      const u = bp.f.info[n];
+      return `<label class="bp-row ${chosen ? 'is-chosen' : ''} ${here ? 'is-in' : ''}"><input type="checkbox" class="bp-tick" data-item="${esc(n)}" ${bp.ticked.includes(n) && !here ? 'checked' : ''} ${bp.mode === 'ticked' && !here ? '' : 'disabled'}>
+        <span class="mono">${esc(q ? q.id : n)}</span>${f && f.questions.length > 1 ? `<span class="chip">set of ${f.questions.length}</span>` : ''}${here ? '<span class="chip" title="Not added twice">in this exam</span>' : ''}${m.archived ? '<span class="chip">archived</span>' : ''}
+        <span class="bp-text">${esc(trunc(m.title || (q && q.text) || '', 90))}</span><span class="subtle">${m.difficulty ? DIFF_LABEL[m.difficulty] : ''}${(m.tags || []).length ? ` · ${m.tags.map(esc).join(', ')}` : ''}${u ? ` · ${u.used ? `printed ${u.used}× (last: ${esc(u.last_exam || '')})` : 'never printed'}` : ''}</span></label>`; }).join('') || `<p class="subtle">${g.items.length ? 'No question of this group matches.' : 'No question in this group.'}</p>`}</div>`;
 }
 function renderPicker() {
   const bp = S.bp; if (!bp) return;
   const d = bp.data;
   const g = d && d.bank ? d.bank.groups.find((x) => x.name === bp.group) : null;
-  const files = d && d.files ? Object.fromEntries(d.files.map((f) => [f.item, f])) : {};
   const secSel = `<select class="select input-sm" id="bp-section">${bp.sections.map((s) => `<option ${s === bp.section ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>`;
-  const list = !d ? '<p class="subtle">Loading…</p>' : d.error ? `<p>${esc(d.error)}</p>` : !g ? '<p class="subtle">This bank has no group yet.</p>'
-    : `<div class="bp-list">${g.items.map((n) => { const f = files[n]; const q = f && f.questions[0]; const m = (f && f.meta) || {};
-      const chosen = bp.chosen && bp.chosen.includes(n);
-      const here = !!(S.bcopies && m.uid && S.bcopies.copies.some((c) => c.bank_uid === d.bank.uid && c.item_uid === m.uid));
-      return `<label class="bp-row ${chosen ? 'is-chosen' : ''} ${here ? 'is-in' : ''}"><input type="checkbox" class="bp-tick" data-item="${esc(n)}" ${bp.ticked.includes(n) && !here ? 'checked' : ''} ${bp.mode === 'ticked' && !here ? '' : 'disabled'}>
-        <span class="mono">${esc(q ? q.id : n)}</span>${f && f.questions.length > 1 ? `<span class="chip">set of ${f.questions.length}</span>` : ''}${here ? '<span class="chip" title="Not added twice">in this exam</span>' : ''}
-        <span class="bp-text">${esc(trunc(m.title || (q && q.text) || '', 90))}</span><span class="subtle">${m.difficulty ? DIFF_LABEL[m.difficulty] : ''}${(m.tags || []).length ? ` · ${m.tags.map(esc).join(', ')}` : ''}</span></label>`; }).join('') || '<p class="subtle">No question in this group.</p>'}</div>`;
+  const list = `${d && d.bank && g ? filterRow('bpf', bp.f, tagsOf(d.files.filter((f) => g.items.includes(f.item))), true) : ''}<div id="bp-listhost">${pickerList()}</div>`;
   const radio = (v, label) => `<label class="check"><input type="radio" name="bp-mode" value="${v}" ${bp.mode === v ? 'checked' : ''}><span>${label}</span></label>`;
   const sectionsLeft = bp.sections.length;
   openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('book-stack')}</span><div><h2 id="dlg-title">Add questions from a bank</h2><p class="subtle" style="margin:2px 0 0">The exam gets copies; the bank is not changed.</p></div></div>
@@ -344,7 +497,7 @@ function renderPicker() {
         ${radio('new', 'The whole group, as a new section')}
         ${sectionsLeft ? radio('into', `The whole group, into the section ${bp.mode === 'into' ? secSel : ''}`) : ''}
         ${sectionsLeft ? radio('ticked', `The questions ticked below, into the section ${bp.mode === 'ticked' ? secSel : ''}`) : ''}
-        ${sectionsLeft ? radio('random', `<input class="input input-sm" type="number" id="bp-count" min="1" max="999" value="${bp.count}" style="width:70px" ${bp.mode === 'random' ? '' : 'disabled'}> picked at random from the group's questions not in this exam (shown first), into the section ${bp.mode === 'random' ? secSel : ''}`) : ''}
+        ${sectionsLeft ? radio('random', `<input class="input input-sm" type="number" id="bp-count" min="1" max="999" value="${bp.count}" style="width:70px" ${bp.mode === 'random' ? '' : 'disabled'}> picked at random from the questions shown below that this exam doesn't have (shown first), into the section ${bp.mode === 'random' ? secSel : ''}`) : ''}
       </div>
       ${g && g.scoring ? `<div class="bp-modes"><p class="subtle" style="margin:4px 0 2px">The group's scoring <code>${esc(g.scoring)}</code> goes to the questions without their own.</p><label class="check"><input type="checkbox" id="bp-scoring-all" ${bp.scoringAll ? 'checked' : ''}><span>Give it to every question, also those with their own scoring</span></label></div>` : ''}
       ${bp.chosen ? banner('info', 'info-circle', `Picked: ${esc(bp.chosen.join(', '))}`, 'These are added (the pick is made once). Pick again for another.') : ''}
@@ -356,7 +509,7 @@ function renderPicker() {
 }
 async function bpPick() {
   const bp = S.bp; if (!bp) return;
-  const r = await postJSON('/ui/api/bank-pull', { bank: bp.bank, group: bp.group, count: bp.count, seed: `${Date.now()}`, preview: true });
+  const r = await postJSON('/ui/api/bank-pull', { bank: bp.bank, group: bp.group, items: bpShown(), count: bp.count, seed: `${Date.now()}`, preview: true });
   if (!r.ok) { toast(r.error || 'No pick.', 'warning-triangle'); return; }
   bp.chosen = r.chosen.map((x) => x.item);
   renderPicker();
@@ -628,6 +781,9 @@ const BANK_ACTIONS = {
   'bank-save-exam': () => openSaveDialog({ whole: true }),
   'bs-save': () => bsSave(),
   'copies-open': () => openCopies(),
+  'bank-zip-import': () => bankZipImport(),
+  'bank-zip-go': () => bankZipGo(),
+  'bsearch-open': (el) => { S.bankPick = { bank: el.dataset.bank, item: el.dataset.item }; navigate(`/bank/${enc(el.dataset.bank)}`); },
   'copy-compare': (el) => openCompare(el.dataset.item),
   'copy-op': (el) => copyOp(el.dataset.op),
   'copy-save-new': (el) => { closeDialog(); S.bcmp = null; openSaveDialog({ items: [el.dataset.item], linked: 'new' }); },

@@ -820,6 +820,90 @@ try:
           bk.clashes(["$\\N$ and $\\Z$"], "\\newcommand{\\N}{\\mathbb{N}}\n\\newcommand{\\Z}{\\mathbb{Z}}",
                      "\\providecommand{\\N}{\\mathbb{N}}\n\\newcommand{\\Z}{\\mathbf{Z}}\n\\begin{document}")
           == [{"macro": "\\Z", "bank": "\\newcommand{\\Z}{\\mathbb{Z}}", "exam": "\\newcommand{\\Z}{\\mathbf{Z}}"}])
+    # search index and usage (ui_bankindex.py)
+    J = lambda v: json.dumps(v, default=str)[:400]
+    def check3(name, cond, info=''):
+        check(name, cond)
+        if not cond and info:
+            print('     ', info)
+    import ui_bankindex as bix
+    _home = os.path.join(_tmpb, "home")
+    _pd = os.path.join(_root, "ann")
+    open(os.path.join(_bd, "items", "geo-1", "item.json"), "w").write(bk.meta_json(title="Triangle angles", tags=["geometry", "Olympiad 2025"], difficulty="hard"))
+    _geo = bk.item_meta(_bd, "geo-1")["uid"]
+    _s = bix.search(_home, _pd)
+    check3("index: every item, in group order, with its kind and group", [(x["item"], x["kind"], x["group"]) for x in _s]
+          == [("alg-2", "single", "algebra"), ("alg-1", "single", "algebra"), ("geo-1", "single", None)], J(_s))
+    check3("index: words found as prefixes in titles, text and tags; filters on difficulty and tags (any case)",
+          [x["item"] for x in bix.search(_home, _pd, q="triang")] == ["geo-1"] and [x["item"] for x in bix.search(_home, _pd, q="olymp")] == ["geo-1"]
+          and [x["item"] for x in bix.search(_home, _pd, difficulty="hard")] == ["geo-1"]
+          and [x["item"] for x in bix.search(_home, _pd, tags=["olympiad 2025"])] == ["geo-1"] and bix.search(_home, _pd, q="nothinglikethis") == [])
+    check3("index: what is typed can't break the query", len(bix.search(_home, _pd, q='" AND ( OR *')) >= 0 and bix.fts_query('a"b (c') == '"a"* AND "b"* AND "c"*')
+    time.sleep(0.01)
+    open(os.path.join(_bd, "items", "alg-1", "item.tex"), "w").write("\\begin{question}{alg-1}Quadratic équations\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n")
+    check3("index: a file changed (by hand too) is read again; accents don't matter", [x["item"] for x in bix.search(_home, _pd, q="equations")] == ["alg-1"])
+    bix.note_printed(_home, "Exam 1", "e1", [(_r["uid"], _geo, "geo-1")])
+    bix.note_printed(_home, "Exam 1", "e1", [(_r["uid"], _geo, "geo-1")])
+    _g = next(x for x in bix.search(_home, _pd) if x["item"] == "geo-1")
+    check3("usage: printing counts once per exam, with the last exam", _g["used"] == 1 and _g["last_exam"] == "Exam 1" and _g["last_used"])
+    bix.note_printed(_home, "Exam 2", "e2", [(_r["uid"], _geo, "geo-1")])
+    check3("usage: \"not used since\" keeps items never printed or printed before",
+          [x["used"] for x in bix.search(_home, _pd) if x["item"] == "geo-1"] == [2]
+          and "geo-1" not in [x["item"] for x in bix.search(_home, _pd, unused_since=int(time.time()) - 60)]
+          and "alg-1" in [x["item"] for x in bix.search(_home, _pd, unused_since=int(time.time()) + 1)]
+          and [x["item"] for x in bix.search(_home, _pd, unused_since=1)] == ["alg-2", "alg-1"])
+    open(os.path.join(_bd, "items", "geo-1", "item.json"), "w").write(bk.meta_json(uid=_geo, title="Triangle angles", archived=True))
+    check3("index: an archived item is found only when asked", "geo-1" not in [x["item"] for x in bix.search(_home, _pd)]
+          and [x["archived"] for x in bix.search(_home, _pd, archived=True) if x["item"] == "geo-1"] == [True])
+    open(os.path.join(_home, bix.INDEX), "wb").write(b"not a database at all" * 100)
+    check3("index: a damaged index is thrown away and rebuilt", len(bix.search(_home, _pd, archived=True)) == 3)
+    os.makedirs(os.path.join(_pd, "Exam 1", "items", "geo-1")); open(os.path.join(_pd, "Exam 1", "options.xml"), "w").write("<x/>")
+    open(os.path.join(_pd, "Exam 1", "items", "geo-1", "item.json"), "w").write(bk.meta_json(origin={"bank_uid": _r["uid"], "item_uid": _geo}))
+    check3("usage: the exams holding a copy of an item", bix.exams_with(_pd, _r["uid"], _geo) == [("Exam 1", "geo-1")])
+    shutil.rmtree(os.path.join(_pd, "Exam 1"))
+    _big = bk.bank_dir(_pd, "Big bank")
+    for _i in range(5000):
+        os.makedirs(os.path.join(_big, "items", f"b{_i}"))
+        open(os.path.join(_big, "items", f"b{_i}", "item.tex"), "w").write(
+            "\\begin{question}{b%d}Question number %d about %s\\begin{choices}\\correctchoice{1}\\wrongchoice{2}\\end{choices}\\end{question}\n" % (_i, _i, ("algebra", "geometry", "numbers")[_i % 3]))
+    open(os.path.join(_big, "bank.json"), "w").write(bk.to_json(bk.new_bank("Big bank")))
+    _t0 = time.time(); bix.search(_home, _pd, q="geometry"); _t1 = time.time(); _hits = bix.search(_home, _pd, q="geometry", limit=2000); _t2 = time.time()
+    print(f"     (5,000 items: index built in {(_t1 - _t0) * 1000:.0f} ms, then a search in {(_t2 - _t1) * 1000:.0f} ms)")
+    check3("index: a search of 5,000 items once the index is built takes well under a second (target 200 ms)", _t2 - _t1 < 1.0 and len(_hits) == 1667, f"{_t2 - _t1:.3f}s {len(_hits)}")
+    shutil.rmtree(_big)
+    # a bank as a zip (ui_bankzip.py)
+    import ui_bankzip as bz, zipfile, io
+    _zb = io.BytesIO(); bz.write(_bd, _zb)
+    _zn = zipfile.ZipFile(io.BytesIO(_zb.getvalue())).namelist()
+    check3("zip: the bank's files, nothing else", set(_zn) == {"bank.json", "items/alg-1/item.tex", "items/alg-2/item.tex", "items/geo-1/item.tex", "items/geo-1/item.json"}, J(_zn))
+    def _zip(entries, link=None):
+        p = os.path.join(_tmpb, f"z{len(os.listdir(_tmpb))}.zip")
+        with zipfile.ZipFile(p, "w") as z:
+            for n, d in entries.items():
+                z.writestr(n, d)
+            if link:
+                i = zipfile.ZipInfo(link); i.external_attr = (0o120777 << 16); z.writestr(i, "/etc/passwd")
+        return p
+    def _unzip(p):
+        d = tempfile.mkdtemp(dir=_tmpb)
+        try:
+            return bz.read(p, d), d
+        except bz.ZipError as e:
+            return str(e), d
+    (_w, _sk), _d = _unzip(_zip({"bank.json": "{}", "items/a-1/item.tex": "x", "items/a-1/fig.png": "p", ".git/config": "x", "items/bad name/item.tex": "x", "items/a-1/run.sh": "x", "notes.txt": "x"}))
+    check3("zip: only the bank's kind of files are taken; the rest is listed as skipped", sorted(_w) == ["bank.json", "items/a-1/fig.png", "items/a-1/item.tex"]
+          and set(_sk) == {".git/config", "items/bad name/item.tex", "items/a-1/run.sh", "notes.txt"} and not os.path.exists(os.path.join(_d, ".git")), J([_w, _sk]))
+    check3("zip: names climbing out, absolute names and links are refused",
+          all(isinstance(_unzip(_zip(e, link=l))[0], str) for e, l in (({"bank.json": "{}", "../evil.tex": "x"}, None), ({"bank.json": "{}", "/abs/x": "x"}, None),
+                                                                         ({"bank.json": "{}"}, "items/a-1/item.tex"))))
+    check3("zip: one without bank.json isn't a bank", "no bank.json" in _unzip(_zip({"items/a-1/item.tex": "x"}))[0])
+    (_w, _sk), _d = _unzip(_zip({"My bank/bank.json": "{}", "My bank/items/a-1/item.tex": "x", "__MACOSX/My bank/._x": "x"}))
+    check3("zip: a zip made from the bank's folder is read too", sorted(_w) == ["bank.json", "items/a-1/item.tex"], J(_w))
+    _mf = bz.MAX_FILE; bz.MAX_FILE = 1000
+    check3("zip: a file bigger than allowed, unpacked, is refused", "too big" in _unzip(_zip({"bank.json": "{}", "items/a-1/item.tex": "x" * 5000}))[0])
+    bz.MAX_FILE = _mf
+    check3("banks: an imported bank's name: odd characters dropped, (2) when taken",
+          bk.free_name(_pd, "Olympiad algebra") == "Olympiad algebra (2)" and bk.free_name(_pd, "../My/bank!") == "My bank" and bk.free_name(_pd, "") == "Bank")
     # a bank's own history and trash
     open(os.path.join(_bd, "bank.json"), "w").write(bk.to_json(_r))
     _rb = vcs.Repo(_bd, _root, "bank").open()
@@ -833,6 +917,44 @@ try:
     _nm, _tg = vcs.restore_trash(_home, _info["id"], os.path.join(_root, "ann"), by="ann")
     check("banks: ...and comes back into _banks with its history", _tg == "bank" and os.path.isfile(os.path.join(_bd, "bank.json"))
           and vcs.Repo(_bd, _root, "bank").open().log()[0][0]["what"] == "edited")
+    _bun = os.path.join(_tmpb, "h.bundle")
+    vcs.Repo(_bd, _root, "bank").open().bundle(_bun)
+    _bd2 = bk.bank_dir(_pd, "Copied bank"); shutil.copytree(_bd, _bd2)
+    _b2 = bk.read(_bd2); _b2["uid"] = vcs.new_uid(); open(os.path.join(_bd2, "bank.json"), "w").write(bk.to_json(_b2))
+    check3("zip: a bank's history comes along as a git bundle, every object checked", vcs.import_bundle(_bd2, _root, _bun, "bank")
+          and any(v["what"] == "edited" for v in vcs.Repo(_bd2, _root, "bank").open().log()[0]))
+    _bd3 = bk.bank_dir(_pd, "Bad bundle"); shutil.copytree(_bd, _bd3)
+    _b3 = bk.read(_bd3); _b3["uid"] = vcs.new_uid(); open(os.path.join(_bd3, "bank.json"), "w").write(bk.to_json(_b3))
+    open(_bun + "x", "wb").write(b"# v2 git bundle\nnot really\n")
+    check3("zip: a broken bundle is refused, and the history starts from the files", not vcs.import_bundle(_bd3, _root, _bun + "x", "bank")
+          and not os.path.exists(os.path.join(_root, "_amcweb", "ann", "history", "banks", _b3["uid"] + ".git"))
+          and len(vcs.Repo(_bd3, _root, "bank").open().log()[0]) == 1)
+    # an odd item.json (a list where a string goes) keeps only that item out of the index
+    _home = vcs.amcweb_dir(_bd, _root, "bank")
+    _odd = os.path.join(_bd2, "items", bk.read(_bd2)["all"][0], "item.json")
+    _odd_was = open(_odd).read() if os.path.exists(_odd) else None  # the test bank has no item.json
+    open(_odd, "w").write(json.dumps({"uid": ["x"], "title": ["t"], "tags": "no"}))
+    try:
+        _found = bix.search(_home, _pd, q="")
+        check("index: an item with an odd item.json is left out, the others are found", any(f["bank"] == "Copied bank" for f in _found))
+    except Exception as e:
+        check("index: an item with an odd item.json is left out, the others are found", False)
+    if _odd_was is None:
+        os.unlink(_odd)
+    else:
+        open(_odd, "w").write(_odd_was)
+    check("index: a search that has no word in it finds nothing, not everything", bix.search(_home, _pd, q="?!") == [])
+    _bad = io.BytesIO()
+    with zipfile.ZipFile(_bad, "w") as _z:
+        _z.writestr("bank.json", "{}")
+        _z.writestr("items/q1/item.tex", "x")
+    _raw = bytearray(_bad.getvalue())
+    _raw[_raw.index(b"x", _raw.index(b"items/q1/item.tex") + 17)] ^= 0xFF  # the file's bytes no longer match its CRC
+    _badp = os.path.join(_tmpb, "bad.zip"); open(_badp, "wb").write(bytes(_raw))
+    try:
+        bz.read(_badp, os.path.join(_tmpb, "bad-out")); check("zip: a damaged entry is refused with a message, not a crash", False)
+    except bz.ZipError:
+        check("zip: a damaged entry is refused with a message, not a crash", True)
     _pre = "\\usepackage{amssymb}\n\\newcommand{\\foo}[1]{%\n  \\mathrm{#1}%\n}\n\\newcommand{\\bar}{\\foo{x}}\n\\def\\Z#1{z#1}\n\\let\\a=\\b\n% \\newcommand{\\hidden}{}\n\\RequirePackage{tikz}\n"
     _defs = bk.definitions(_pre)
     check("banks: a definition is taken whole (several lines, [n], #1, \\let), comments left out",

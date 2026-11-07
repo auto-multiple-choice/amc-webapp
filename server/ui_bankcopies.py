@@ -114,7 +114,7 @@ def _follow(pdir, rec, bk, exam_copies):
         in_exam = {c["item_uid"] for c in exam_copies if c["bank_uid"] == f["bank_uid"]}
         seen = set(f.get("seen") or []) | in_exam
         new = [{"item": n, "title": banks.item_meta(bdir, n).get("title") or banks.plain_title(_item_state(os.path.join(bdir, items.ITEMS_DIR, n))[0])}
-               for u, n in uids.items() if u not in seen]
+               for u, n in uids.items() if u not in seen and not banks.item_meta(bdir, n).get("archived")]
         pools = items.read_pools(ui._pools_text(pdir))
         in_sec = {p["name"] for p in pools if p["group"] == sec}
         gone = [c["item"] for c in exam_copies if c["bank_uid"] == f["bank_uid"] and c["item"] in in_sec

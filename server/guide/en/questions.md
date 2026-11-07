@@ -103,6 +103,12 @@ Nothing changes until you choose. Once the exam is printed, only answer key and 
 
 On a bank's page the questions are edited with the same form, LaTeX view and History as in an exam; each one also has a difficulty and tags. **Import LaTeX…** reads files whose questions are `\element{group}{…}` blocks (like the RJ question files), with their figures. A deleted bank goes to the Trash for 30 days.
 
+**Finding questions.** Above a bank's questions, and in **From a bank…**, a search box and filters narrow the list: words of the question, its title or tags (the start of a word is enough: *quadr* finds *quadratic*), difficulty, kind, tag, and **never printed** or **not printed for 3 months / a year**. A random pick draws from the questions the filters show. The **Question banks** page searches all your banks at once; a click opens the question in its bank.
+
+- A question counts as **used** when an exam with a copy of it is printed (or marked as printed), not when it is added: a question dropped before printing doesn't count. A bank's question shows which exams printed it and which hold a copy now; the list shows how many times it was printed.
+- **Archived**: a question you don't want to offer any more. It is hidden from **From a bank…** (tick **Archived too** to see it) and left out when a whole group is added; exams that have it, and History, keep it.
+- **Download as a zip** (in the bank's **⋯** menu) saves the bank with its history; **Import a bank…** on the Question banks page reads such a zip as a new bank of your own, to move a bank between your computer and a server, or to give a colleague a copy. The zip is checked first: only a bank's kind of files are taken.
+
 ## LaTeX for those who prefer it
 
 Every question has a **Form | LaTeX** switch above it. **LaTeX** shows the question's own LaTeX: the item's file (for a set, all its questions), or, in an exam written in one file, the question from `\begin{question}` to `\end{question}`. The choice is remembered, so the questions keep opening in LaTeX.

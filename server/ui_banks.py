@@ -81,6 +81,22 @@ def check_name(projects_dir, name, exclude=None):
     return name
 
 
+def free_name(projects_dir, wanted):
+    """A new bank's name from WANTED (an imported bank's title or file
+    name): characters a name can't hold dropped, "(2)" added when taken."""
+    base = re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9 _().,'+-]+", " ", str(wanted or "")))
+    base = re.sub(r"^[^A-Za-z0-9]+", "", base).strip()[:70]
+    if not base or not base[0].isalnum():
+        base = ("Bank " + base).strip()[:70]
+    name = base
+    for n in range(2, 1000):
+        try:
+            return check_name(projects_dir, name)
+        except BankError:
+            name = f"{base} ({n})"
+    raise BankError("No free name for this bank.")
+
+
 # ---------------------------------------------------------------- bank.json
 
 def _read_json(path):
@@ -197,11 +213,13 @@ def item_meta(bdir, name):
     return _read_json(os.path.join(bdir, items.ITEMS_DIR, name, items.META_FILE))
 
 
-def meta_json(uid=None, title="", tags=(), difficulty="", origin=None, created=None):
+def meta_json(uid=None, title="", tags=(), difficulty="", origin=None, created=None, archived=False):
     m = {"uid": uid or vcs.new_uid(), "title": title or "", "tags": [t for t in tags if t][:20],
          "difficulty": difficulty if difficulty in DIFFICULTIES else "", "created": created or int(time.time())}
     if origin:
         m["origin"] = origin
+    if archived:
+        m["archived"] = True
     return json.dumps(m, indent=1, ensure_ascii=False) + "\n"
 
 
