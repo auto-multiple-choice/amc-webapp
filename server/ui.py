@@ -3870,7 +3870,7 @@ def on_create_exam(data):
     name, _ = core.set_project(name)
     if gid == STARTER_GROUP and not tid.endswith("-txt"):
         try:  # the app's own starters keep their questions in items (doc/question-bank-plan.md, section 4)
-            def _write(rel, data):
+            def _write(rel, data, based_on=None):  # the split writes pools.tex with its digest; a new exam has none to check
                 full = os.path.join(rep, rel)
                 os.makedirs(os.path.dirname(full), exist_ok=True)
                 with open(full, "wb") as f:
