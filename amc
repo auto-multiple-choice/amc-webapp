@@ -666,10 +666,8 @@ copy_single_user_projects() {
 }
 
 create_first_admin() {
-  if [ ! -t 0 ]; then
-    warn "There are no accounts yet. Create the first admin with: ./amc user add <name> --admin"
-    return 0
-  fi
+  # Without a terminal, cmd_start's warning already says how to do it.
+  [ -t 0 ] || return 0
   say "Create the first admin account. It can add the other teachers on the Admin page."
   local name=""
   while [ -z "$name" ]; do
