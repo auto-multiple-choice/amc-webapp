@@ -674,6 +674,58 @@ for _st_name in ("blank", "builder"):
     _r = itm.split(_files, "exam.tex", lambda p: False)
     check(f"items: the {_st_name} starter splits cleanly", _r["items"] and "\\input{pools}" in _r["files"]["exam.tex"])
 
+# LaTeX for pro users (ui_latex.py)
+import ui_latex as ltx
+check("latex: balanced LaTeX has no problem (escaped braces, \\verb, comments, verbatim ignored)",
+      ltx.problems("\\begin{question}{q}A {b} \\% \\{ \\verb|{| % } comment\n\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}") == []
+      and ltx.problems("x\n\\begin{verbatim}{\n\\end{verbatim}") == [])
+check("latex: an unclosed brace is found, at its line", ltx.problems("\\begin{question}{q}\nA {b\n\\end{question}") == [{"line": 2, "message": "This { isn't closed before \\end{question} (line 3)."}])
+check("latex: a } that closes nothing", ltx.problems("a }")[0]["message"] == "This } closes nothing.")
+check("latex: environments must match", "closes \\begin{choices}" in ltx.problems("\\begin{question}{q}\\begin{choices}\\end{question}")[0]["message"]
+      and ltx.problems("\\begin{question}{q}")[0]["message"] == "\\begin{question} is never closed.")
+_log = "This is pdfTeX\n(/amc/x/exam.tex (/usr/share/texmf/tex/latex/base/article.cls\nDocument Class) (./pools.tex) (./items/alg-1/item.tex\n! Undefined control sequence.\nl.5   Find \\foo\n                 the answer"
+check("latex: a log's first error is traced to the item file and line", ltx.first_error(_log, "/amc/x") == {"file": "items/alg-1/item.tex", "line": 5, "message": "Undefined control sequence.", "context": "Find \\foo"})
+check("latex: an error in a package isn't blamed on the exam", ltx.first_error("(/usr/share/texmf/x.sty\n! Bad thing.\nl.3 x", "/amc/x")["file"] is None
+      and ltx.first_error("no error here", "/a") is None)
+_src, _first = ltx.check_source("\\documentclass{article}\n\\usepackage{automultiplechoice}\n", "\\begin{question}{q}A\\end{question}\n", "alg-1")
+check("latex: the check document prints the question once, finds its figures, and says where it starts",
+      "\\graphicspath{{items/alg-1/}}" in _src and "\\insertgroup{amcuicheck}" in _src and _src.split("\n")[_first - 1] == "\\begin{question}{q}A\\end{question}")
+_doc = ltx.section_document([("a", "\\begin{question}{a}x\\end{question}\n"), ("b", "B\n")])
+check("latex: a section document splits back into its items", ltx.split_section(_doc) == [("a", "\\begin{question}{a}x\\end{question}\n", 1), ("b", "B\n", 4)])
+for _bad, _why in ((_doc.replace("%%%% item b %%%%", "%%%% item b %%%"), "changed"), ("text\n" + _doc, "before the first"),
+                   (_doc + "%%%% item a %%%%\nx\n", "twice"), ("no separators", "missing")):
+    try:
+        ltx.split_section(_bad); check(f"latex: a section document with a separator {_why} is refused", False)
+    except ValueError as e:
+        check(f"latex: a section document with a separator {_why} is refused", _why in str(e))
+check("latex: \\verb* and an unclosed \\verb hide nothing past their line", ltx.problems("\\verb*|a| }\n\\end{x}") != [] and ltx.problems("\\verb|a\n}\n\\end{x}") != []
+      and ltx.problems("\\verb*|{| \\lstinline[language=C]|{| \\mintinline{c}|{| \\mintinline{c}{ { }") == [])
+check("latex: a \\verb or % inside verbatim can't swallow its \\end", ltx.problems("\\begin{verbatim}\n\\verb|x\n% {\n\\end{verbatim}\n") == [])
+check("latex: a warning's parentheses don't close the item's file in the log",
+      ltx.first_error("(./main.tex (./items/b.tex\nOverfull \\hbox (74pt too wide) in paragraph at lines 1--2\n! Undefined control sequence.\nl.2 \\foo\n")["file"] == "items/b.tex")
+_long = "(./items/" + "a" * 67 + "/it"
+check("latex: a path the log wrapped at 79 characters is read whole",
+      ltx.first_error("(./main.tex\n" + _long + "\nem.tex\n! Undefined control sequence.\nl.3 x\n")["file"] == "items/" + "a" * 67 + "/item.tex")
+check("latex: the file:line: form of -file-line-error is read first",
+      ltx.first_error("(./main.tex\n./items/q/item.tex:7: Undefined control sequence.\nl.7 \\foo\n") == {"file": "items/q/item.tex", "line": 7, "message": "Undefined control sequence.", "context": "\\foo"})
+check("latex: a commented \\begin{document} doesn't end the preamble", ltx.preamble("% \\begin{document}\n\\x\n\\begin{document}") == "% \\begin{document}\n\\x\n")
+try:
+    ltx.section_document([("n1", "t\n%%%% item x %%%%\nmore")]); check("latex: an item holding a separator line can't be a section document", False)
+except ValueError as e:
+    check("latex: an item holding a separator line can't be a section document", "n1" in str(e))
+check("latex: a CRLF section document is read", ltx.split_section("%%%% item a %%%%\r\nx\r\n") == [("a", "x\n", 1)])
+check("latex: the macros a preamble defines (not commented ones)", ltx.macros("\\newcommand{\\N}{\\mathbb N}\\def\\Z{x}\\DeclareMathOperator{\\lcm}{lcm} % \\newcommand{\\hidden}") == ["N", "Z", "lcm"])
+import ui_questions as _qe
+_inl = "\\element{g}{\n  \\begin{question}{a}A\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n}\n\\element{g}{\n\\begin{question}{b}B\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n}\n"
+_new, _what = _qe.apply(_inl, [{"op": "latex", "id": "a", "latex": "\\begin{question}{a2}New\\begin{choices}\\wrongchoice{1}\\correctchoice{2}\\end{choices}\\end{question}"}])
+check("latex: a question written inline gets its LaTeX replaced, inside its \\element", "\\element{g}{\n  \\begin{question}{a2}New" in _new and "{b}B" in _new)
+for _bad, _why in (("\\begin{question}{a}x {\\end{question}", "Line 1"), ("\\begin{question}{a}x\\end{question}\\begin{question}{c}y\\end{question}", "exactly one question"),
+                   ("\\begin{question}{b}x\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}", "already named")):
+    try:
+        _qe.apply(_inl, [{"op": "latex", "id": "a", "latex": _bad}]); check(f"latex: a LaTeX edit is refused: {_why}", False)
+    except _qe.EditError as e:
+        check(f"latex: a LaTeX edit is refused: {_why}", _why in str(e))
+
 # the question editor (ui_scale.read_latex spans and ui_questions edits)
 import ui_questions as qe
 rj = r"""\documentclass{article}

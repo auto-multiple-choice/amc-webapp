@@ -89,6 +89,10 @@ const S = {
   history: null,          // earlier versions of a source file, shown in the preview panel (/ui/api/history)
   deletingFile: null,     // file being deleted, so the editor moves off it
   qtab: store.get('qtab', 'form'), // Questions: the 'form' or the 'latex' tab
+  qmode: store.get('qmode', 'form'), // a question in the form or in LaTeX ("Open questions in LaTeX")
+  ql: null,               // the question's LaTeX view: file, text, unsaved, last check
+  completions: null,      // the exam's macros and question names, for the LaTeX editors
+  buildErr: null,         // the last build's first error, traced to its file (/ui/api/build-error)
   qdata: null,            // the questions as the form reads them (/ui/api/editor)
   qform: null,            // the question being edited: file, id, edits waiting to be saved
   gotoLine: null,         // line to show when the LaTeX editor opens next
@@ -267,7 +271,7 @@ socket.on('end-command', () => {
   }
 });
 socket.on('dialog', (html) => {
-  if (/msg-err/.test(html)) S.buildError = true;
+  if (/msg-err/.test(html)) { S.buildError = true; if (S.route.step === 'questions' && /latex|LaTeX/.test(html)) loadBuildError(); }
   S.creating = null; // a message while an exam is being created means it was refused
   showServerDialog(html);
   if (S.route.step === 'marking-scheme') loadQuestions(); // a refused change: show what is really saved
@@ -1123,6 +1127,7 @@ function questionsHead() {
     ${header('questions', 'Questions', sub, actions)}
     ${tabs}
     ${guideBox('questions')}
+    ${S.buildErr && !L ? buildErrBanner() : ''}
     ${L ? lockBanner(form ? 'Tick the correct answers and change scoring here or in <b>Marking scheme</b>: those changes are still allowed, because nothing moves on the printed papers.' : 'Correct the answer key and change scoring in <b>Marking scheme</b>: those changes are still allowed, because nothing moves on the printed papers.') : ''}`;
 }
 
@@ -1160,15 +1165,60 @@ function renderEditorBar() {
   }
 }
 
+/* ---------- LaTeX editors (the LaTeX tab, a question's LaTeX view, a section document) ----------
+   AMC snippets and completion of the exam's macros and question names (/ui/api/completions). */
+const AMC_SNIPPETS = [
+  ['question', 'One correct answer', '\\begin{question}{${1:id}}\n\t${2:Question text}\n\t\\begin{choices}\n\t\t\\correctchoice{${3:Right}}\n\t\t\\wrongchoice{${4:Wrong}}\n\t\\end{choices}\n\\end{question}'],
+  ['questionmult', 'Several correct answers', '\\begin{questionmult}{${1:id}}\n\t${2:Question text}\n\t\\begin{choices}\n\t\t\\correctchoice{${3:Right}}\n\t\t\\correctchoice{${4:Also right}}\n\t\t\\wrongchoice{${5:Wrong}}\n\t\\end{choices}\n\\end{questionmult}'],
+  ['questionmultx', 'A numeric answer', '\\begin{questionmultx}{${1:id}}\n\t${2:Question text}\n\t\\AMCnumericChoices{${3:42}}{digits=${4:2},decimals=0,sign=false}\n\\end{questionmultx}'],
+  ['choices', 'Answers', '\\begin{choices}\n\t\\correctchoice{${1:Right}}\n\t\\wrongchoice{${2:Wrong}}\n\\end{choices}'],
+  ['choiceshoriz', 'Answers on one line', '\\begin{choiceshoriz}\n\t\\correctchoice{${1:Right}}\n\t\\wrongchoice{${2:Wrong}}\n\\end{choiceshoriz}'],
+  ['correctchoice', 'A correct answer', '\\correctchoice{${1}}'],
+  ['wrongchoice', 'A wrong answer', '\\wrongchoice{${1}}'],
+  ['scoring', 'This question\'s scoring', '\\scoring{${1:b=1,m=0}}'],
+  ['explain', 'Explanation (answer key only)', '\\explain{${1}}'],
+  ['includegraphics', 'A figure', '\\includegraphics[width=${1:0.5}\\linewidth]{${2:file}}'],
+  ['AMCnumericChoices', 'Numeric answer boxes', '\\AMCnumericChoices{${1:42}}{digits=${2:2},decimals=0,sign=false}'],
+];
+let completerAdded = false;
+function latexEditor(hostId, { readOnly = false, onSave = null } = {}) {
+  const ed = ace.edit(hostId);
+  ed.setTheme('ace/theme/textmate');
+  ed.setShowPrintMargin(false);
+  ed.session.setUseWrapMode(true);
+  ed.session.setMode('ace/mode/latex');
+  ed.setReadOnly(readOnly);
+  try {
+    const lt = ace.require('ace/ext/language_tools');
+    if (lt && !completerAdded) {
+      completerAdded = true;
+      lt.addCompleter({
+        identifierRegexps: [/[a-zA-Z_0-9\\:.\-]/],
+        getCompletions(editor, session, pos, prefix, cb) {
+          const c = S.completions || { macros: [], ids: [] };
+          const bare = prefix.replace(/^\\/, '');
+          const out = AMC_SNIPPETS.map(([n, meta, snippet]) => ({ caption: '\\' + n, snippet, meta: `AMC · ${meta}`, score: 1000 }))
+            .concat(c.macros.map((m) => ({ caption: '\\' + m, value: '\\' + m, meta: 'this exam', score: 900 })))
+            .concat(c.ids.map((id) => ({ caption: id, value: id, meta: 'question', score: 800 })));
+          cb(null, bare ? out.filter((x) => x.caption.replace(/^\\/, '').toLowerCase().startsWith(bare.toLowerCase())) : out);
+        },
+      });
+    }
+    ed.setOptions({ enableBasicAutocompletion: true, enableLiveAutocompletion: true, enableSnippets: true });
+  } catch (e) { console.warn('No completion', e); }
+  if (onSave) ed.commands.addCommand({ name: 'save', bindKey: { win: 'Ctrl-S', mac: 'Command-S' }, exec: onSave });
+  loadCompletions();
+  return ed;
+}
+async function loadCompletions() {
+  if (S.completions && S.completions.project === S.project && Date.now() - S.completions.at < 30000) return;
+  try { const r = await getJSON('/ui/api/completions'); if (r.project) S.completions = { ...r, at: Date.now() }; } catch { /* none */ }
+}
+
 function mountEditor() {
   renderEditorBar();
   if (editor || typeof ace === 'undefined') return;
-  editor = ace.edit('ace-host');
-  editor.setTheme('ace/theme/textmate');
-  editor.setShowPrintMargin(false);
-  editor.session.setUseWrapMode(true);
-  editor.setReadOnly(locked());
-  editor.commands.addCommand({ name: 'save', bindKey: { win: 'Ctrl-S', mac: 'Command-S' }, exec: () => saveSource() });
+  editor = latexEditor('ace-host', { readOnly: locked(), onSave: () => saveSource() });
   editor.session.on('change', () => {
     if (S.source.loading) return;
     if (!S.source.dirty) { S.source.dirty = true; renderEditorBar(); }
@@ -1601,7 +1651,9 @@ async function trashDelete(id, name) {
 }
 
 async function buildPreview() {
+  if (!(await qlFlush())) return;
   await flushQ(); await flushD(); await flushB();
+  S.buildErr = null;
   if (S.source.dirty && !(await saveSource())) return;
   const st = S.status || {};
   if (st.printed || st.scans) {
@@ -1937,12 +1989,14 @@ function renderQForm() {
   const head = `<div class="q-form-head"><label class="sr-only" for="qf-kind">Type</label>
     <select class="select" id="qf-kind" ${dis}>${Object.entries(KIND_NAMES).map(([v, l]) => `<option value="${v}" ${q.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
     ${itemName ? `<span class="chip" title="${esc(f.file)}">${ic('folder')} ${esc(itemName)}${fileQs.length > 1 ? ' · set' : ''}</span>` : ''}
+    <div class="seg q-mode" role="group" aria-label="Edit this question as"><button class="btn btn-sm ${S.qmode === 'latex' ? '' : 'is-on'}" data-act="q-mode" data-v="form" aria-pressed="${S.qmode !== 'latex'}">Form</button><button class="btn btn-sm ${S.qmode === 'latex' ? 'is-on' : ''}" data-act="q-mode" data-v="latex" aria-pressed="${S.qmode === 'latex'}" title="Edit the question's LaTeX (your choice is remembered)">${ic('code')} LaTeX</button></div>
     <span class="spacer"></span>
     ${ro ? '' : `<button class="btn btn-ghost btn-icon btn-sm" data-act="q-move" data-d="-1" ${canUp ? '' : 'disabled'} title="Move up" aria-label="Move up">${ic('nav-arrow-up')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="q-move" data-d="1" ${canDown ? '' : 'disabled'} title="Move down" aria-label="Move down">${ic('nav-arrow-down')}</button>`}
-    <button class="btn btn-ghost btn-sm" data-act="q-latex" data-file="${esc(f.file)}" data-line="${q.line}">${ic('code')} Edit in LaTeX</button>
+    ${S.qmode === 'latex' ? '' : `<button class="btn btn-ghost btn-sm" data-act="q-latex" data-file="${esc(f.file)}" data-line="${q.line}" title="Open the whole file in the LaTeX tab">${ic('code')} Edit in LaTeX</button>`}
     ${L ? '' : `<button class="btn btn-ghost btn-sm" data-act="q-delete">${ic('trash')} Delete</button>`}</div>`;
+  if (S.qmode === 'latex') { renderQLatex(host, q, f, head); return; }
   if (!q.editable) {
-    host.innerHTML = head + banner('warning', 'warning-triangle', 'This question can\'t be changed in the form.', `${esc(q.problem)} Open it with "Edit in LaTeX".`);
+    host.innerHTML = head + banner('warning', 'warning-triangle', 'This question can\'t be changed in the form.', `${esc(q.problem)} Switch to LaTeX above to edit it.`);
     return;
   }
   const single = q.kind === 'single';
@@ -2074,10 +2128,101 @@ async function sendQNow(f) {
   return r;
 }
 
-function selectQuestion(file, id) {
+async function selectQuestion(file, id) {
+  if (!(await qlFlush())) return; // unsaved LaTeX that can't be saved: stay
   flushQ();
   S.qform = { file, id, pending: [], saving: false };
   renderQuestionsForm();
+}
+
+/* A question's LaTeX view: the item's whole file (a set: all its questions), or the question's own
+   \begin…\end in an exam written inline. Saved with Ctrl+S, Save, or on leaving the question;
+   "Check this question" compiles what is typed, saved or not. */
+let qlEditor = null;
+function renderQLatex(host, q, f, head) {
+  const fl = qfile(f.file);
+  const item = !!fl.item;
+  const key = `${f.file}#${item ? '' : q.id}`;
+  if (!S.ql || S.ql.key !== key) S.ql = { key, file: f.file, id: q.id, item, text0: item ? fl.text : q.src, digest: fl.digest, buf: null, dirty: false, saving: false, result: null };
+  const ql = S.ql;
+  if (qlEditor) { if (ql.dirty) ql.buf = qlEditor.getValue(); qlEditor.destroy(); qlEditor = null; }
+  const L = locked();
+  host.innerHTML = `${head}<div class="ql">
+    <div class="ql-bar"><span class="subtle">${item ? `${esc(f.file)}${fl.questions.length > 1 ? ` · a set of ${fl.questions.length} questions` : ''}` : `This question, in ${esc(f.file)}`}</span>
+      <span class="spacer"></span><span class="ql-state subtle" id="ql-state"></span>
+      <button class="btn btn-sm" data-act="ql-check" title="Compile what is typed here alone, with the exam's preamble">${ic('check-circle')} Check this question</button>
+      ${L ? '' : `<button class="btn btn-sm btn-primary" data-act="ql-save" id="ql-save">${ic('floppy-disk')} Save</button>`}</div>
+    ${L ? `<p class="subtle ql-note">The exam is printed: correct the answer key in the form or in Marking scheme.</p>` : ''}
+    <div class="ql-host" id="ql-host"></div>
+    <div class="ql-result" id="ql-result"></div></div>`;
+  qlEditor = latexEditor('ql-host', { readOnly: L, onSave: () => qlSave() });
+  qlEditor.setValue(ql.buf ?? ql.text0 ?? '', -1);
+  qlEditor.session.getUndoManager().reset();
+  qlEditor.session.on('change', () => { ql.dirty = qlEditor.getValue() !== ql.text0; qlState(); });
+  if (ql.gotoLine) { qlEditor.gotoLine(ql.gotoLine, 0, true); qlEditor.focus(); ql.gotoLine = null; }
+  qlState(); renderQLResult();
+}
+function qlState(msg) {
+  const ql = S.ql; const st = $('#ql-state'); const b = $('#ql-save');
+  if (b) b.disabled = !ql || !ql.dirty || ql.saving;
+  if (st) st.textContent = msg || (ql && ql.saving ? 'Saving…' : ql && ql.dirty ? 'Unsaved changes' : 'Saved');
+}
+function renderQLResult() {
+  const host = $('#ql-result'); const ql = S.ql;
+  if (!host || !ql) return;
+  const r = ql.result;
+  if (!r) { host.innerHTML = ''; return; }
+  if (r.checking) { host.innerHTML = `<p class="subtle">${ic('refresh')} Checking… (a few seconds)</p>`; return; }
+  if (r.error) { host.innerHTML = banner('warning', 'warning-triangle', esc(r.error), ''); return; }
+  if (r.errors && r.errors.length) {
+    host.innerHTML = banner('danger', 'warning-triangle', r.saveError ? 'Not saved' : 'This question doesn\'t compile', r.errors.map((e) => `<div class="ql-err">${e.line && !e.file ? `<button class="link-btn" data-act="ql-goto" data-line="${e.line}">Line ${e.line}</button>: ` : e.file ? `${esc(e.file)}${e.line ? `, line ${e.line}` : ''}: ` : ''}${esc(e.message)}${e.context ? ` <code>${esc(e.context)}</code>` : ''}</div>`).join(''));
+    return;
+  }
+  host.innerHTML = `${banner('success', 'check-circle', 'It compiles.', 'This is how it prints, alone with the exam\'s preamble:')}${r.image ? `<div class="ql-pic"><img src="${r.image}" alt="The question as compiled"></div>` : ''}`;
+}
+async function qlSave() {
+  const ql = S.ql;
+  if (!ql || !ql.dirty || ql.saving || !qlEditor) return true;
+  const text = qlEditor.getValue();
+  ql.saving = true; qlState();
+  const r = ql.item ? await postJSON('/ui/api/source', { file: ql.file, text, based_on: ql.digest })
+    : await postJSON('/ui/api/editor', { file: ql.file, based_on: (qfile(ql.file) || {}).digest || '', ops: [{ op: 'latex', id: ql.id, latex: text }] });
+  ql.saving = false;
+  if (!r.ok) {
+    const m = /^Line (\d+): (.*)$/.exec(r.error || '');
+    ql.result = { saveError: true, errors: [{ line: m ? +m[1] : (r.line || null), message: m ? m[2] : (r.error || 'Not saved.'), file: null }] };
+    qlState('Not saved'); renderQLResult();
+    if (r.conflict) toast('Changed elsewhere meanwhile: copy your text, then reload.', 'warning-triangle');
+    return false;
+  }
+  const id = (/\\begin\s*\{question(?:mult|multx)?\}\s*\{([^}]*)\}/.exec(text) || [])[1];
+  S.ql = null; ql.dirty = false;
+  if (qlEditor) qlEditor.setReadOnly(true);
+  toast(`${ql.item ? ql.file : ql.id} saved.`);
+  await loadEditor();
+  const fl = qfile(ql.file);
+  if (fl) { const keep = fl.questions.find((x) => x.id === (ql.item ? S.qform.id : id)) || fl.questions[0]; if (keep) { S.qform = { file: ql.file, id: keep.id, pending: [], saving: false }; renderQuestionsForm(); } }
+  return true;
+}
+async function qlFlush() {
+  if (!S.ql || !S.ql.dirty || !qlEditor || S.qmode !== 'latex') return true;
+  return qlSave();
+}
+async function qlCheck() {
+  const ql = S.ql;
+  if (!ql || !qlEditor) return;
+  ql.result = { checking: true }; renderQLResult();
+  const r = await postJSON('/ui/api/check', { file: ql.file, id: ql.id, text: qlEditor.getValue() });
+  if (S.ql !== ql) return;
+  ql.result = r.error ? { error: r.error } : r; renderQLResult();
+}
+async function setQMode(v) {
+  if (v === S.qmode) return;
+  if (!(await qlFlush())) return;
+  await flushQ();
+  S.qmode = v; store.set('qmode', v); S.ql = null;
+  if (qlEditor && v !== 'latex') { qlEditor.destroy(); qlEditor = null; }
+  renderQForm();
 }
 async function addQuestion() {
   const kind = await choiceDialog({ title: 'Add a question', icon: 'plus', body: '<p>What kind of question?</p>',
@@ -2097,6 +2242,70 @@ async function addQuestion() {
     const added = r.file.questions.find((q) => !before.includes(q.id));
     if (added) { S.qform = { file, id: added.id, pending: [], saving: false, lastSaved: Date.now() }; renderQuestionsForm(); const t = $('#qf-text'); if (t) { t.focus(); t.select(); } }
   }
+}
+/* The last build's first error, traced to the file it is in: an item's file opens in its question's LaTeX view at the line. */
+async function loadBuildError() {
+  try { const r = await getJSON('/ui/api/build-error'); S.buildErr = r.error && r.error.message ? r.error : null; } catch { S.buildErr = null; }
+  const h = $('#q-head'); if (h) h.innerHTML = questionsHead();
+}
+function buildErrBanner() {
+  const e = S.buildErr;
+  const where = e.file ? `${e.file}${e.line ? `, line ${e.line}` : ''}${e.question ? ` (question ${e.question})` : ''}` : 'The build';
+  return banner('danger', 'warning-triangle', `${esc(where)}: ${esc(e.message)}`, e.context ? `<code>${esc(e.context)}</code>` : '',
+    e.file ? `<button class="btn btn-sm" data-act="build-err-open">${ic('code')} Open it</button>` : '');
+}
+async function openBuildError() {
+  const e = S.buildErr;
+  if (!e || !e.file) return;
+  if (e.item && e.question) {
+    if (S.qtab !== 'form') await switchQTab('form');
+    S.qmode = 'latex'; store.set('qmode', 'latex');
+    if (!S.qdata) await loadEditor();
+    S.ql = null; S.qform = { file: e.file, id: e.question, pending: [], saving: false };
+    renderQuestionsForm();
+    if (S.ql) { S.ql.gotoLine = e.line; renderQForm(); }
+    return;
+  }
+  editInLatex(e.file, e.line || 1);
+}
+
+/* A section's items as one LaTeX document ("%%%% item name %%%%" between them): saving first says
+   what will happen, then writes every item in one version. */
+let slEditor = null;
+async function openSectionLatex(group) {
+  await flushD();
+  let r;
+  try { r = await getJSON(`/ui/api/section-latex?group=${enc(group)}`); } catch { toast('The section couldn\'t be read.', 'warning-triangle'); return; }
+  S.sl = { group, digests: r.digests, text0: r.text, lock: r.lock };
+  openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('code')}</span><div><h2 id="dlg-title">Section ${esc(group)} as LaTeX</h2>
+      <p class="subtle" style="margin:2px 0 0">Each item starts at its line <code>%%%% item name %%%%</code>. Keep those lines; move them to reorder, or add one with a new name to add an item.</p></div></div>
+    <div class="dialog-body"><div class="sl-host" id="sl-host"></div><div id="sl-msg"></div></div>
+    <div class="dialog-foot"><button class="btn" data-act="dialog-cancel">Close</button>${r.lock ? '' : `<button class="btn btn-primary" data-act="sl-save">${ic('floppy-disk')} Save…</button>`}</div>`);
+  const d = $('#layer .dialog'); if (d) d.classList.add('dialog-wide');
+  if (slEditor) { slEditor.destroy(); slEditor = null; }
+  slEditor = latexEditor('sl-host', { readOnly: !!r.lock, onSave: () => saveSectionLatex(false) });
+  slEditor.setValue(r.text, -1);
+  slEditor.session.getUndoManager().reset();
+}
+async function saveSectionLatex(apply) {
+  const sl = S.sl;
+  if (!sl || !slEditor) return;
+  const text = slEditor.getValue();
+  const r = await postJSON('/ui/api/section-latex', { group: sl.group, text, digests: sl.digests, apply });
+  const msg = $('#sl-msg');
+  if (!r.ok) { if (msg) msg.innerHTML = banner('danger', 'warning-triangle', esc(r.error || 'Not saved.'), ''); const m = /^Line (\d+)/.exec(r.error || ''); if (m) { slEditor.gotoLine(+m[1], 0, true); slEditor.focus(); } return; }
+  const p = r.plan;
+  if (!apply) {
+    const parts = [p.changed.length ? `${plural(p.changed.length, 'item', 'items')} changed (${p.changed.join(', ')})` : '', p.added.length ? `${plural(p.added.length, 'item', 'items')} added (${p.added.join(', ')})` : '', p.moved ? 'the order changed' : ''].filter(Boolean);
+    if (!parts.length) { if (msg) msg.innerHTML = `<p class="subtle">Nothing changed.</p>`; return; }
+    if (msg) msg.innerHTML = banner('info', 'info-circle', `Saving will do this: ${esc(parts.join('; '))}.`, 'One version in History, so it can be undone.', `<button class="btn btn-sm btn-primary" data-act="sl-apply">Save it</button>`);
+    return;
+  }
+  const keep = text;
+  closeDialog(); if (slEditor) { slEditor.destroy(); slEditor = null; }
+  toast(r.what || 'Saved.');
+  S.sl = null; void keep;
+  loadDesign();
 }
 async function splitQuestions() {
   const ok = await confirmDialog({ title: 'Move the questions into item files?', icon: 'folder', ok: 'Move them',
@@ -2234,7 +2443,7 @@ function renderDSections(d, L) {
       <div class="d-sub">${per}${chips.length ? ' · ' + chips.join(' · ') : ''}${marks}</div>
       ${s.problem ? `<div class="d-problem">${ic('warning-triangle')} ${esc(s.problem)}</div>` : ''}
       ${isOpen ? renderDSectionForm(s, L) : ''}
-      ${!L && !isOpen ? `<div class="d-row"><button class="btn btn-ghost btn-sm" data-act="d-sec-addq" data-name="${esc(s.name)}">${ic('plus')} Add a question</button></div>` : ''}
+      ${!L && !isOpen ? `<div class="d-row"><button class="btn btn-ghost btn-sm" data-act="d-sec-addq" data-name="${esc(s.name)}">${ic('plus')} Add a question</button>${S.design.modular && s.pool ? `<button class="btn btn-ghost btn-sm" data-act="d-sec-latex" data-name="${esc(s.name)}" title="All the section's questions as one LaTeX document">${ic('code')} Edit as LaTeX</button>` : ''}</div>` : ''}
     </div>`;
   });
   (d.unused || []).forEach((u) => { html += banner('info', 'info-circle', `${u.pool} question${u.pool > 1 ? 's' : ''} in the group "${esc(u.name)}" ${u.pool > 1 ? 'aren\'t' : 'isn\'t'} printed.`, 'No section uses this group.', L ? '' : `<button class="btn btn-sm" data-act="d-sec-adopt" data-name="${esc(u.name)}">Add a section for it</button>`); });
@@ -2404,6 +2613,8 @@ async function addQuestionTo(group) {
 async function switchQTab(v) {
   if (v === S.qtab || !['form', 'design', 'latex'].includes(v)) return;
   if (S.qtab === 'latex' && S.source.dirty && !(await saveSource())) return;
+  if (!(await qlFlush())) return;
+  if (qlEditor) { qlEditor.destroy(); qlEditor = null; S.ql = null; }
   await flushQ(); await flushD(); await flushB();
   if (editor) dropEditor();
   S.qtab = v; store.set('qtab', v);
@@ -3959,6 +4170,14 @@ const ACTIONS = {
   qtab: (el) => switchQTab(el.dataset.v),
   'q-pick': (el) => selectQuestion(el.dataset.file, el.dataset.id),
   'q-add': () => addQuestion(),
+  'q-mode': (el) => setQMode(el.dataset.v),
+  'ql-save': () => qlSave(),
+  'ql-check': () => qlCheck(),
+  'ql-goto': (el) => { if (qlEditor) { qlEditor.gotoLine(+el.dataset.line, 0, true); qlEditor.focus(); } },
+  'build-err-open': () => openBuildError(),
+  'd-sec-latex': (el) => openSectionLatex(el.dataset.name),
+  'sl-save': () => saveSectionLatex(false),
+  'sl-apply': () => saveSectionLatex(true),
   'q-split': () => splitQuestions(),
   'q-delete': () => deleteQuestion(),
   'q-move': (el) => moveQuestion(+el.dataset.d),

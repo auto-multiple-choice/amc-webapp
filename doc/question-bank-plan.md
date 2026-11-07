@@ -587,6 +587,60 @@ Tests to add:
   exam in one version (undo from History). Item names are letters,
   digits and `-` (folder names that work everywhere); a renamed question
   keeps its item's name.
-- **P1b (next):** Form | LaTeX switch per question, a section edited as
-  one LaTeX document, "Check this question", build errors pointing to
-  item files.
+- **P1b (LaTeX for pro users): built** on `feature/latex-p1b`, based on
+  P1a. `server/ui_latex.py`; the LaTeX view and checks in the form; the
+  check compiles in the same sandbox as the build (shared mode: landrun),
+  in a scratch folder of the exam that is removed afterwards.
+
+### 12.1 Everything from both plans, and where it stands
+
+From this plan and `questions-banks-templates-plan.md` (phases 6–9),
+updated as each phase lands. ✅ built, ⬜ to build, ✖ not doing (why).
+
+**P1b — LaTeX for pro users** (`feature/latex-p1b`, built)
+- ✅ Form | LaTeX switch on every question (the item's file; the question's span in an exam written inline)
+- ✅ Preference "Open questions in LaTeX"
+- ✅ LaTeX saves checked: braces and environments balance, question names unique, refused with the line
+- ✅ "Check this question": the item compiled alone with the exam's preamble, errors at their line, a picture of the result
+- ✅ Build errors pointing to the item's file and line, with "Open it"
+- ✅ A section edited as one LaTeX document (`%%%% item name %%%%` separators), with "what will happen" before saving
+- ✅ Snippets for AMC environments; completion of question names and the exam's macros
+
+**P2 — Question banks** (#5)
+- ⬜ Banks per instructor, in groups, with history (git) and a trash
+- ⬜ Bank page: groups, items, search and filters (type, tags, difficulty, not used since), the item form and LaTeX view
+- ⬜ Bank → exam: a whole group as a new section or into one; selected questions; a random pick made once and shown first; sets moved whole
+- ⬜ Exam → bank: a whole section as a group, selected questions, or the whole exam as a new bank; "Update the bank's copy" or "Save as new"
+- ⬜ Copies with a revision record: status Up to date / Bank updated / Edited here / Both changed; comparison; update either side; printed exams take answer-key fixes only
+- ⬜ A section made from a group offers questions added to the group later
+- ⬜ Macros and packages an item needs, offered to the exam that lacks them
+- ⬜ Usage recorded when papers are printed
+- ⬜ Import of RJ-style LaTeX files (`\element{sectionI}{…}` blocks with figures)
+- ⬜ Search index (SQLite FTS5, outside teachers' folders)
+- ⬜ Bank zip export and import (checked like exam archives)
+
+**P3 — Analysis and blueprints** (#6)
+- ⬜ Item statistics after marking: share of right answers, discrimination, which wrong answers attract; kept per bank item across exams
+- ⬜ Blueprints ("3 easy + 5 medium from Algebra") that fill a section's pool for review
+
+**Left from P0 and the security section**
+- ⬜ "Build this version" (compile a version in a scratch folder)
+- ⬜ Blame (who last changed each line)
+- ⬜ Side-by-side diffs; a section as History's scope
+- ⬜ "Download with history" (git bundle)
+- ⬜ Admins see and restore an instructor's trash
+- ⬜ `./amc doctor`: `git fsck`, histories whose exam is gone, index rebuild
+- ⬜ Archive import and exam copy drop dot-folders and `.git`
+
+**Left from `questions-banks-templates-plan.md`**
+- ⬜ Drag-and-drop ordering of questions and sections (buttons today)
+- ⬜ Jump to the selected question's page in the preview
+- ⬜ "Copies differ" in the Papers step when a section draws at random
+- ⬜ The scoring dialog offers the scoring macros of the exam's preamble
+- ⬜ Duplicate a question
+- ⬜ Save an exam as a template (for the teacher's own new exams)
+- ✖ Shared school banks — decided 7 Nov: banks belong to one instructor
+- ✖ The notation page and table of values as forms — superseded by the Paper builder's text blocks
+- ✖ A second logo upload in the wizard — the Paper builder's logo block does it
+- ✖ Icons in the RJ starter — decided 7 Nov: no icons
+- ✖ Form editor and banks for AMC-TXT exams — decided: LaTeX exams only
