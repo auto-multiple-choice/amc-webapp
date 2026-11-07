@@ -802,6 +802,12 @@ try:
     check("copies: a scoring changed in the exam is an edit there, kept on the way back",
           bk.status(sc.set_scoring(_et, _q1, "b=5"), {}, _o, _bt, {}) == "here"
           and "b=5" in bk.way_back(sc.set_scoring(_et, _q1, "b=5"), _o))
+    check("copies: a bank version set aside shows as such, and a later one as newer again",
+          bk.status("\\begin{question}{q}a\\end{question}\n", {}, {"fingerprint": bk.fingerprint("\\begin{question}{q}a\\end{question}\n"), "seen_fp": bk.fingerprint("v2")}, "v2", {}) == "kept"
+          and bk.status("\\begin{question}{q}a\\end{question}\n", {}, {"fingerprint": bk.fingerprint("\\begin{question}{q}a\\end{question}\n"), "seen_fp": bk.fingerprint("v2")}, "v3", {}) == "bank")
+    check("copies: conflict marks are found with CRLF too, and a hand-edited origin is read typed",
+          bool(bk.CONFLICT_RE.search("a\r\n=======\r\nb")) and bk.origin_of({"origin": {"bank_uid": ["x"], "ids": "no", "scored": {"q": None}}}) == {"bank_uid": None, "ids": {}, "scored": {"q": ""}, "replace": False}
+          and bk.origin_of({"origin": "x"}) == {})
     check("copies: names the bank's newer version adds get free names in the exam",
           bk.extend_ids(_bt.replace("{q2}", "{q3}"), {"q1": "q1-2", "gone": "x"}, {"q3", "q1-2"}) == {"q1": "q1-2", "q3": "q3-2"})
     _base, _ = bk.way_in(_bt, {"q1": "q1-2"}, "b=3,m=-1")

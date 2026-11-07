@@ -457,7 +457,25 @@ def clashes(texts, preamble, exam_text):
 #             rule it had before, "" for none}, replace, at}
 
 STATUS_WORDS = {"same": "Up to date", "bank": "Bank updated", "here": "Edited here", "both": "Both changed",
-                "gone": "Not in the bank any more"}
+                "kept": "Bank's newer version set aside", "gone": "Not in the bank any more"}
+
+
+def origin_of(meta):
+    """An item's origin record (where its copy came from), typed: ids and
+    scored as {str: str}, text fields as str or None. {} when the item
+    isn't a bank copy. item.json is a file the teacher may edit by hand."""
+    o = (meta or {}).get("origin")
+    if not isinstance(o, dict):
+        return {}
+    out = dict(o)
+    for k in ("ids", "scored"):
+        v = o.get(k)
+        out[k] = {str(a): ("" if b is None else str(b)) for a, b in v.items()} if isinstance(v, dict) else {}
+    for k in ("bank", "bank_uid", "item", "item_uid", "revision", "fingerprint", "seen_fp", "scoring"):
+        if k in out and not isinstance(out[k], str):
+            out[k] = None
+    out["replace"] = bool(o.get("replace"))
+    return out
 
 
 def _own_rule(q):
@@ -518,8 +536,13 @@ def status(exam_text, exam_figures, origin, bank_text, bank_figures):
     if bank_text is None:
         return "gone"
     here = fingerprint(way_back(exam_text, origin), exam_figures) != origin.get("fingerprint")
-    there = fingerprint(bank_text, bank_figures) != origin.get("fingerprint")
-    return "both" if here and there else "here" if here else "bank" if there else "same"
+    bank_fp = fingerprint(bank_text, bank_figures)
+    there = bank_fp != origin.get("fingerprint")
+    if not there:
+        return "here" if here else "same"
+    if bank_fp == origin.get("seen_fp"):  # "Keep this exam's" was chosen for this bank version
+        return "here" if here else "kept"
+    return "both" if here else "bank"
 
 
 def merge_texts(mine, base, theirs):
@@ -529,4 +552,4 @@ def merge_texts(mine, base, theirs):
     return vcs.merge_text(mine, base, theirs, labels=("this exam", "as copied", "the bank"))
 
 
-CONFLICT_RE = re.compile(r"^(<{7}|={7}|>{7})( |$)", re.M)
+CONFLICT_RE = re.compile(r"^(<{7}|={7}|>{7})([ \t\r]|$)", re.M)

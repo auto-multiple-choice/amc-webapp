@@ -16,6 +16,7 @@ After printing, taking from the bank goes through the lock (an answer key
 or scoring fix passes; anything that moves boxes is refused).
 """
 import os
+import subprocess
 
 from flask import jsonify, request
 
@@ -80,7 +81,7 @@ def _item_state(folder):
 
 def _copy(pdir, n, bk):
     """The status of the exam's item N, or None when it isn't a bank copy."""
-    origin = banks.item_meta(pdir, n).get("origin") or {}
+    origin = banks.origin_of(banks.item_meta(pdir, n))
     if not origin.get("bank_uid") or not origin.get("item_uid"):
         return None
     text, figs = _item_state(os.path.join(pdir, items.ITEMS_DIR, n))
@@ -100,8 +101,9 @@ def _follow(pdir, rec, bk, exam_copies):
     """For each section made from a whole group: the group's items the exam
     hasn't seen yet, and the section's copies no longer in the group."""
     out = []
+    secs = {s[0] for s in api._exam_sections(pdir)}
     for sec, f in (rec.get("sections_from") or {}).items():
-        if not isinstance(f, dict):
+        if not isinstance(f, dict) or sec not in secs:  # a section renamed or removed: nothing to follow
             continue
         b = bk.bank(f.get("bank_uid"))
         g = banks.group(b, f.get("group")) if b else None
@@ -159,7 +161,7 @@ def _context(n):
     if n not in ui._item_names(pdir):
         return None, "This question isn't in the exam any more."
     meta = banks.item_meta(pdir, n)
-    origin = meta.get("origin") or {}
+    origin = banks.origin_of(meta)
     if not origin.get("bank_uid"):
         return None, "This question didn't come from a bank."
     bk = _Banks(ui.core.projects_dir())
@@ -285,9 +287,9 @@ def api_bank_copy_post():
     c, err = _context(str(data.get("item") or ""))
     if err:
         return jsonify(error=err)
-    if data.get("digest") and data["digest"] != c["digest"]:
+    if data.get("digest") != c["digest"]:  # the comparison the choice was made from, both sides
         return jsonify(error="This question was changed meanwhile. Look at the comparison again.", conflict=True)
-    if data.get("bank_fp") and data["bank_fp"] != c.get("bank_fp"):
+    if c["btext"] is not None and data.get("bank_fp") != c.get("bank_fp"):
         return jsonify(error="The bank's question was changed meanwhile. Look at the comparison again.", conflict=True)
     if c["btext"] is None:
         return jsonify(error="This question isn't in the bank any more. Save it to a bank as a new question instead.")
@@ -299,10 +301,12 @@ def api_bank_copy_post():
             if why := _take_refusal(c, theirs, c["bfigs"]):
                 return jsonify(error=why, locked=True)
             what = f"{n}: the bank's version taken from {bank_name}"
-            _write_exam_item(c, theirs, c["bfigs"], _origin(c, revision=head, fingerprint=c["bank_fp"], ids=ids, scored=scored), what)
+            _write_exam_item(c, theirs, c["bfigs"], _origin(c, revision=head, fingerprint=c["bank_fp"], ids=ids, scored=scored, seen_fp=None), what)
         elif op == "keep":
-            what = f"{n}: this exam's version kept (the bank's newer version of {c['bn']} acknowledged)"
-            _write_exam_item(c, c["text"], c["figs"], _origin(c, revision=head, fingerprint=c["bank_fp"]), what)
+            # The copy's base stays what it was copied from (a later "Combine both" merges from it);
+            # only this bank version is set aside, so it isn't offered again.
+            what = f"{n}: this exam's version kept (the bank's newer version of {c['bn']} set aside)"
+            _write_exam_item(c, c["text"], c["figs"], _origin(c, seen_fp=c["bank_fp"], seen_revision=head), what)
         elif op == "merge":
             theirs, ids, scored = _as_exam(c, c["btext"])
             if isinstance(data.get("text"), str):
@@ -326,7 +330,7 @@ def api_bank_copy_post():
             if why := _take_refusal(c, text, figs):
                 return jsonify(error=why, locked=True)
             what = f"{n}: the bank's changes combined with this exam's"
-            _write_exam_item(c, text, figs, _origin(c, revision=head, fingerprint=c["bank_fp"], ids=ids, scored=scored), what)
+            _write_exam_item(c, text, figs, _origin(c, revision=head, fingerprint=c["bank_fp"], ids=ids, scored=scored, seen_fp=None), what)
         elif op == "push":
             what = push(c)
         else:
@@ -335,7 +339,7 @@ def api_bank_copy_post():
         return jsonify(error="This question was changed meanwhile. Look at the comparison again.", conflict=True)
     except banks.BankError as e:
         return jsonify(error=str(e))
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         ui.core.app.logger.error(f"Bank copy: {e}")
         return jsonify(error="This can't be done just now. The server log has the details.")
     pdir = c["pdir"]
@@ -353,6 +357,12 @@ def push(c):
     exam's record follows (one version here). Returns what was done."""
     bdir, bn, n = c["bdir"], c["bn"], c["item"]
     btext = banks.way_back(c["text"], c["origin"])
+    if banks.CONFLICT_RE.search(btext):  # the bank takes only what would build
+        raise banks.BankError("This exam's question still has <<<<<<< ======= >>>>>>> marks; finish combining it first.")
+    if p := ltx.problems(btext):
+        raise banks.BankError(f"This exam's question doesn't balance (line {p[0]['line']}: {p[0]['message']}); fix it before updating the bank.")
+    if problem := items.check_item_text(btext, bn):
+        raise banks.BankError(problem)
     with api._change(bdir, f"{bn} updated from the exam {c['name']}") as cs:
         b = banks.read(bdir)
         others = {q["id"] for q in api._bank_questions(bdir, b, skip={bn})}
@@ -378,7 +388,7 @@ def push(c):
     scored = {k: v for k, v in (c["origin"].get("scored") or {}).items()
               if any(q["id"] == k and banks._own_rule(q) == (v or "") for q in scale.read_latex(btext))}
     _write_exam_item(c, c["text"], c["figs"], _origin(c, revision=head, fingerprint=banks.fingerprint(btext, c["figs"]),
-                                                      scored=scored if rule else {}), what)
+                                                      scored=scored if rule else {}, seen_fp=None), what)
     return what
 
 

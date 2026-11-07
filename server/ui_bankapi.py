@@ -663,12 +663,12 @@ def api_bank_pull():
                 ui.save_source(pdir, main_fn, new_main.encode("utf-8"), what)
     except (vcs.Conflict, OSError, ValueError) as e:
         return _err(f"Not added: {e}")
-    if whole:
+    if whole and mode == "new":  # a section made from a whole group follows it
         seen = [banks.item_meta(bdir, n).get("uid") for n in g["items"]]
         ui._update_record(pdir, lambda r: r.setdefault("sections_from", {}).__setitem__(
             sec, {"bank_uid": b["uid"], "bank": os.path.basename(bdir), "group": g["name"], "seen": sorted(u for u in seen if u)}))
-    else:
-        copies.note_seen(pdir, sec, b["uid"], g["name"], uids)
+    else:  # into a section: what it already follows (if the same group) learns of these items; nothing else changes
+        copies.note_seen(pdir, sec, b["uid"], g["name"], [banks.item_meta(bdir, n).get("uid") for n in g["items"]] if whole else uids)
     ui.add_activity(pdir, what)
     ui.refresh_layout(pdir)
     ui.core.emit_msg("ui-changed", "questions")
