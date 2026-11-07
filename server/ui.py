@@ -431,7 +431,7 @@ def note_building():
     pdir = core.project_dir()
     try:
         _building[pdir] = vcs.snapshot(pdir, _root(), by=_who())
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"History: {pdir}: {e}")
 
 
@@ -444,7 +444,7 @@ def note_built():
         return
     try:
         exam_history(pdir).mark_built(cid)
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"History: {pdir}: {e}")
 
 
@@ -466,7 +466,7 @@ def name_printed_version(pdir, how):
         if cid:
             repo.name_version(cid, f"Printed {time.strftime('%d %b %Y')}" if how != "manual"
                               else f"Marked as printed {time.strftime('%d %b %Y')}", by=_who(), auto=True)
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"History: {pdir}: {e}")
 
 
@@ -2165,7 +2165,7 @@ def api_history():
         repo.record_outside()
         versions, total = repo.log(fn, limit=limit, skip=skip)
         files = repo.files()
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         return _history_error(name, e)
     return jsonify(project=name, file=fn, versions=versions, total=total, skip=skip, files=files,
                    head=repo.head(), lock=bool(exam_lock(pdir)))
@@ -2231,7 +2231,7 @@ def api_history_version(cid):
             out["design"] = {"base": _design_or_none(repo.blob(bt.get(df))), "target": _design_or_none(repo.blob(tt.get(df))),
                              "blocks": {t: {"title": b[0]} for t, b in paper_builder.BLOCKS.items()},
                              "fields": paper_builder.FIELD_LABELS}
-    except (vcs.HistoryError, OSError) as err:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as err:
         return _history_error(name, err)
     return jsonify(out)
 
@@ -2305,7 +2305,7 @@ def api_history_plan(cid):
         plan, problem, e = _restore_plan(repo, cid, mode, fn)
         now = repo.tree_at(repo.head())
         old = {p: repo.blob(now.get(p)) for p in plan}
-    except (vcs.HistoryError, OSError) as err:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as err:
         return _history_error(name, err)
     return jsonify(project=name, mode=mode, id=cid, file=fn, head=repo.head(), entry=e, what=_restore_what(mode, e, fn),
                    files=[{"file": p, "action": "removed" if d is None else "added" if p not in now else "changed"}
@@ -2332,6 +2332,7 @@ def api_history_restore():
         repo = exam_history(pdir)
         if not repo.check_commit(cid):
             return jsonify(error="This version doesn't exist.")
+        based = repo.disk_state()  # what the plan is made from
         plan, problem, e = _restore_plan(repo, cid, mode, fn)
         if problem:
             return jsonify(error=problem)
@@ -2345,6 +2346,11 @@ def api_history_restore():
         existed = {p: os.path.isfile(os.path.join(pdir, p)) for p in plan}
         with history_change(pdir, what, kind="undo" if mode == "undo" else "restore",
                             extra={"Undoes" if mode == "undo" else "Restores": cid}) as cs:
+            if cs.repo:  # a save that landed meanwhile isn't overwritten
+                now = cs.repo._disk()
+                for path in plan:
+                    if now.get(path) != based.get(path):
+                        raise vcs.Conflict(path)
             for path, d in plan.items():
                 if d is None:
                     cs.delete(path)
@@ -2357,7 +2363,7 @@ def api_history_restore():
             return jsonify(ok=True, nothing=True, what="Nothing changed: the files are already as in that version.")
     except vcs.Conflict:
         return jsonify(error="The exam was changed while restoring. Look at the version again.", conflict=True)
-    except (vcs.HistoryError, OSError) as err:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as err:
         return _history_error(name, err)
     audit("version restored", pdir, exam=name, mode=mode, version=cid, file=fn, new=new)
     add_activity(pdir, what)
@@ -2388,7 +2394,7 @@ def api_history_name():
             repo.unname_version(cid, label)
         else:
             repo.name_version(cid, label, by=_who())
-    except (vcs.HistoryError, OSError) as err:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as err:
         return _history_error(name, err)
     return jsonify(ok=True)
 
@@ -2413,7 +2419,7 @@ def exam_renamed(pdir, old, new):
     keyed by the exam's uid), and the audit log says so."""
     try:
         exam_history(pdir)
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"History: {pdir}: {e}")
     audit("exam renamed", pdir, exam=new, old=old)
 
@@ -2422,7 +2428,7 @@ def exam_renamed(pdir, old, new):
 def api_trash():
     try:
         items = vcs.list_trash(_owner_home())
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"Trash: {e}")
         return jsonify(error="The trash can't be read just now."), 500
     return jsonify(items=items, days=vcs.TRASH_DAYS)
@@ -3292,7 +3298,7 @@ def on_create_exam(data):
     add_activity(rep, f"Exam created from the template \"{title}\"")
     try:
         vcs.snapshot(rep, _root(), by=_who(), what=f"Created from the template \"{title}\"", kind="create")
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"History: {rep}: {e}")
     audit("exam created", rep, exam=name, template=title)
     core.emit_msg("project-open", [name, True])
@@ -3453,7 +3459,7 @@ def record_cloned(dest, source_name):
     add_activity(dest, f"Copied from \"{source_name}\"")
     try:
         vcs.start_copy(dest, _root(), _who(), source_name)
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"History: {dest}: {e}")
 
 
