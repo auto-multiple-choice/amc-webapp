@@ -61,6 +61,7 @@ Shared machine (sign-in, HTTPS, one projects folder per teacher):
   doctor [--rebuild-index]
                        Check every exam's and bank's history (git fsck), the
                        trash and the bank search index; changes nothing
+                       (--rebuild-index builds the search index again)
   help                 Show this help
 
 Settings are in .env, created on first start (see .env.example).

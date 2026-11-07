@@ -1410,6 +1410,7 @@ async function loadHistory({ more = false, select = null } = {}) {
     const r = await getJSON(`${histApi()}?skip=${skip}${h.file ? `&file=${enc(h.file)}` : ''}${h.section ? `&section=${enc(h.section)}` : ''}`);
     if (S.history !== h || S.project !== project) return;
     if (r.error) throw new Error(r.error);
+    if (!more) h.blame = null; // who changed each line is read again after a save or a restore
     if (r.project === null || !r.versions) throw new Error('gone');
     const have = new Set((more && h.versions ? h.versions : []).map((v) => v.id));
     h.versions = more ? h.versions.concat(r.versions.filter((v) => !have.has(v.id))) : r.versions; // saves made since the first page shift the pages
@@ -1612,7 +1613,7 @@ function blameHtml(h) {
     const c = b.commits[l.id] || {};
     const start = l.id !== prev;
     prev = l.id;
-    html += `<div class="bl-row ${start ? 'bl-start' : ''}">${start ? `<button class="bl-who" data-act="hist-pick" data-id="${esc(l.id || '')}" title="${esc(c.what || '')}">${esc(c.by || 'someone')} · ${esc(fmtWhen(c.at))}<span class="subtle"> · ${esc(trunc(c.what || '', 50))}</span></button>` : '<span class="bl-who"></span>'}<span class="bl-n">${l.line}</span><span class="bl-text">${esc(l.text) || ' '}</span></div>`;
+    html += `<div class="bl-row ${start ? 'bl-start' : ''}">${start ? `<button class="bl-who" data-act="hist-pick-blame" data-id="${esc(l.id || '')}" title="${esc(c.what || '')}">${esc(c.by || 'someone')} · ${esc(fmtWhen(c.at))}<span class="subtle"> · ${esc(trunc(c.what || '', 50))}</span></button>` : '<span class="bl-who"></span>'}<span class="bl-n">${l.line}</span><span class="bl-text">${esc(l.text) || ' '}</span></div>`;
   }
   return `<div class="blame">${html}</div>${b.truncated ? '<p class="subtle" style="padding:6px 14px">Only the first 5,000 lines are shown.</p>' : ''}`;
 }
@@ -1632,10 +1633,14 @@ async function loadBlame() {
 /* Build this version: compiled on the server in a scratch folder, shown here. */
 async function historyBuild() {
   const h = S.history;
-  if (!h || !h.selected) return;
+  if (!h || !h.selected || h.building) return;
+  const id = h.selected; // the version asked for, whatever is picked while it builds
+  const v = (h.versions || []).find((x) => x.id === id) || {};
+  h.building = id;
   toast('Building this version…', 'refresh');
   let resp;
-  try { resp = await fetch(`${histApi()}/${enc(h.selected)}/build`, { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' }, body: '{}' }); } catch { toast('The server couldn\'t be reached.', 'warning-triangle'); return; }
+  try { resp = await fetch(`${histApi()}/${enc(id)}/build`, { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' }, body: '{}' }); } catch { h.building = null; toast('The server couldn\'t be reached.', 'warning-triangle'); return; }
+  h.building = null;
   const type = resp.headers.get('content-type') || '';
   if (!type.includes('pdf')) {
     let r = {};
@@ -1646,7 +1651,6 @@ async function historyBuild() {
   const blob = await resp.blob();
   if (S.versionPdf) URL.revokeObjectURL(S.versionPdf);
   S.versionPdf = URL.createObjectURL(blob);
-  const v = (h.versions || []).find((x) => x.id === h.selected) || {};
   openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('page')}</span><div><h2 id="dlg-title">The exam as it was ${esc(fmtWhen(v.at))}</h2><p class="subtle" style="margin:2px 0 0">${esc(v.what || '')}. Compiled from that version; nothing in the exam changed.</p></div></div>
     <div class="dialog-body"><iframe class="hist-pdf" src="${S.versionPdf}" title="The question paper of that version"></iframe></div>
     <div class="dialog-foot"><a class="btn" href="${S.versionPdf}" download="${esc(S.project)} ${esc(fmtWhen(v.at))}.pdf">${ic('download')} Download</a><button class="btn btn-primary" data-act="dialog-ok">Close</button></div>`);
@@ -4295,6 +4299,7 @@ const ACTIONS = {
   'hist-view': (el) => { if (S.history) { S.history.view = el.dataset.v; renderPreview(); } },
   'hist-name': () => historyName(),
   'hist-build': () => historyBuild(),
+  'hist-pick-blame': (el) => { if (S.history) S.history.view = 'changes'; pickVersion(el.dataset.id); }, // from "who changed each line": the version is shown
   'exam-import': () => examImport(),
   'exam-import-go': () => examImportGo(),
   'd-sec-history': (el) => openHistory(null, el.dataset.name),

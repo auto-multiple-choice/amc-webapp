@@ -68,6 +68,7 @@ Cloudflare Tunnel; see doc/public-hosting.md):
   doctor [--rebuild-index]
                        Check every exam's and bank's history (git fsck), the
                        trash and the bank search index; changes nothing
+                       (--rebuild-index builds the search index again)
 
   help                 Show this help
 

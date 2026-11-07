@@ -2407,6 +2407,10 @@ def api_history_blame(bank):
     return jsonify(project=name, file=fn, lines=lines[:5000], commits=commits, truncated=len(lines) > 5000)
 
 
+BUILD_MAX_FILES = 5000               # a version built in a scratch folder: its size is bounded
+BUILD_MAX_BYTES = 200 * 1024 * 1024
+
+
 @bp.route("/ui/api/history/<cid>/build", methods=["POST"])
 def api_history_build(cid):
     """Build this version: every file the version holds written into a
@@ -2429,12 +2433,19 @@ def api_history_build(cid):
         tree = repo.tree_at(cid)
         if main not in tree:
             return jsonify(error=f"The main file {main} isn't in this version.")
+        if len(tree) > BUILD_MAX_FILES:  # a history that came in a bundle may hold anything
+            return jsonify(error=f"This version holds more than {BUILD_MAX_FILES} files; it isn't built here.")
         os.makedirs(full)
+        written = 0
         for path, bid in tree.items():
+            data = repo.blob(bid)
+            written += len(data)
+            if written > BUILD_MAX_BYTES:
+                return jsonify(error=f"This version's files take more than {BUILD_MAX_BYTES // 1024 // 1024} MB; it isn't built here.")
             target = os.path.join(full, *path.split("/"))
             os.makedirs(os.path.dirname(target), exist_ok=True)
             with open(target, "wb") as f:
-                f.write(repo.blob(bid))
+                f.write(data)
         for f in os.listdir(pdir):  # style files, fonts and the like the history doesn't keep
             src = os.path.join(pdir, f)
             if (f.rsplit(".", 1)[-1].lower() in BUILD_SUPPORT and not vcs.tracked(f) and os.path.isfile(src)
@@ -2442,7 +2453,7 @@ def api_history_build(cid):
                 shutil.copyfile(src, os.path.join(full, f))
         cmd = _sandboxed([_engine(), "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", main])
         try:
-            p = subprocess.run(cmd, cwd=full, capture_output=True, timeout=240, env={**os.environ, "TMPDIR": core.amc_user_tmp()})
+            p = subprocess.run(cmd, cwd=full, capture_output=True, timeout=240, preexec_fn=_tex_limits, env={**os.environ, "TMPDIR": core.amc_user_tmp()})
         except subprocess.TimeoutExpired:
             return jsonify(error="Building this version took too long (over 4 minutes).")
         pdf = os.path.join(full, main.rsplit(".", 1)[0] + ".pdf")
@@ -2484,7 +2495,7 @@ def api_history_download():
         bundle = os.path.join(tmp, HISTORY_BUNDLE)
         repo.bundle(bundle)
         import zipfile
-        with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
+        with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED, strict_timestamps=False) as z:  # a file dated before 1980 is kept too
             for root, dirs, files in os.walk(pdir):
                 dirs[:] = sorted(x for x in dirs if not copy_skipped(x) and not os.path.islink(os.path.join(root, x)))
                 rel = os.path.relpath(root, pdir)
@@ -2493,9 +2504,13 @@ def api_history_download():
                     if not os.path.islink(p) and not (rel == "." and f == HISTORY_BUNDLE):
                         z.write(p, os.path.normpath(os.path.join(rel, f)))
             z.write(bundle, HISTORY_BUNDLE, compress_type=zipfile.ZIP_STORED)
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         shutil.rmtree(tmp, ignore_errors=True)
         return _history_error(name, e)
+    except Exception as e:  # noqa: BLE001 - whatever else the packing hits, the temporary folder goes
+        shutil.rmtree(tmp, ignore_errors=True)
+        core.app.logger.error(f"Download with history: {name}: {e}")
+        return jsonify(project=name, error="The exam couldn't be packed. The server log has the details."), 500
 
     @after_this_request
     def _cleanup(response):
@@ -2763,12 +2778,16 @@ def copy_skipped(dirname):
     return (dirname.startswith(".") and dirname != HISTORY_DIR) or dirname.startswith(CHECK_PREFIX)
 
 
+VCS_DIRS = (".git", ".hg", ".svn", ".bzr")
+
+
 def archive_skipped(member):
     """Called by upstream's archive import for each member's path (inside
     the exam): whether it is left out (copy_skipped on any of its folders)."""
     parts = [p for p in str(member).replace("\\", "/").split("/") if p]
     folders = parts if str(member).endswith("/") else parts[:-1]
-    return any(copy_skipped(p) for p in folders)
+    # a tar directory entry has no trailing slash, and a file may carry a repository's name (a gitdir pointer)
+    return any(copy_skipped(p) for p in folders) or (bool(parts) and parts[-1] in VCS_DIRS)
 
 
 def exam_imported(pdir):

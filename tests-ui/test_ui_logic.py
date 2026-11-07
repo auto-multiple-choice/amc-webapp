@@ -1041,6 +1041,10 @@ try:
     _dmg = ui_doctor.check(_root, out=_out.append)
     check3("doctor: a damaged history reported, a history whose bank is gone listed (and kept)", _dmg == 1 and any("DAMAGED bank history" in x for x in _out)
            and any("whose bank is gone (kept): Bad bundle" in x for x in _out), J(_out))
+    import ui as _uimod
+    check("import: an archive entry named .git (file or folder) is dropped, the exam's files aren't",
+          _uimod.archive_skipped(".git") and _uimod.archive_skipped("a/.git") and _uimod.archive_skipped(".git/config")
+          and not _uimod.archive_skipped(".history/x") and not _uimod.archive_skipped("items/q1/item.tex") and not _uimod.archive_skipped("exam.tex"))
 finally:
     shutil.rmtree(_tmpb, ignore_errors=True)
 
