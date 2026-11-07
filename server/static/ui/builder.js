@@ -157,7 +157,8 @@ function designPicture(design, info) {
   try {
     const sheets = design.kind === 'separate' || design.answer_sheet.length ? ['paper', 'sheet'] : ['paper'];
     return sheets.map((sh) => `<div class="b-pic"><div class="b-pic-title">${sh === 'paper' ? 'Question paper' : 'Answer sheet'}</div>${renderCanvas(sh, true)}</div>`).join('')
-      .replace(/\sdata-act="[^"]*"/g, '').replace(/\s(draggable|tabindex|role|aria-pressed)="[^"]*"/g, '').replace(/ Add a row below\./g, '');
+      .replace(/\sdata-act="[^"]*"/g, '').replace(/\s(draggable|tabindex|role|aria-pressed)="[^"]*"/g, '').replace(/ Add a row below\./g, '')
+      .replace(/<button\b/g, '<span').replace(/<\/button>/g, '</span>'); // a picture: nothing in it takes the focus
   } finally { S.builder = keep.builder; S.bform = keep.bform; }
 }
 
