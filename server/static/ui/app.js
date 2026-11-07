@@ -1204,7 +1204,7 @@ async function saveSource({ force = false } = {}) {
       choices: [['theirs', 'Load their version', ''], ['mine', 'Keep my version', 'btn-primary']],
     });
     if (choice === 'mine') return saveSource({ force: true });
-    if (choice === 'theirs') { store.set(draftKey(), { text, at: Date.now(), base: S.source.digest }); S.source.dirty = false; S.source.loaded = false; loadSource(name); }
+    if (choice === 'theirs') { store.set(draftKey(), { text, at: Date.now(), base: r.digest || null }); S.source.dirty = false; S.source.loaded = false; loadSource(name); } // the draft knows their version: "Use it" then saves over it without asking again
     return false;
   }
   if (!r.ok) {
