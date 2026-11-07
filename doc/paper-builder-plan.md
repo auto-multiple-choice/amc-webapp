@@ -112,7 +112,7 @@ or an answer area, which flows normally.
 |---|---|---|
 | **Logo** | an image | the school logo from Appearance or an uploaded image; height |
 | **Title lines** | one to four lines, e.g. exam name, organiser | per line: text, size, bold or small caps |
-| **Student details** | name line; registration number as a fixed prefix in grey boxes (`MO26`) and digit boxes to write in; class boxes; level box | which lines, number of digits, the prefix, labels |
+| **Student details** | name line; registration number as a fixed prefix in grey boxes (`MO26`) and digit boxes to write in; class boxes; level box | which lines, number of digits, the prefix, labels; the boxes' width and height (Details, 7mm square) |
 | **Paper code** | "Code" and the version's code (section 7) | size |
 | **Exam information** | date, time, maximum marks, more lines | lines; icons on or off |
 | **Labelled box** | a label and a value, e.g. "Level: I" | label, value, size |
@@ -436,7 +436,19 @@ Question banks (phase 9) come after B4, or before B1 (section 14, point 3).
   their centres or their bottom edges. (The first version aligned the
   minipages themselves, which TeX does on their first baselines: a code
   box starting with a tall line sat higher than a student box starting
-  with a space. Reported from the printed paper and fixed on 7 November.)
+  with a space. Reported from the printed paper and fixed on 7 November.
+  The same report found the gap between columns missing: the `\hspace`
+  followed the previous column's `%` on the same line and was a comment.
+  It is now `\hspace*` on a line of its own, so the row can't wrap
+  there when the widths add up to the line exactly.)
+- **Writing boxes.** A box for one handwritten letter or digit (the
+  registration number, the class, the level, the grey prefix) is
+  `\amcuiCharBox`: an `\fcolorbox` with `\fboxsep` at 0pt around a
+  `\parbox` of the width and height set in Details (`student.box_width`,
+  `student.box_height`, 7mm square by default), so the block's padding
+  doesn't stretch it. (The first version used `\framebox` with
+  `\fboxsep` left at the block's padding: 6.5mm wide and nearly 12mm
+  tall. Reported from the printed paper and fixed on 7 November.)
   Blocks that register boxes
   with AMC (the ID and class grids, the answer areas) are never typeset
   in a measuring box, because AMC would see them twice: they can't be

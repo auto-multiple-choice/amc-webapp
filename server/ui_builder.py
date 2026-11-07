@@ -100,7 +100,7 @@ DEFAULTS = {
     "kind": "separate",
     "codes": {"style": "letters", "same_length": False, "zero_pad": False},
     "fields": {k: "" for k in FIELDS},
-    "student": {"id_prefix": "", "id_digits": 3, "class_digits": 2},
+    "student": {"id_prefix": "", "id_digits": 3, "class_digits": 2, "box_width": "7mm", "box_height": "7mm"},
     "page": {"margins": "normal", "border": "dashed", "shuffle_answers": False, "question_style": "rj",
              "footer": {"pattern": "Level {level} // Code {code} // Page {page}", "align": "center",
                         "border": "dashed", "mono": True},
@@ -394,7 +394,9 @@ def normalize(raw):
     if prefix and not re.fullmatch(r"[A-Za-z0-9-]{1,12}", prefix):
         raise EditError("The ID prefix uses letters, digits and - only.")
     d["student"] = {"id_prefix": prefix, "id_digits": _int(s.get("id_digits", 3), 1, 10, "ID digits"),
-                    "class_digits": _int(s.get("class_digits", 2), 1, 4, "Class digits")}
+                    "class_digits": _int(s.get("class_digits", 2), 1, 4, "Class digits"),
+                    "box_width": _dim(s.get("box_width"), "7mm", "The width of a box"),
+                    "box_height": _dim(s.get("box_height"), "7mm", "The height of a box")}
     p = raw.get("page") if isinstance(raw.get("page"), dict) else {}
     d["page"]["margins"] = _choice(p.get("margins"), tuple(MARGINS), "normal")
     d["page"]["border"] = _choice(p.get("border"), ("none", "dashed", "solid"), "dashed")
@@ -564,7 +566,7 @@ def _block_tex(design, b, where, summary, namefield):
         if b["klass"]:
             parts.append(r"%s: %s" % (esc(b["class_label"]), _digit_boxes(st["class_digits"])))
         if b["level"] and f.get("level"):
-            parts.append(r"%s: \framebox[8mm]{\rule{0pt}{7mm}%s}" % (esc(b["level_label"]), esc(f["level"])))
+            parts.append(r"%s: \amcuiCharBox{black}{white}{%s}" % (esc(b["level_label"]), esc(f["level"])))
         while parts:
             pair, parts = parts[:2], parts[2:]
             lines.append(r" \hfill ".join(pair))
@@ -726,7 +728,9 @@ def _row_tex(design, row, where, summary, namefield_cell):
         cols = [column(j, j in measurable) for j in range(n)]
     else:
         cols = [column(j, False) for j in range(n)]
-    lines.append((r"\hspace{\amcuiGapLen}%" + "\n").join(x + "%" for x in cols)[:-1] + "%")
+    # each column ends its line with "%"; the gap sits on a line of its own
+    # (an \hspace* so that TeX can't wrap the row there)
+    lines.append(("%\n" + r"\hspace*{\amcuiGapLen}%" + "\n").join(cols) + "%")
     lines.append(r"\endgroup\par\vspace{%s}" % row["after"])
     return "\n".join(lines) + "\n"
 
@@ -820,9 +824,12 @@ def layout(design, versions, summary=()):
         "".join(r"\newlength{\amcuiW%s}" % L for L in _LETTERS),
         "".join(r"\newsavebox{\amcuiBox%s}" % L for L in _LETTERS),
         r"\newcount\amcuiCount",
-        r"\newcommand{\amcuiBoxOne}{\framebox[6.5mm]{\rule{0pt}{7mm}}\:}",
+        "% A box for one handwritten letter or digit: its size is set here, not by the block's padding",
+        r"\newlength{\amcuiBoxW}\newlength{\amcuiBoxH}\setlength{\amcuiBoxW}{%s}\setlength{\amcuiBoxH}{%s}" % (design["student"]["box_width"], design["student"]["box_height"]),
+        r"\newcommand{\amcuiCharBox}[3]{{\setlength{\fboxsep}{0pt}\fcolorbox{#1}{#2}{\parbox[c][\dimexpr\amcuiBoxH-2\fboxrule\relax][c]{\dimexpr\amcuiBoxW-2\fboxrule\relax}{\centering\mbox{}#3}}}}",
+        r"\newcommand{\amcuiBoxOne}{\amcuiCharBox{black}{white}{}\:}",
         r"\newcommand{\amcuiDigitBoxes}[1]{\amcuiCount=0 \loop\ifnum\amcuiCount<#1 \amcuiBoxOne\advance\amcuiCount by 1 \repeat}",
-        r"\newcommand{\amcuiPrefixBox}[1]{\fcolorbox{black!40}{black!40}{\color{white}\large #1}\ }",
+        r"\newcommand{\amcuiPrefixBox}[1]{\amcuiCharBox{black!40}{black!40}{\color{white}\large #1}\:}",
         r"\newcommand{\amcuiLogo}[2]{\IfFileExists{#1}{\includegraphics[height=#2]{#1}}{}}",
         r"\newcommand{\amcuiBullet}{%s}" % {"arrow": r"$\blacktriangleright$", "dot": r"\textbullet", "number": "", "none": ""}[design["instructions"]["bullet"]],
         r"\newcommand{\amcuiPoint}[1]{\par\noindent\amcuiBullet\ #1\par\vspace{1ex}}",

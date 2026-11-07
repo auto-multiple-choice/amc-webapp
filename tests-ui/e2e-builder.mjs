@@ -68,6 +68,9 @@ async function main_() {
   await typeInto('[data-pbb="id_label"]', 'Roll No.');
   b.check('A typed setting is saved as you type', await saved() && (await file('paper-layout.tex')).includes('Roll No.: '));
   b.check('...without pulling the field away', await b.js(`document.activeElement === document.querySelector('[data-pbb="id_label"]') && document.querySelector('.b-cell[data-row="r2"][data-cell="c1"] .b-cell-sub').textContent.includes('Roll No.')`));
+  b.check('The row\'s settings are shown under the block', await b.js(`!!document.querySelector('[data-pbr="same_height"]') && !!document.querySelector('[data-pbr="gap"]') && document.querySelector('.b-side .d-head b').textContent === 'Student details'`));
+  await typeInto('[data-pbr="gap"]', '4mm');
+  b.check('A gap between the columns is saved and printed on a line of its own', await settle(`S.builder.design.paper[1].gap === '4mm'`) && (await file('paper-layout.tex')).includes('\\setlength{\\amcuiGapLen}{4mm}%') && (await file('paper-layout.tex')).includes('\n\\hspace*{\\amcuiGapLen}%\n'));
   await b.setValue('[data-pbc="width"]', '12');
   b.check('A width the row has no room for is refused', await b.waitFor(`[...document.querySelectorAll('.toast')].some(t => t.textContent.includes('of 12'))`, 5000) && await b.js(`S.builder.design.paper[1].cells[0].width === 8`));
   await b.click('[data-act="pb-cell-move"][data-d="1"]');
@@ -117,6 +120,8 @@ async function main_() {
   await b.waitFor(`!!document.querySelector('[data-pbd="fields.exam_name"]')`, 5000);
   await typeInto('[data-pbd="fields.exam_name"]', 'Olympiad & Co');
   b.check('A detail is saved, escaped for LaTeX', await saved() && (await file('paper-layout.tex')).includes('Olympiad \\& Co'));
+  await typeInto('[data-pbd="student.box_width"]', '8mm');
+  b.check('The size of the writing boxes is a detail', await saved() && (await file('paper-layout.tex')).includes('\\setlength{\\amcuiBoxW}{8mm}\\setlength{\\amcuiBoxH}{7mm}'));
   await b.click('[data-act="pb-tab"][data-v="page"]');
   await b.waitFor(`!!document.querySelector('#pb-versions')`, 5000);
   await b.setValue('#pb-versions', '30');

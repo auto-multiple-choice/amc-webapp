@@ -555,7 +555,8 @@ for bad, what in (({"paper": [{"cells": [{"width": 7, "block": {"type": "text"}}
                   ({"paper": [{"cells": [{"pad": "big", "block": {"type": "text"}}]}]}, "length"),
                   ({"paper": [{"cells": [{"width": 12, "block": {"type": "text"}}, {"width": "auto", "block": {"type": "text"}}]}]}, "no room"),
                   ({"student": {"id_digits": 40}}, "between"),
-                  ({"student": {"id_prefix": "MO 26"}}, "letters, digits")):
+                  ({"student": {"id_prefix": "MO 26"}}, "letters, digits"),
+                  ({"student": {"box_height": "tall"}}, "height of a box")):
     try:
         pb.normalize(bad); check(f"builder: refused {what}", False)
     except pb.EditError as e:
@@ -580,6 +581,8 @@ check("builder: widths fixed, measured and shared", "*8/12\\relax" in tex and "\
 check("builder: a same-height row measures its boxes; grids are printed once", "\\ifdim\\amcuiTmpLen>\\amcuiRowH" in tex and tex.count("\\AMCcodeGridInt[top,v]{student}{3}") == 1 and tex.count("\\AMCformFilter{\\AMCifcategory{numeric}}") == 1)
 aligned = pb.layout(pb.normalize({"paper": [{"align": "middle", "same_height": True, "cells": [{"width": 8, "block": {"type": "student"}}, {"block": {"type": "code", "label": "Code"}}]}, {"align": "bottom", "cells": [{"width": 6, "block": {"type": "student"}}, {"block": {"type": "code", "label": "Code"}}]}, {"cells": [{"block": {"type": "questions"}}]}]}), 2)
 check("builder: the boxes of a row line up on their edges, not their first baselines", "\\raisebox{-\\height}{" in tex and aligned.count("\\raisebox{\\dimexpr(\\depth-\\height)/2\\relax}{") == 4 and aligned.count("\\raisebox{\\depth}{") == 2 and "\\relax][c]{" in aligned and "\\begin{minipage}[c]" not in aligned)
+check("builder: the gap between columns is printed, on its own line", "\\end{minipage}}}}%\n\\hspace*{\\amcuiGapLen}%\n{\\setlength" in tex and "\\setlength{\\amcuiGapLen}{2mm}%" in tex and "}%\\hspace" not in tex)
+check("builder: the writing boxes take their size from the details, not from the padding", "\\setlength{\\amcuiBoxW}{7mm}\\setlength{\\amcuiBoxH}{7mm}" in tex and "\\amcuiCharBox{black}{white}{I}" in tex and "\\setlength{\\fboxsep}{0pt}\\fcolorbox{#1}{#2}{\\parbox[c][\\dimexpr\\amcuiBoxH-2\\fboxrule\\relax][c]" in tex and "\\setlength{\\amcuiBoxW}{9mm}" in pb.layout(pb.normalize({**rj, "student": {**rj["student"], "box_width": "9mm"}}), 2))
 check("builder: the questions split the paper, then filler pages and the sheet", tex.index("\\newcommand{\\amcuiPaperBack}") < tex.index("\\amcuiRoughWork{2}") < tex.index("\\AMCaddpagesto{10}") < tex.index("\\clearpage\n\\AMCformBegin"))
 paper_kind = pb.layout(pb.preset("simple"), 2)
 check("builder: answers on the paper: the name field on the paper, no form", "\\namefield{" in paper_kind and "\\AMCformBegin" not in paper_kind and "separateanswersheet" not in paper_kind and "\\AMCsetFoot{\\makebox[\\textwidth][c]{Code \\amcuiCode{} // Page \\thepage{}}}" in paper_kind)

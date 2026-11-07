@@ -17,7 +17,9 @@
  "student": {
   "id_prefix": "MO26",
   "id_digits": 3,
-  "class_digits": 2
+  "class_digits": 2,
+  "box_width": "7mm",
+  "box_height": "7mm"
  },
  "page": {
   "margins": "normal",

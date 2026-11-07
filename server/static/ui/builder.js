@@ -95,7 +95,7 @@ function renderCanvas(sheet, L) {
     const spans = cellSpans(r);
     const fixed = r.cells.reduce((n, c) => n + (typeof c.width === 'number' ? c.width : 0), 0);
     html += `<div class="b-row ${isSel ? 'is-selected' : ''}" data-row="${esc(r.id)}" data-sheet="${sheet}">
-      <div class="b-row-bar">${L ? '' : `<span class="b-handle" draggable="true" data-row="${esc(r.id)}" data-sheet="${sheet}" title="Drag to move the row" aria-label="Drag to move the row">${ic('menu')}</span>`}<button class="link-btn b-row-name" data-act="pb-row-select" data-row="${esc(r.id)}" data-sheet="${sheet}">Row ${i + 1}</button><span class="subtle">${r.same_height ? '· same height' : ''}${r.align !== 'top' ? ` · ${r.align}` : ''}</span><span class="spacer"></span>
+      <div class="b-row-bar">${L ? '' : `<span class="b-handle" draggable="true" data-row="${esc(r.id)}" data-sheet="${sheet}" title="Drag to move the row" aria-label="Drag to move the row">${ic('menu')}</span>`}<button class="btn btn-ghost btn-sm b-row-name" data-act="pb-row-select" data-row="${esc(r.id)}" data-sheet="${sheet}" title="The row's settings: alignment, same height, gap">${ic('settings')} Row ${i + 1}</button><span class="subtle">${r.cells.length > 1 ? `· gap ${esc(r.gap)}` : ''}${r.same_height ? ' · same height' : ''}${r.align !== 'top' ? ` · ${r.align}` : ''}</span><span class="spacer"></span>
         ${L ? '' : `<button class="btn btn-ghost btn-icon btn-sm" data-act="pb-row-move" data-row="${esc(r.id)}" data-sheet="${sheet}" data-d="-1" ${i ? '' : 'disabled'} title="Move up" aria-label="Move row up">${ic('nav-arrow-up')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="pb-row-move" data-row="${esc(r.id)}" data-sheet="${sheet}" data-d="1" ${i < rows.length - 1 ? '' : 'disabled'} title="Move down" aria-label="Move row down">${ic('nav-arrow-down')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="pb-row-delete" data-row="${esc(r.id)}" data-sheet="${sheet}" title="Remove the row" aria-label="Remove row">${ic('trash')}</button>${fixed < 12 ? `<button class="btn btn-ghost btn-sm" data-act="pb-cell-add" data-row="${esc(r.id)}" data-sheet="${sheet}" title="Add a column to this row">${ic('plus')} Column</button>` : ''}`}</div>
       <div class="b-cells">${r.cells.map((c, j) => {
         const cs = sel.sheet === sheet && sel.row === r.id && sel.cell === c.id;
@@ -151,17 +151,10 @@ function blockSummary(b) {
 function renderBSide(sheet, L) {
   const sel = bsel();
   const dis = L ? 'disabled' : '';
-  if (sel.sheet !== sheet || !sel.row) return `<div class="d-card"><div class="d-body"><p class="muted" style="margin:0">Click a block to change it, or a row's name for the row's settings.${L ? '' : ' Drag blocks between columns and rows by their handle; columns are sized on a 12-column grid, like a web page.'}</p></div></div>`;
+  if (sel.sheet !== sheet || !sel.row) return `<div class="d-card"><div class="d-body"><p class="muted" style="margin:0">Click a block to change it; the settings of its row (how the columns line up, the same height for its boxes, the gap between them) are shown under it.${L ? '' : ' Drag blocks between columns and rows by their handle; columns are sized on a 12-column grid, like a web page.'}</p></div></div>`;
   const r = brow(sheet, sel.row);
   if (!r) return '';
-  if (!sel.cell) {
-    return `<div class="d-card"><div class="d-head"><b>Row ${brows(sheet).indexOf(r) + 1}</b><span class="spacer"></span><button class="btn btn-ghost btn-sm" data-act="pb-unselect">Done</button></div><div class="d-body d-form">
-      <label class="field"><span class="field-label">Columns aligned at the</span><select class="select" data-pbr="align" ${dis}>${bopt(VALIGNS, r.align)}</select></label>
-      <label class="check"><input type="checkbox" data-pbr="same_height" data-type="bool" ${r.same_height ? 'checked' : ''} ${dis}><span>Same height for every box in the row<br><span class="subtle">Boxes AMC reads (grids, answer areas) keep their own height.</span></span></label>
-      <div class="form-grid"><label class="field"><span class="field-label">Gap between columns</span><input class="input" data-pbr="gap" value="${esc(r.gap)}" ${dis}></label>
-      <label class="field"><span class="field-label">Space after the row</span><input class="input" data-pbr="after" value="${esc(r.after)}" ${dis}><span class="field-hint">Lengths such as 3mm, 1.5cm or 2ex.</span></label></div>
-      ${L ? '' : `<div class="row" style="gap:8px"><button class="btn btn-ghost btn-sm" data-act="pb-row-delete" data-row="${esc(r.id)}" data-sheet="${sheet}">${ic('trash')} Remove the row</button></div>`}</div></div>`;
-  }
+  if (!sel.cell) return renderBRow(sheet, r, L, true);
   const c = bcell(r, sel.cell);
   if (!c) return '';
   const j = r.cells.indexOf(c);
@@ -178,7 +171,17 @@ function renderBSide(sheet, L) {
     </div>
     <div class="b-block-form">${renderBlockForm(c.block, where, L)}</div>
     ${L ? '' : `<div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-act="pb-cell-move" data-d="-1" ${j ? '' : 'disabled'}>${ic('nav-arrow-left')} Move left</button><button class="btn btn-ghost btn-sm" data-act="pb-cell-move" data-d="1" ${j < r.cells.length - 1 ? '' : 'disabled'}>Move right ${ic('nav-arrow-right')}</button><span class="spacer"></span><button class="btn btn-ghost btn-sm" data-act="pb-cell-delete">${ic('trash')} Remove</button></div>`}
-  </div></div>`;
+  </div></div>` + renderBRow(sheet, r, L, false);
+}
+
+function renderBRow(sheet, r, L, alone) {
+  const dis = L ? 'disabled' : '';
+  return `<div class="d-card"><div class="d-head"><b>Row ${brows(sheet).indexOf(r) + 1}</b>${alone ? '' : '<span class="subtle">the row of this block</span>'}<span class="spacer"></span>${alone ? '<button class="btn btn-ghost btn-sm" data-act="pb-unselect">Done</button>' : ''}</div><div class="d-body d-form">
+      <label class="field"><span class="field-label">Columns aligned at the</span><select class="select" data-pbr="align" ${dis}>${bopt(VALIGNS, r.align)}</select></label>
+      <label class="check"><input type="checkbox" data-pbr="same_height" data-type="bool" ${r.same_height ? 'checked' : ''} ${dis}><span>Same height for every box in the row<br><span class="subtle">Every box as tall as the tallest. Boxes AMC reads (grids, answer areas) keep their own height.</span></span></label>
+      <div class="form-grid"><label class="field"><span class="field-label">Gap between the columns</span><input class="input" data-pbr="gap" value="${esc(r.gap)}" ${dis}></label>
+      <label class="field"><span class="field-label">Space after the row</span><input class="input" data-pbr="after" value="${esc(r.after)}" ${dis}><span class="field-hint">Lengths such as 3mm, 1.5cm or 2ex.</span></label></div>
+      ${L ? '' : `<div class="row" style="gap:8px"><button class="btn btn-ghost btn-sm" data-act="pb-row-delete" data-row="${esc(r.id)}" data-sheet="${sheet}">${ic('trash')} Remove the row</button></div>`}</div></div>`;
 }
 
 function renderBlockForm(b, where, L) {
@@ -268,7 +271,10 @@ function renderDetails(L) {
     <div class="field-label" style="margin-top:14px">Registration number and class</div>
     <div class="form-grid"><label class="field"><span class="field-label">Fixed prefix</span><input class="input" data-pbd="student.id_prefix" value="${esc(d.student.id_prefix)}" ${dis}><span class="field-hint">Printed in grey boxes before the digits, for example MO26. Empty for none.</span></label>
     <label class="field"><span class="field-label">Digits</span><input class="input input-num" type="number" min="1" max="10" data-pbd="student.id_digits" data-type="int" value="${d.student.id_digits}" ${dis}><span class="field-hint">Written in boxes and darkened in the ID grid, so AMC matches sheets to the class list.</span></label>
-    <label class="field"><span class="field-label">Class: digits</span><input class="input input-num" type="number" min="1" max="4" data-pbd="student.class_digits" data-type="int" value="${d.student.class_digits}" ${dis}></label></div>`;
+    <label class="field"><span class="field-label">Class: digits</span><input class="input input-num" type="number" min="1" max="4" data-pbd="student.class_digits" data-type="int" value="${d.student.class_digits}" ${dis}></label></div>
+    <div class="field-label" style="margin-top:14px">Boxes for writing</div>
+    <div class="form-grid"><label class="field"><span class="field-label">Box width</span><input class="input" data-pbd="student.box_width" value="${esc(d.student.box_width)}" ${dis}><span class="field-hint">One letter or digit per box, in the registration number, the class and the level. 7mm square suits handwriting.</span></label>
+    <label class="field"><span class="field-label">Box height</span><input class="input" data-pbd="student.box_height" value="${esc(d.student.box_height)}" ${dis}></label></div>`;
 }
 
 function renderPage(L) {
