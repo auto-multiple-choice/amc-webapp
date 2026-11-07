@@ -591,6 +591,23 @@ Tests to add:
   P1a. `server/ui_latex.py`; the LaTeX view and checks in the form; the
   check compiles in the same sandbox as the build (shared mode: landrun),
   in a scratch folder of the exam that is removed afterwards.
+- **P2a (banks): built** on `feature/banks-p2a` (MR !19): per-instructor
+  banks in groups with history and trash, the bank page, From a bank /
+  Save to a bank, RJ-style import, macros and packages carried.
+- **P2b (copies): built** on `feature/banks-p2b` (MR !20): status of each
+  copy, compare, take / update the bank's copy / keep / combine, the
+  printed-exam rule, a section following its group.
+- **P2c (finding questions): built** on `feature/banks-p2c` (MR !21): the
+  FTS5 index and filters, usage at printing, archiving, the exams using an
+  item, bank zips with their history.
+- **P3 (analysis and blueprints): built** on `feature/analysis-p3` (MR !22).
+- **P4a (history extras) and P4b (editor extras): built** on
+  `feature/history-extras-p4a` (MR !23) and `feature/editor-extras-p4b`
+  (MR !24): what was left from P0, the security section and
+  `questions-banks-templates-plan.md`.
+
+Every item of both plans is now built or marked not doing, with the
+reason (12.1). The merge requests form one chain: merge !16 to !24 in order.
 
 ### 12.1 Everything from both plans, and where it stands
 
