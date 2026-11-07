@@ -92,11 +92,11 @@ Your **question banks** (top right, next to the Guide) keep questions to use aga
 - **Save to a bank…** copies questions the other way: one question (above it in the form), a whole section (in Paper design, as a group), or the whole exam as a new bank with a group per section (Exam settings). A question that came from that bank can update the bank's copy or be saved as a new one.
 - Both only work on questions kept in item files; an older exam first needs **Move questions into item files**.
 
-Each copy shows whether it still matches its bank question: **Up to date**, **Bank updated** (the bank's question changed since), **Edited here** (this exam's copy changed), **Both changed**, or **Not in the bank any more**. Copies that changed are listed above the questions (**Review…**) and marked in the list; **Compare…** (on the question, or in that list) shows what changed and offers:
+Each copy shows whether it still matches its bank question: **Up to date**, **Bank updated** (the bank's question changed since), **Edited here** (this exam's copy changed), **Both changed**, **Bank's newer version set aside** (after "Keep this exam's"), or **Not in the bank any more**. Copies that changed are listed above the questions (**Review…**) and marked in the list; **Compare…** (on the question, or in that list) shows what changed and offers:
 
 - **Take the bank's version**: the copy becomes the bank's question again, with the same new names and scoring it got when it was added.
 - **Update the bank's copy**: the bank's question becomes this exam's version (a new version in the bank's History). Other exams with a copy then see "Bank updated".
-- **Keep this exam's**: the bank's newer version isn't offered again; the copy shows "Edited here".
+- **Keep this exam's**: the bank's newer version is set aside and not offered again; the copy shows "Bank's newer version set aside" until the bank changes again, and the version can still be taken later.
 - **Combine both**: when both changed, the changes of each side are kept. Where both changed the same lines, the text opens with the two versions marked to choose by hand.
 
 Nothing changes until you choose. Once the exam is printed, only answer key and scoring fixes can be taken from a bank. A section made from a whole group says when the group gains questions (**Add them to the section** or **Not these**), or when one of its questions was removed from the group, until the exam is printed.

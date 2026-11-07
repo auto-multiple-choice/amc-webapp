@@ -3,7 +3,7 @@
  * End-to-end test of copies of bank questions in an exam (server/ui_bankcopies.py,
  * the copies part of static/ui/banks.js; doc/question-bank-plan.md, section 7.4):
  * a group with a default scoring added as a section; the status of each copy
- * (Up to date, Bank updated, Edited here, Both changed, Not in the bank any
+ * (Up to date, Bank updated, Edited here, Both changed, Bank's newer version set aside, Not in the bank any
  * more); taking the bank's version, updating the bank's copy (the scoring
  * given on the way in taken back), keeping this exam's, combining both (by
  * hand where they changed the same place); a section offering the questions
@@ -162,7 +162,7 @@ async function main() {
   await b.waitFor(`!!document.querySelector('.dialog [data-op="keep"]')`, 10000);
   await b.click('.dialog [data-op="keep"]');
   await b.waitFor(`!document.querySelector('.dialog [data-op="keep"]')`, 10000);
-  b.check('"Keep this exam\'s": the copy stays and shows "Edited here"', (await status('q2')) === 'here' && (await examFile('items/q2/item.tex')).text.includes('improved in the exam'));
+  b.check('"Keep this exam\'s": the copy stays, the bank version is set aside (not "Bank updated" any more)', (await status('q2')) === 'kept' && (await examFile('items/q2/item.tex')).text.includes('improved in the exam'));
 
   // ---- the section follows its group
   const itemOf = (res) => res.added.file.split('/')[1];
@@ -221,8 +221,10 @@ async function main() {
   await editBank('q2', (t) => t.replace('changed again in the bank', 'a longer wording that would move the boxes on the printed papers'));
   let cmp = await get('/ui/api/bank-copy?item=q2');
   b.check('Printed: a bank version that changes the text is refused, and the comparison says why', !!cmp.take_refused, J(cmp));
-  r = await post('/ui/api/bank-copy', { item: 'q2', op: 'take' });
+  r = await post('/ui/api/bank-copy', { item: 'q2', op: 'take', digest: cmp.digest, bank_fp: cmp.bank_fp });
   b.check('...taking it is refused by the server too', !r.ok && r.locked === true, J(r));
+  r = await post('/ui/api/bank-copy', { item: 'q2', op: 'take' });
+  b.check('...and a choice made without the comparison it came from is refused as stale', !r.ok && r.conflict === true, J(r));
   cmp = await get(`/ui/api/bank-copy?item=${q6}`);
   r = await post('/ui/api/bank-copy', { item: q6, op: 'take', digest: cmp.digest, bank_fp: cmp.bank_fp });
   b.check('...an answer key fix is taken', !cmp.take_refused && r.ok && /\\correctchoice\{Wrong\}/.test((await examFile(`items/${q6}/item.tex`)).text), J([cmp.take_refused, r.error]));
