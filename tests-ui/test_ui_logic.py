@@ -610,5 +610,59 @@ check("editor: multiple -> single keeps the first correct answer only", [a["corr
 _t, _ = qe.apply(_shared, [{"op": "answer_correct", "id": "a", "i": 1, "correct": "true"}, {"op": "answer_correct", "id": "a", "i": 0, "correct": "false"}])
 check("editor: correct is read as a real boolean", [a["correct"] for a in sc.read_latex(_t)[0]["answers"]] == [False, True])
 
+# paper design: what the teacher wrote stays (review of !12)
+import ui_structure as pst
+_doc = r"""\documentclass{article}
+\def\ptsA{b=3,m=-1}
+\begin{document}
+\element{a}{\begin{question}{q1} T \begin{choices}\correctchoice{y}\wrongchoice{n}\end{choices}\end{question}}
+\element{Part 1}{\begin{question}{q2} T \begin{choices}\correctchoice{y}\wrongchoice{n}\end{choices}\end{question}}
+\onecopy{3}{ % note: { here
+%%AMCUI:SECTION a%%
+\amcuiSectionHeading{Section 1}
+\vspace{3cm}
+\insertgroup[3]{a}
+\insertgroup{b}
+%%AMCUI:END SECTION%%
+\newpage \insertgroup{Part 1}
+\begin{multicols}{2}\insertgroup{d}\end{multicols}
+\setgroupmode{a}{withoutreplacement}
+}
+\end{document}
+"""
+check("design: \\onecopy is found when a comment inside holds a brace", pst.onecopy(_doc) is not None)
+_t = pst.set_section(_doc, "a", {"count": 2, "heading": "New"})
+check("design: a rewrite keeps the LaTeX written between the markers", all(x in _t for x in ("\\vspace{3cm}", "\\insertgroup{b}", "\\insertgroup[2]{a}", "\\amcuiSectionHeading{New}")) and "Section 1" not in _t)
+_t2 = pst.set_section(_t, "a", {"shuffle": True})
+check("design: a second rewrite adds nothing twice", _t2.count("%%AMCUI:SECTION a%%") == 1 and _t2.count("\\insertgroup{b}") == 1 and _t2.count("\\vspace{3cm}") == 1)
+_t3 = pst.set_section(_doc, "Part 1", {"count": 1})
+_t4 = pst.set_section(_t3, "Part 1", {"count": 2})
+check("design: a group named with a space gets markers that are read back, and keeps the \\newpage on its line",
+      "%%AMCUI:SECTION Part 1%%" in _t3 and "\\newpage" in _t3 and _t4.count("%%AMCUI:SECTION Part 1%%") == 1 and "\\insertgroup[2]{Part 1}" in _t4)
+_t5 = pst.set_section(_doc, "d", {"count": 1})
+check("design: a multicols around a plain \\insertgroup is kept, and read as the section's columns",
+      "\\begin{multicols}{2}" in _t5 and "\\end{multicols}" in _t5 and [s["columns"] for s in pst.read_sections(_t5) if s["name"] == "d"] == [2])
+def _refused_s(fn, *a, **k):
+    try:
+        fn(*a, **k)
+        return False
+    except qe.EditError:
+        return True
+check("design: columns can't nest a multicols the teacher wrote", _refused_s(pst.set_section, _doc, "d", {"columns": 2}))
+_t6, _ = pst.rename_section(_doc, "a", "alpha")
+check("design: a rename reaches \\setgroupmode and \\element", "\\setgroupmode{alpha}" in _t6 and "\\element{alpha}" in _t6 and "{a}" not in _t6.replace("\\ptsA", ""))
+check("design: a rename can't take a group name of another file", _refused_s(pst.rename_section, _doc, "a", "other", other_groups={"other"}))
+check("design: an existing group with an odd name can get a section, a new section can't",
+      "%%AMCUI:SECTION part_1%%" in pst.add_section(_doc, {"name": "part_1"}, existing={"part_1"})[0] and _refused_s(pst.add_section, _doc, {"name": "part_1"}))
+check("design: a macro's value comes from its definition, not a use", pst._macro_value(_doc, "ptsA") == "b=3,m=-1" and pst._macro_value("\\ptsA{x}", "ptsA") is None)
+check("design: a bare % in a heading is escaped", "100\\% marks" in pst.set_section(_doc, "a", {"heading": "Total 100% marks"}))
+_simple = "\\documentclass{article}\\begin{document}\n\\onecopy{10}{\n\\noindent Header\n\n\\begin{question}{p}\n  T\n  \\begin{choices}\n    \\correctchoice{a}\n  \\end{choices}\n\\end{question}\n\n% \\AMCaddpagesto{3}\n\n\\begin{questionmult}{q}\n    T2\n  \\begin{choices}\n    \\correctchoice{a}\n  \\end{choices}\n\\end{questionmult}\n\n}\n\\end{document}\n"
+_t9, _ = pst.convert_inline(_simple)
+check("design: organising moves the questions as written", "\\element{main}{\n\\begin{question}{p}\n  T\n  \\begin{choices}\n    \\correctchoice{a}\n  \\end{choices}\n\\end{question}\n}" in _t9)
+check("design: organising is refused when LaTeX sits between the questions", _refused_s(pst.convert_inline, _simple.replace("% \\AMCaddpagesto{3}", "\\section*{Part B}")))
+_summ = _doc.replace("\\onecopy{3}{ % note: { here", "\\onecopy{3}{\n%%AMCUI:SUMMARY%%\n%%AMCUI:END SUMMARY%%")
+_t10, _, _ = pst.apply(_summ, [{"op": "summary"}], [])
+check("design: the summary defines the macro its lines use", "\\providecommand{\\amcuiPoint}" in _t10 and "\\amcuiPoint{" in _t10)
+
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

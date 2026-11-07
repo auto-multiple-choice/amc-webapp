@@ -1889,7 +1889,7 @@ async function insertFigure(file) {
   renderQPreview();
   qop({ op: 'text', latex }, { now: true });
 }
-/* ---------- View: questions, Paper design (sections and parts of the paper) ---------- */
+/* ---------- View: questions, Paper design (sections and versions) ---------- */
 
 async function loadDesign() {
   const project = S.project;

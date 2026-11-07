@@ -2140,7 +2140,8 @@ def api_structure_edit():
     name = _open_project()
     if not name:
         return jsonify(error="This exam doesn't exist any more.")
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
     pdir = core.project_dir()
     fmt, path = _main_source()
     main = core.main_source_file()
@@ -2156,7 +2157,10 @@ def api_structure_edit():
     if based_on and based_on != source_history.digest(raw):
         return jsonify(error="The paper was changed since it was read. Reload to see the changes.", conflict=True)
     files = _source_files(pdir)
-    ops = data.get("ops")
+    ops = data.get("ops") if isinstance(data.get("ops"), list) else []
+    copies = [o.get("n") for o in ops if isinstance(o, dict) and o.get("op") == "copies"]
+    if copies and exam_lock(pdir):
+        return jsonify(error=LOCKED.format(what="The number of versions changes the papers."), locked=True)
     try:
         new, what, renames = paper_structure.apply(text, ops, _all_questions(pdir, [fn for fn in files if fn != main]))
     except questions_edit.EditError as e:
@@ -2164,26 +2168,37 @@ def api_structure_edit():
     out = new.encode("utf-8")
     if refusal := write_refusal_bytes(path, out):
         return jsonify(error=refusal, locked=True)
+    # a rename reaches the other files' \element wrappers: every file is read and checked before anything is written
+    updates = []
+    for fn in files:
+        if fn == main or not renames:
+            continue
+        p2 = os.path.join(pdir, fn)
+        try:
+            with open(p2, "rb") as f:
+                t2 = f.read().decode("utf-8")
+        except (OSError, UnicodeDecodeError):
+            if any(re.search(r"\\element\s*\{\s*" + re.escape(old) + r"\s*\}", open(p2, "rb").read().decode("utf-8", "replace")) for old, _ in renames):
+                return jsonify(error=f"{fn} isn't UTF-8 text, so its questions can't be renamed here.")
+            continue
+        t3 = t2
+        for old, new_name in renames:
+            t3 = paper_structure.rename_elements(t3, old, new_name)
+        if t3 != t2:
+            if refusal := write_refusal_bytes(p2, t3.encode("utf-8")):
+                return jsonify(error=refusal, locked=True)
+            updates.append((fn, t3.encode("utf-8")))
     try:
         dg = save_source(pdir, main, out, what, based_on=based_on)
     except source_history.Conflict:
         return jsonify(error="The paper was changed since it was read. Reload to see the changes.", conflict=True)
-    for old, new_name in renames:
-        for fn in files:
-            if fn == main:
-                continue
-            p2 = os.path.join(pdir, fn)
-            try:
-                with open(p2, "rb") as f:
-                    t2 = f.read().decode("utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            t3 = paper_structure.rename_elements(t2, old, new_name)
-            if t3 != t2 and not write_refusal_bytes(p2, t3.encode("utf-8")):
-                save_source(pdir, fn, t3.encode("utf-8"), f"Section {old} renamed to {new_name}")
-    copies = next((o.get("n") for o in ops if isinstance(o, dict) and o.get("op") == "copies"), None)
-    if copies is not None:
-        core.change_option("nombre_copies", int(copies))  # the app's copies follow the versions
+    for fn, data2 in updates:
+        try:
+            save_source(pdir, fn, data2, what)
+        except OSError:
+            core.app.logger.error(f"{fn}: the renamed groups couldn't be written")
+    if copies:
+        core.change_option("nombre_copies", int(copies[-1]))  # the app's copies follow the versions
     add_activity(pdir, what)
     core.emit_msg("ui-changed", "questions")
     return jsonify(ok=True, digest=dg, what=what, structure=_structure(pdir))
