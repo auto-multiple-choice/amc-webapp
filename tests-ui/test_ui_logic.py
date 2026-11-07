@@ -798,7 +798,8 @@ try:
     check("banks: a macro's own macros come along, in the preamble's order", bk.needed(["\\bar"], _pre, []) == [_defs["foo"], _defs["bar"]]
           and bk.needed(["\\bar"], _pre, ["foo"]) == [_defs["bar"]] and "tikz" in bk.packages_of(_pre))
     check("banks: a region with a marker missing is made again, not misread",
-          bk.add_definitions("\\documentclass{a}\n" + bk.MACROS_BEGIN + "\n\\begin{document}", ["\\newcommand{\\r}{2}"]).index(bk.MACROS_END) < 60)
+          bk.add_definitions("\\documentclass{a}\n" + bk.MACROS_BEGIN + "\n\\begin{document}", ["\\newcommand{\\r}{2}"]).count(bk.MACROS_END) == 1
+          and bk.add_definitions("\\documentclass{a}\n" + bk.MACROS_BEGIN + "\n\\begin{document}", ["\\newcommand{\\r}{2}"]).index(bk.MACROS_END) < len("\\documentclass{a}\n" + bk.MACROS_BEGIN) + 200)
     check("banks: an imported group name is the same for every item of the group", bk.group_name("Algebra_1") == "Algebra-1" == bk.group_name("Algebra_1")
           and bk.group_name("ok") == "ok" and bk.seed_of([1]) is None and bk.seed_of("s") == "s")
 finally:
