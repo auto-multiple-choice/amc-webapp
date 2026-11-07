@@ -23,6 +23,7 @@ import shutil
 import sqlite3
 import subprocess
 import tarfile
+import threading
 import time
 import uuid
 
@@ -450,7 +451,7 @@ def note_building():
     pdir = core.project_dir()
     try:
         _building[pdir] = vcs.snapshot(pdir, _root(), by=_who())
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"History: {pdir}: {e}")
 
 
@@ -463,7 +464,7 @@ def note_built():
         return
     try:
         exam_history(pdir).mark_built(cid)
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"History: {pdir}: {e}")
 
 
@@ -487,7 +488,7 @@ def name_printed_version(pdir, how):
         if cid:
             repo.name_version(cid, f"Printed {time.strftime('%d %b %Y')}" if how != "manual"
                               else f"Marked as printed {time.strftime('%d %b %Y')}", by=_who(), auto=True)
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"History: {pdir}: {e}")
 
 
@@ -1194,7 +1195,7 @@ def _item_names(pdir):
     if not os.path.isdir(d) or os.path.islink(d):
         return []
     return sorted(n for n in os.listdir(d) if items.NAME_RE.match(n) and not os.path.islink(os.path.join(d, n))
-                  and os.path.isfile(os.path.join(d, n, items.ITEM_FILE)))
+                  and os.path.isfile(os.path.join(d, n, items.ITEM_FILE)) and not os.path.islink(os.path.join(d, n, items.ITEM_FILE)))
 
 
 def _read_questions(pdir, fn, text, pmap=None):
@@ -1522,8 +1523,8 @@ def question_stats(pdir):
                 text = re.sub(r"\s+", " ", re.sub(r"\\[A-Za-z]+\*?|[{}$]", " ", a.get("latex") or "")).strip()
                 labels[i] = f"\u201c{text[:40]}\u201d" if text else f"answer {i}"
             choices = list(labels)
-        if q and q.get("kind") == "numeric":
-            s["answers"] = []
+        if (q and q.get("kind") == "numeric") or not s.get("ticks", True):
+            s["answers"], choices = [], []  # no boxes read: no answer shares, and no "nobody chose" note
         have = {a["answer"] for a in s["answers"]}
         s["answers"] = sorted(s["answers"] + [{"answer": c, "share": 0.0, "upper": 0.0, "lower": 0.0, "correct": False}
                                               for c in choices if c not in have], key=lambda a: a["answer"])
@@ -2380,7 +2381,7 @@ def api_history(bank):
             versions, total = repo.log(scope, limit=limit, skip=skip) if scope else ([], 0)
         else:
             versions, total = repo.log(fn, limit=limit, skip=skip)
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         return _history_error(name, e)
     return jsonify(project=name, file=fn, section=section, versions=versions, total=total, skip=skip, files=files,
                    head=repo.head(), lock=bool(target == "exam" and exam_lock(pdir)), target=target)
@@ -2565,7 +2566,7 @@ def api_history_version(cid, bank):
             out["design"] = {"base": _design_or_none(repo.blob(bt.get(df))), "target": _design_or_none(repo.blob(tt.get(df))),
                              "blocks": {t: {"title": b[0]} for t, b in paper_builder.BLOCKS.items()},
                              "fields": paper_builder.FIELD_LABELS}
-    except (vcs.HistoryError, OSError) as err:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as err:
         return _history_error(name, err)
     return jsonify(out)
 
@@ -2640,7 +2641,7 @@ def api_history_plan(cid, bank):
         plan, problem, e = _restore_plan(repo, cid, mode, fn)
         now = repo.tree_at(repo.head())
         old = {p: repo.blob(now.get(p)) for p in plan}
-    except (vcs.HistoryError, OSError) as err:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as err:
         return _history_error(name, err)
     return jsonify(project=name, mode=mode, id=cid, file=fn, head=repo.head(), entry=e, what=_restore_what(mode, e, fn),
                    files=[{"file": p, "action": "removed" if d is None else "added" if p not in now else "changed"}
@@ -2669,6 +2670,7 @@ def api_history_restore(bank):
         repo = _repo(pdir, target)
         if not repo.check_commit(cid):
             return jsonify(error="This version doesn't exist.")
+        based = repo.disk_state()  # what the plan is made from
         plan, problem, e = _restore_plan(repo, cid, mode, fn)
         if problem:
             return jsonify(error=problem)
@@ -2684,6 +2686,11 @@ def api_history_restore(bank):
         existed = {p: os.path.isfile(os.path.join(pdir, p)) for p in plan}
         with vcs.change(pdir, _root(), by=_who(), what=what, kind="undo" if mode == "undo" else "restore",
                         extra={"Undoes" if mode == "undo" else "Restores": cid}, target=target) as cs:
+            if cs.repo:  # a save that landed meanwhile isn't overwritten
+                now = cs.repo._disk()
+                for path in plan:
+                    if now.get(path) != based.get(path):
+                        raise vcs.Conflict(path)
             for path, d in plan.items():
                 if d is None:
                     cs.delete(path)
@@ -2696,7 +2703,7 @@ def api_history_restore(bank):
             return jsonify(ok=True, nothing=True, what="Nothing changed: the files are already as in that version.")
     except vcs.Conflict:
         return jsonify(error="The exam was changed while restoring. Look at the version again.", conflict=True)
-    except (vcs.HistoryError, OSError) as err:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as err:
         return _history_error(name, err)
     if target == "bank":
         vcs.audit(repo.home, _who(), "bank version restored", bank=name, mode=mode, version=cid, file=fn, new=new)
@@ -2732,7 +2739,7 @@ def api_history_name(bank):
             repo.unname_version(cid, label)
         else:
             repo.name_version(cid, label, by=_who())
-    except (vcs.HistoryError, OSError) as err:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as err:
         return _history_error(name, err)
     return jsonify(ok=True)
 
@@ -2807,7 +2814,7 @@ def exam_renamed(pdir, old, new):
     keyed by the exam's uid), and the audit log says so."""
     try:
         exam_history(pdir)
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"History: {pdir}: {e}")
     audit("exam renamed", pdir, exam=new, old=old)
 
@@ -2837,7 +2844,7 @@ def api_trash():
         items = vcs.list_trash(home)
     except vcs.HistoryError as e:
         return jsonify(error=str(e)), 400
-    except OSError as e:
+    except (OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"Trash: {e}")
         return jsonify(error="The trash can't be read just now."), 500
     admin = bool(getattr(flask_g, "_is_admin", False))
@@ -2975,7 +2982,7 @@ def api_editor_edit():
 
 # ---------------------------------------------------------------- items: add, delete, move, split
 
-GROUP_RE = re.compile(r"^[^{}\\%\s]{1,60}$")
+GROUP_RE = re.compile(r"^[^{}\\%\s#$&~^\x00-\x1f\x7f]{1,60}\Z")  # a section's name as AMC takes it (\insertgroup)
 
 
 def _top_sources(pdir):
@@ -3003,11 +3010,7 @@ def split_into_items(pdir, write, delete):
     files = _top_sources(pdir)
     files[items.POOLS_FILE] = _pools_text(pdir)
     r = items.split(files, main, lambda rel: _safe_exam_file(pdir, rel), taken=_item_names(pdir))
-    for fn, text in r["files"].items():
-        if text is None:
-            delete(fn)
-        else:
-            write(fn, text.encode("utf-8"))
+    # items and figures first, the main file last: should a write fail midway, the paper still builds as before
     for name, text in r["items"].items():
         write(items.item_file(name), text.encode("utf-8"))
         write(f"{items.ITEMS_DIR}/{name}/{items.META_FILE}", items.meta_json().encode("utf-8"))
@@ -3016,6 +3019,14 @@ def split_into_items(pdir, write, delete):
         with open(os.path.join(pdir, src), "rb") as f:
             write(dst, f.read())
         moved.add(src)
+    write(items.POOLS_FILE, r["pools"].encode("utf-8"), vcs.digest(files[items.POOLS_FILE].encode("utf-8")) if files[items.POOLS_FILE] else None)
+    for fn, text in sorted(r["files"].items(), key=lambda x: x[0] == main):
+        if fn == items.POOLS_FILE:
+            continue
+        if text is None:
+            delete(fn)
+        else:
+            write(fn, text.encode("utf-8"))
     # a figure that only those questions used goes with them
     remaining = [t for t in r["files"].values() if t] + [t for fn, t in _top_sources(pdir).items() if fn not in r["files"]]
     try:
@@ -3031,9 +3042,9 @@ def split_into_items(pdir, write, delete):
 
 
 def _items_payload(pdir, name):
-    return {"project": name, "format": "latex", "main": core.main_source_file(),
-            "files": [_editor_file(pdir, fn) for fn in _source_files(pdir)], "lock": bool(exam_lock(pdir)),
-            "modular": modular(pdir), "can_split": False}
+    files = [_editor_file(pdir, fn) for fn in _source_files(pdir)]
+    return {"project": name, "format": "latex", "main": core.main_source_file(), "files": files, "lock": bool(exam_lock(pdir)),
+            "modular": modular(pdir), "can_split": any(q["group"] for f in files if not f["item"] for q in f["questions"])}
 
 
 @bp.route("/ui/api/items", methods=["POST"])
@@ -3059,7 +3070,7 @@ def api_items():
     try:
         if op == "split":
             with history_change(pdir, "Questions moved into item files") as cs:
-                r = split_into_items(pdir, lambda p, d: save_source(pdir, p, d, "Questions moved into item files"),
+                r = split_into_items(pdir, lambda p, d, based_on=None: save_source(pdir, p, d, "Questions moved into item files", based_on=based_on),
                                      lambda p: cs.delete(p) if vcs.tracked(p) else os.unlink(os.path.join(pdir, p)))
             what = f"Questions moved into {len(r['items'])} item files" + (f"; {r['kept']} left in place (not in a section)" if r["kept"] else "")
             add_activity(pdir, what)
@@ -3078,13 +3089,15 @@ def api_items():
             if not group or not GROUP_RE.match(group):
                 return jsonify(error="Choose a section for the question.")
             qid = questions_edit._free_id(_all_questions(pdir, _source_files(pdir)), kind)
-            iname = items.free_name(qid, names)
+            iname = items.free_name(qid, names + [n for n in os.listdir(os.path.join(pdir, items.ITEMS_DIR))]
+                                    if os.path.isdir(os.path.join(pdir, items.ITEMS_DIR)) else names)
             what = f"{qid}: question added to {group}"
             with history_change(pdir, what):
-                save_source(pdir, items.item_file(iname), items.new_item_text(kind, qid).encode("utf-8"), what)
-                save_source(pdir, f"{items.ITEMS_DIR}/{iname}/{items.META_FILE}", items.meta_json().encode("utf-8"), what)
+                # pools.tex first: an add that crossed another one (two tabs) is refused there, before any file is made
                 save_source(pdir, items.POOLS_FILE, items.pools_insert(pools, group, iname, after=after).encode("utf-8"), what,
                             based_on=vcs.digest(pools.encode("utf-8")))
+                save_source(pdir, items.item_file(iname), items.new_item_text(kind, qid).encode("utf-8"), what)
+                save_source(pdir, f"{items.ITEMS_DIR}/{iname}/{items.META_FILE}", items.meta_json().encode("utf-8"), what)
             out = _items_payload(pdir, name)
             out.update(ok=True, what=what, added={"file": items.item_file(iname), "id": qid})
         elif op in ("delete", "move"):
@@ -3094,15 +3107,22 @@ def api_items():
             if op == "delete":
                 what = f"Item {iname} deleted"
                 folder = os.path.join(pdir, items.ITEMS_DIR, iname)
+                named_in = next((fn for fn, t in _top_sources(pdir).items()
+                                 if any(not scale._in_comment(t, m.start()) for m in re.finditer(r"\\amcuiItem\s*\{\s*" + re.escape(iname) + r"\s*\}", t))), None)
+                if named_in:
+                    return jsonify(error=f"{named_in} names this item (\\amcuiItem{{{iname}}}); take that line out first, or the paper won't build.")
                 with history_change(pdir, what, kind="delete") as cs:
                     if iname in pmap:
                         save_source(pdir, items.POOLS_FILE, items.pools_remove(pools, iname).encode("utf-8"), what,
                                     based_on=vcs.digest(pools.encode("utf-8")))
                     for f in sorted(os.listdir(folder)):
                         rel = f"{items.ITEMS_DIR}/{iname}/{f}"
-                        if vcs.tracked(rel):
-                            cs.delete(rel)
-                shutil.rmtree(folder, ignore_errors=True)  # what history doesn't keep (nothing, usually)
+                        if vcs.tracked(rel) or f == items.META_FILE:
+                            cs.delete(rel) if vcs.tracked(rel) else os.unlink(os.path.join(folder, f))
+                try:
+                    os.rmdir(folder)  # files history doesn't keep (a big image, an odd extension) stay, with the folder
+                except OSError:
+                    core.app.logger.info(f"{folder}: kept, it still holds files history doesn't keep")
             else:
                 before = str(data.get("before") or "") or None
                 if before and before not in pmap:
@@ -3121,6 +3141,9 @@ def api_items():
         return jsonify(error="The sections were changed meanwhile. Reload to see the changes.", conflict=True)
     except (questions_edit.EditError, ValueError) as e:
         return jsonify(error=str(e))
+    except OSError as e:
+        core.app.logger.error(f"Items ({op}): {e}")
+        return jsonify(error="A file couldn't be written. Look at History to see what was changed, and at the server log.")
     add_activity(pdir, what)
     refresh_layout(pdir)  # a builder paper's summary follows the sections
     core.emit_msg("ui-changed", "questions")
@@ -3193,6 +3216,31 @@ def _picture(pdf):
         return None
 
 
+CHECK_TEXT_MAX = 200000          # characters of LaTeX one check compiles
+CHECK_LOG_MAX = 8 * 1024 * 1024    # of a log, read from the start (the first error is what matters)
+TEX_FILE_MAX = 512 * 1024 * 1024   # a TeX run may not write a bigger file (a \message loop fills the disk otherwise)
+_checks_running = threading.BoundedSemaphore(3)
+
+
+def _tex_limits():
+    """For subprocess.run(preexec_fn=): no file bigger than TEX_FILE_MAX."""
+    try:
+        import resource
+        resource.setrlimit(resource.RLIMIT_FSIZE, (TEX_FILE_MAX, TEX_FILE_MAX))
+    except (ImportError, ValueError, OSError):
+        pass
+
+
+def read_capped(path, most=CHECK_LOG_MAX):
+    """The start of a text file (MOST bytes), decoded leniently; "" when it
+    can't be read."""
+    try:
+        with open(path, "rb") as f:
+            return f.read(most).decode("utf-8", "replace")
+    except OSError:
+        return ""
+
+
 def compile_check(pdir, source, engine=None):
     """Compile SOURCE in a scratch folder of the exam (the item's \\input and
     figures resolve as in the real build). Returns (ok, log, png or None)."""
@@ -3202,20 +3250,18 @@ def compile_check(pdir, source, engine=None):
     try:
         with open(os.path.join(full, "check.tex"), "w", encoding="utf-8") as f:
             f.write(source)
-        cmd = _sandboxed([engine or _engine(), "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape",
+        cmd = _sandboxed([engine or _engine(), "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", "-file-line-error",
                           f"-output-directory={d}", f"{d}/check.tex"])
         try:
-            p = subprocess.run(cmd, cwd=pdir, capture_output=True, timeout=120, env={**os.environ, "TMPDIR": core.amc_user_tmp()})
+            with open(os.path.join(full, "check.out"), "wb") as out:
+                p = subprocess.run(cmd, cwd=pdir, stdout=out, stderr=subprocess.STDOUT, timeout=120, preexec_fn=_tex_limits,
+                                   env={**os.environ, "TMPDIR": core.amc_user_tmp()})
             code = p.returncode
         except subprocess.TimeoutExpired:
             return False, "! The check took too long (over 2 minutes).", None
-        try:
-            with open(os.path.join(full, "check.log"), encoding="utf-8", errors="replace") as f:
-                log = f.read()
-        except OSError:
-            log = ""
-        if "\n! " not in "\n" + log:  # an error LaTeX couldn't write to its log (a file it may not read)
-            log += "\n" + (p.stdout or b"").decode("utf-8", "replace")
+        log = read_capped(os.path.join(full, "check.log"))
+        if "\n! " not in "\n" + log and not re.search(r"^[^\n]*\.tex:\d+: ", log, re.M):
+            log += "\n" + read_capped(os.path.join(full, "check.out"), 256 * 1024)  # an error LaTeX couldn't write to its log
         pdf = os.path.join(full, "check.pdf")
         ok = code == 0 and os.path.isfile(pdf)
         return ok, log, _picture(pdf) if ok else None
@@ -3241,13 +3287,20 @@ def api_check():
     body = data.get("text")
     if not isinstance(body, str) or not body.strip():
         return jsonify(error="Nothing to check.")
+    if len(body) > CHECK_TEXT_MAX:
+        return jsonify(error="This is too long to check as one question.")
     pre = ltx.preamble(_main_text(pdir))
     if pre is None:
         return jsonify(error="The main file has no \\begin{document}.")
     if p := ltx.problems(body):
         return jsonify(ok=False, errors=[{"line": p[0]["line"], "message": p[0]["message"], "file": None}], image=None)
     src, first = ltx.check_source(pre, body, items.item_of(fn))
-    ok, log, png = compile_check(pdir, src)
+    if not _checks_running.acquire(blocking=False):
+        return jsonify(error="Other checks are running just now. Try again in a moment.")
+    try:
+        ok, log, png = compile_check(pdir, src)
+    finally:
+        _checks_running.release()
     errors = []
     if not ok:
         why = next((l.strip() for l in log.split("\n")
@@ -3260,8 +3313,10 @@ def api_check():
                 errors.append({"line": e["line"] - first + 1, "message": e["message"], "context": e["context"], "file": None})
             else:
                 errors.append({"line": None, "message": f"{e['message']} (in the exam's preamble)", "context": e["context"], "file": core.main_source_file()})
-        else:
-            errors.append({"line": e["line"], "message": e["message"], "context": e["context"], "file": e["file"]})
+        else:  # a file of the exam, or none (a package's path says nothing the teacher can open)
+            known = e["file"] in _source_files(pdir)
+            errors.append({"line": e["line"] if known else None, "message": e["message"], "context": e["context"],
+                           "file": e["file"] if known else None})
     return jsonify(ok=ok, errors=errors, image=("data:image/png;base64," + base64.b64encode(png).decode()) if png else None)
 
 
@@ -3324,7 +3379,11 @@ def api_section_latex():
             continue
         entries.append((n, raw.decode("utf-8", "replace")))
         digests[n] = vcs.digest(raw)
-    return jsonify(project=name, group=group, text=ltx.section_document(entries), digests=digests, lock=bool(exam_lock(pdir)))
+    try:
+        text = ltx.section_document(entries)
+    except ValueError as e:
+        return jsonify(project=name, group=group, error=str(e))
+    return jsonify(project=name, group=group, text=text, digests=digests, lock=bool(exam_lock(pdir)))
 
 
 @bp.route("/ui/api/section-latex", methods=["POST"])
@@ -3343,6 +3402,7 @@ def api_section_latex_save():
     digests = data.get("digests") if isinstance(data.get("digests"), dict) else {}
     if not isinstance(text, str):
         return jsonify(error="Nothing to save.")
+    text = text.replace("\r\n", "\n")
     if exam_lock(pdir):
         return jsonify(error=LOCKED.format(what="Correct the answer key in Marking scheme or in the form."), locked=True)
     current = _section_items(pdir, group)
@@ -3356,14 +3416,17 @@ def api_section_latex_save():
     if missing := [n for n in current if n not in names]:
         return jsonify(error=f"The item {missing[0]} is missing from the document. To take it out of the section, delete it in the form.")
     pmap = items.pool_map(_pools_text(pdir))
-    all_items = set(_item_names(pdir))
+    all_items = {x.lower(): x for x in _item_names(pdir)}  # folders are compared without case: the host may not tell Foo from foo
     changed, added = [], []
     texts = {}
     for n, t, line in parts:
         if not items.NAME_RE.match(n):
             return jsonify(error=f"Line {line}: \"{n}\" can't be an item's name (letters, digits and - only).")
-        if n in all_items and n not in current:
-            return jsonify(error=f"Line {line}: the item {n} belongs to {pmap.get(n) or 'no section'}; move it in the form.")
+        if n.lower() in all_items and all_items[n.lower()] not in current:
+            other = all_items[n.lower()]
+            return jsonify(error=f"Line {line}: the item {other} belongs to {pmap.get(other) or 'no section'}; move it in the form.")
+        if n.lower() in all_items and all_items[n.lower()] != n:
+            return jsonify(error=f"Line {line}: the item is named {all_items[n.lower()]}, not {n}.")
         if problem := items.check_item_text(t, n):
             return jsonify(error=f"Line {line}: {problem}")
         if p := ltx.problems(t):
@@ -3372,8 +3435,8 @@ def api_section_latex_save():
         if n not in current:
             added.append(n)
         else:
-            with open(os.path.join(pdir, items.item_file(n)), encoding="utf-8") as f:
-                if f.read() != t:
+            with open(os.path.join(pdir, items.item_file(n)), encoding="utf-8", newline="") as f:
+                if f.read().replace("\r\n", "\n") != t:
                     changed.append(n)
     ids = [q["id"] for n, t in texts.items() for q in scale.read_latex(t)]
     others = {q["id"] for q in _all_questions(pdir, [f for f in _source_files(pdir) if items.item_of(f) not in current])}
@@ -4176,7 +4239,7 @@ def on_create_exam(data):
     add_activity(rep, f"Exam created from the template \"{title}\"")
     try:
         vcs.snapshot(rep, _root(), by=_who(), what=f"Created from the template \"{title}\"", kind="create")
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"History: {rep}: {e}")
     audit("exam created", rep, exam=name, template=title)
     core.emit_msg("project-open", [name, True])
@@ -4337,7 +4400,7 @@ def record_cloned(dest, source_name):
     add_activity(dest, f"Copied from \"{source_name}\"")
     try:
         vcs.start_copy(dest, _root(), _who(), source_name)
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"History: {dest}: {e}")
 
 

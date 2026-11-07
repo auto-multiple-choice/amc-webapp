@@ -507,6 +507,54 @@ try:
     whats = [e["what"] for e in vcs.Repo(gx, root).open().log()[0]]
     check("vcs: when git fails the file is still saved, and the next save keeps it as changed outside the app",
           saved and whats[:2] == ["Saved later", vcs.OUTSIDE] and read(gx, "exam.tex") == b"three\n")
+    # a file name the file system couldn't decode doesn't stop saves
+    ux = new_exam("Odd name", {"exam.tex": b"one\n"})
+    with open(os.path.join(ux, b"caf\xe9.csv".decode("utf-8", "surrogateescape")), "wb") as f:
+        f.write(b"x")
+    try:
+        vcs.write(ux, root, "exam.tex", b"two\n", by="ann", what="Saved beside an odd name")
+        odd_ok = read(ux, "exam.tex") == b"two\n" and vcs.Repo(ux, root).open().log()[0][0]["what"] == "Saved beside an odd name"
+    except Exception as e:
+        odd_ok = False
+    check("vcs: a file whose name isn't UTF-8 is left out, and saving goes on", odd_ok)
+    # packed refs (git gc) aren't damage
+    px = new_exam("Packed", {"exam.tex": b"one\n"})
+    vcs.write(px, root, "exam.tex", b"two\n", by="ann", what="Second")
+    rp = vcs.Repo(px, root).open()
+    vcs._git(rp.git_dir, "pack-refs", "--all")
+    os.unlink(rp.meta_path)
+    rp2 = vcs.Repo(px, root).open()
+    check("vcs: a history whose refs git packed is read, not restarted", rp2.log()[1] == 2 and not any(".damaged-" in x for x in os.listdir(rp.dir) if x.startswith(rp.uid)))
+    # git not answering isn't damage either: the request fails, the history stays
+    real_git = vcs.GIT
+    vcs.GIT = "/nonexistent/git"
+    try:
+        os.unlink(rp.meta_path)
+        try:
+            vcs.Repo(px, root).open(); gone = "opened"
+        except vcs.GitUnavailable:
+            gone = "unavailable"
+    finally:
+        vcs.GIT = real_git
+    check("vcs: when git can't run the history is left alone", gone == "unavailable" and vcs.Repo(px, root).open().log()[1] == 2)
+    # restoring into a name taken meanwhile never nests the exam
+    tx = new_exam("Taken", {"exam.tex": b"t\n"})
+    vcs.trash_exam(tx, root, by="ann")
+    new_exam("Taken", {"exam.tex": b"other\n"})
+    real_free = vcs._free_name
+    vcs._free_name = lambda pd, n: n  # as if the name was taken between the check and the move
+    try:
+        try:
+            vcs.restore_trash(home, vcs.list_trash(home)[0]["id"], root, by="ann"); nested = "restored"
+        except OSError:
+            nested = "refused"
+    finally:
+        vcs._free_name = real_free
+    check("vcs: a restore can't land inside an exam that took the name meanwhile",
+          nested == "refused" and read(os.path.join(root, "Taken"), "exam.tex") == b"other\n" and not os.path.exists(os.path.join(root, "Taken", "exam")))
+    later = time.time() + vcs.TRASH_DAYS * 86400 + 5
+    check("vcs: the doctor's look at the trash removes nothing", len(vcs.list_trash(home, now=later, purge=False)) == 1
+          and len(vcs.list_trash(home)) == 1 and vcs.list_trash(home, now=later) == [])
     # diffs and changes in words
     td = vcs.text_diff("one two three\nsame\n", "one 2 three\nsame\nnew\n")
     check("vcs: line diff with word changes", td["added"] == 2 and td["removed"] == 1 and td["rows"][0] == ["d", "one two three", [[0, "one "], [1, "two"], [0, " three"]]]
@@ -549,6 +597,16 @@ pt3 = itm.pools_insert(itm.pools_remove(pt, "alg-016"), "sectionII", "alg-016", 
 check("items: moving an item into another section", [(p["group"], p["name"]) for p in itm.read_pools(pt3)][-2:] == [("sectionII", "alg-016"), ("sectionII", "geo-001")])
 check("items: renaming a section renames its pool lines and region", "%%AMCUI:POOL part2%%" in itm.pools_rename_group(pt, "sectionII", "part2")
       and itm.pool_map(itm.pools_rename_group(pt, "sectionII", "part2"))["geo-001"] == "part2")
+check("items: two \\elements on one line, or a comment after one, survive a removal",
+      "amcuiItem{b}" in itm.pools_remove("\\element{A}{\\amcuiItem{a}} \\element{A}{\\amcuiItem{b}}\n", "a")
+      and "% note" in itm.pools_remove("\\element{A}{\\amcuiItem{c}} % note\n", "c")
+      and itm.pools_remove("\\element{A}{\\amcuiItem{a}}\n\\element{A}{\\amcuiItem{b}}\n", "a") == "\\element{A}{\\amcuiItem{b}}\n")
+check("items: figures are found as LaTeX finds them, through \\graphicspath and with an extension added",
+      itm.graphics_paths("\\graphicspath{{img/}{figs/}} % \\graphicspath{{no/}}") == ["img/", "figs/"]
+      and itm._find_figure("fig1", ["img/"], {"img/fig1.png"}.__contains__) == "img/fig1.png"
+      and itm._find_figure("fig.v2", [], {"fig.v2.png"}.__contains__) == "fig.v2.png"
+      and itm._find_figure("../x", ["img/"], lambda c: True) is None)
+check("items: removing a block tidies the blank lines there only", itm._apply("a\n\n\nb\n\n\n\nREMOVE\n\n\nc\n\n\n\nd", [(9, 15, "")]) == "a\n\n\nb\n\nc\n\n\n\nd")
 check("items: lines in comments are ignored", itm.read_pools("% \\element{a}{\\amcuiItem{x}}\n\\element{b}{\\amcuiItem{y}}\n") and [p["name"] for p in itm.read_pools("% \\element{a}{\\amcuiItem{x}}\n\\element{b}{\\amcuiItem{y}}\n")] == ["y"])
 check("items: item names from question ids, unique (whatever the case)", itm.sanitize("alg_017:b") == "alg-017-b" and itm.free_name("Q1", {"q1"}) == "Q1-2" and itm.sanitize("::") == "q")
 check("items: item files are recognised by path only", itm.item_of("items/alg-017/item.tex") == "alg-017" and not itm.item_of("items/../x/item.tex") and not itm.item_of("items/a/b.tex"))
@@ -640,6 +698,22 @@ for _bad, _why in ((_doc.replace("%%%% item b %%%%", "%%%% item b %%%"), "change
         ltx.split_section(_bad); check(f"latex: a section document with a separator {_why} is refused", False)
     except ValueError as e:
         check(f"latex: a section document with a separator {_why} is refused", _why in str(e))
+check("latex: \\verb* and an unclosed \\verb hide nothing past their line", ltx.problems("\\verb*|a| }\n\\end{x}") != [] and ltx.problems("\\verb|a\n}\n\\end{x}") != []
+      and ltx.problems("\\verb*|{| \\lstinline[language=C]|{| \\mintinline{c}|{| \\mintinline{c}{ { }") == [])
+check("latex: a \\verb or % inside verbatim can't swallow its \\end", ltx.problems("\\begin{verbatim}\n\\verb|x\n% {\n\\end{verbatim}\n") == [])
+check("latex: a warning's parentheses don't close the item's file in the log",
+      ltx.first_error("(./main.tex (./items/b.tex\nOverfull \\hbox (74pt too wide) in paragraph at lines 1--2\n! Undefined control sequence.\nl.2 \\foo\n")["file"] == "items/b.tex")
+_long = "(./items/" + "a" * 67 + "/it"
+check("latex: a path the log wrapped at 79 characters is read whole",
+      ltx.first_error("(./main.tex\n" + _long + "\nem.tex\n! Undefined control sequence.\nl.3 x\n")["file"] == "items/" + "a" * 67 + "/item.tex")
+check("latex: the file:line: form of -file-line-error is read first",
+      ltx.first_error("(./main.tex\n./items/q/item.tex:7: Undefined control sequence.\nl.7 \\foo\n") == {"file": "items/q/item.tex", "line": 7, "message": "Undefined control sequence.", "context": "\\foo"})
+check("latex: a commented \\begin{document} doesn't end the preamble", ltx.preamble("% \\begin{document}\n\\x\n\\begin{document}") == "% \\begin{document}\n\\x\n")
+try:
+    ltx.section_document([("n1", "t\n%%%% item x %%%%\nmore")]); check("latex: an item holding a separator line can't be a section document", False)
+except ValueError as e:
+    check("latex: an item holding a separator line can't be a section document", "n1" in str(e))
+check("latex: a CRLF section document is read", ltx.split_section("%%%% item a %%%%\r\nx\r\n") == [("a", "x\n", 1)])
 check("latex: the macros a preamble defines (not commented ones)", ltx.macros("\\newcommand{\\N}{\\mathbb N}\\def\\Z{x}\\DeclareMathOperator{\\lcm}{lcm} % \\newcommand{\\hidden}") == ["N", "Z", "lcm"])
 import ui_questions as _qe
 _inl = "\\element{g}{\n  \\begin{question}{a}A\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n}\n\\element{g}{\n\\begin{question}{b}B\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n}\n"
@@ -728,6 +802,12 @@ try:
     check("copies: a scoring changed in the exam is an edit there, kept on the way back",
           bk.status(sc.set_scoring(_et, _q1, "b=5"), {}, _o, _bt, {}) == "here"
           and "b=5" in bk.way_back(sc.set_scoring(_et, _q1, "b=5"), _o))
+    check("copies: a bank version set aside shows as such, and a later one as newer again",
+          bk.status("\\begin{question}{q}a\\end{question}\n", {}, {"fingerprint": bk.fingerprint("\\begin{question}{q}a\\end{question}\n"), "seen_fp": bk.fingerprint("v2")}, "v2", {}) == "kept"
+          and bk.status("\\begin{question}{q}a\\end{question}\n", {}, {"fingerprint": bk.fingerprint("\\begin{question}{q}a\\end{question}\n"), "seen_fp": bk.fingerprint("v2")}, "v3", {}) == "bank")
+    check("copies: conflict marks are found with CRLF too, and a hand-edited origin is read typed",
+          bool(bk.CONFLICT_RE.search("a\r\n=======\r\nb")) and bk.origin_of({"origin": {"bank_uid": ["x"], "ids": "no", "scored": {"q": None}}}) == {"bank_uid": None, "ids": {}, "scored": {"q": ""}, "replace": False}
+          and bk.origin_of({"origin": "x"}) == {})
     check("copies: names the bank's newer version adds get free names in the exam",
           bk.extend_ids(_bt.replace("{q2}", "{q3}"), {"q1": "q1-2", "gone": "x"}, {"q3", "q1-2"}) == {"q1": "q1-2", "q3": "q3-2"})
     _base, _ = bk.way_in(_bt, {"q1": "q1-2"}, "b=3,m=-1")
@@ -817,6 +897,19 @@ try:
     bix.note_stats(_home, "Exam 1", _eu, [{"bank_uid": "b", "item_uid": "i", "question": "q1", "n": 12, "right": 0.5, "separation": 1.0}])
     bix.note_stats(_home, "Exam 1", _eu, [{"bank_uid": "b", "item_uid": "i", "question": "q1", "n": 12, "right": 0.75, "separation": 0.5}])
     check3("stats: marking an exam again replaces its statistics", [(e["exam"], e["right"]) for e in bix.stats_of(_home, "b", "i")] == [("Exam 1", 0.75)])
+    import ui_stats as _st
+    _sc = {(p, 0): {1: (0.0 if p == 7 else 1.0, 1.0), 2: (1.0 if p <= 6 else 0.0, 1.0)} for p in range(1, 13)}
+    _tk = {(p, 0): {1: {1}, 2: {1 if p <= 6 else 2}} for p in range(1, 13)}
+    _q1 = next(x for x in _st.compute({"titles": {}, "scores": _sc, "ticks": _tk, "correct": {1: {1}, 2: {1}}, "indicative": set()}) if x["qnum"] == 1)
+    check("stats: copies tied at a cut all count (the paper number says nothing)", _q1["separation"] == 0.17 and _q1["ticks"])
+    _nt = _st.compute({"titles": {}, "scores": _sc, "ticks": {}, "correct": {1: {1}}, "indicative": set()})
+    check("stats: with no box read, no answer shares are made up", all(x["answers"] == [] and not x["ticks"] for x in _nt))
+    _odd_dir = os.path.join(tempfile.mkdtemp(), "a#b %20", "data"); os.makedirs(_odd_dir)
+    import sqlite3 as _sq
+    _c = _sq.connect(os.path.join(_odd_dir, "scoring.sqlite")); _c.executescript("CREATE TABLE scoring_score (student, copy, question, score, max); CREATE TABLE scoring_title (question, title);"
+                 " CREATE TABLE scoring_question (question, indicative); CREATE TABLE scoring_answer (question, answer, correct)"); _c.close()
+    check("stats: an exam folder with # or % in its path is read", _st.read(os.path.dirname(_odd_dir)) is None)
+    check("blueprint: a count that parses as infinity is dropped, not a crash", bk.tidy_blueprint([{"count": float("inf")}, {"count": 2}], {"groups": []}) == [{"count": 2, "difficulty": "", "group": "", "tag": ""}])
     # blueprints
     _cands = [{"item": f"e{i}", "group": "alg", "difficulty": "easy", "tags": ["x"]} for i in range(4)] + [{"item": f"m{i}", "group": "alg", "difficulty": "medium", "tags": []} for i in range(2)] \
         + [{"item": "g1", "group": "geo", "difficulty": "easy", "tags": []}]
@@ -888,6 +981,43 @@ try:
     check3("zip: a broken bundle is refused, and the history starts from the files", not vcs.import_bundle(_bd3, _root, _bun + "x", "bank")
           and not os.path.exists(os.path.join(_root, "_amcweb", "ann", "history", "banks", _b3["uid"] + ".git"))
           and len(vcs.Repo(_bd3, _root, "bank").open().log()[0]) == 1)
+    # an odd item.json (a list where a string goes) keeps only that item out of the index
+    _home = vcs.amcweb_dir(_bd, _root, "bank")
+    _odd = os.path.join(_bd2, "items", bk.read(_bd2)["all"][0], "item.json")
+    _odd_was = open(_odd).read() if os.path.exists(_odd) else None  # the test bank has no item.json
+    open(_odd, "w").write(json.dumps({"uid": ["x"], "title": ["t"], "tags": "no"}))
+    try:
+        _found = bix.search(_home, _pd, q="")
+        check("index: an item with an odd item.json is left out, the others are found", any(f["bank"] == "Copied bank" for f in _found))
+    except Exception as e:
+        check("index: an item with an odd item.json is left out, the others are found", False)
+    if _odd_was is None:
+        os.unlink(_odd)
+    else:
+        open(_odd, "w").write(_odd_was)
+    check("index: a search that has no word in it finds nothing, not everything", bix.search(_home, _pd, q="?!") == [])
+    _bad = io.BytesIO()
+    with zipfile.ZipFile(_bad, "w") as _z:
+        _z.writestr("bank.json", "{}")
+        _z.writestr("items/q1/item.tex", "x")
+    _raw = bytearray(_bad.getvalue())
+    _raw[_raw.index(b"x", _raw.index(b"items/q1/item.tex") + 17)] ^= 0xFF  # the file's bytes no longer match its CRC
+    _badp = os.path.join(_tmpb, "bad.zip"); open(_badp, "wb").write(bytes(_raw))
+    try:
+        bz.read(_badp, os.path.join(_tmpb, "bad-out")); check("zip: a damaged entry is refused with a message, not a crash", False)
+    except bz.ZipError:
+        check("zip: a damaged entry is refused with a message, not a crash", True)
+    _pre = "\\usepackage{amssymb}\n\\newcommand{\\foo}[1]{%\n  \\mathrm{#1}%\n}\n\\newcommand{\\bar}{\\foo{x}}\n\\def\\Z#1{z#1}\n\\let\\a=\\b\n% \\newcommand{\\hidden}{}\n\\RequirePackage{tikz}\n"
+    _defs = bk.definitions(_pre)
+    check("banks: a definition is taken whole (several lines, [n], #1, \\let), comments left out",
+          _defs["foo"] == "\\newcommand{\\foo}[1]{%\n  \\mathrm{#1}%\n}" and _defs["Z"] == "\\def\\Z#1{z#1}" and _defs["a"] == "\\let\\a=\\b" and "hidden" not in _defs)
+    check("banks: a macro's own macros come along, in the preamble's order", bk.needed(["\\bar"], _pre, []) == [_defs["foo"], _defs["bar"]]
+          and bk.needed(["\\bar"], _pre, ["foo"]) == [_defs["bar"]] and "tikz" in bk.packages_of(_pre))
+    check("banks: a region with a marker missing is made again, not misread",
+          bk.add_definitions("\\documentclass{a}\n" + bk.MACROS_BEGIN + "\n\\begin{document}", ["\\newcommand{\\r}{2}"]).count(bk.MACROS_END) == 1
+          and bk.add_definitions("\\documentclass{a}\n" + bk.MACROS_BEGIN + "\n\\begin{document}", ["\\newcommand{\\r}{2}"]).index(bk.MACROS_END) < len("\\documentclass{a}\n" + bk.MACROS_BEGIN) + 200)
+    check("banks: an imported group name is the same for every item of the group", bk.group_name("Algebra_1") == "Algebra-1" == bk.group_name("Algebra_1")
+          and bk.group_name("ok") == "ok" and bk.seed_of([1]) is None and bk.seed_of("s") == "s")
     # history extras (P4a): who changed each line, a log over several files, ./amc doctor
     vcs.write(_bd2, _root, "items/alg-1/item.tex", b"line one\nline two\n", by="ann", what="first", target="bank")
     vcs.write(_bd2, _root, "items/alg-1/item.tex", b"line one\nline 2 by bob\n", by="bob", what="second", target="bank")

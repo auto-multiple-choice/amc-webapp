@@ -48,9 +48,6 @@ import ui_vcs as vcs
 ui = None  # the ui module (set by init)
 CHECK_PREAMBLE = ("\\documentclass[a4paper]{article}\n\\usepackage{iftex}\n\\ifPDFTeX\\usepackage[utf8]{inputenc}\\usepackage[T1]{fontenc}\\fi\n"
                   "\\usepackage{amsmath,amssymb,graphicx}\n\\usepackage[box,completemulti]{automultiplechoice}\n")
-_DEFINES = re.compile(r"^[ \t]*\\(?:newcommand|renewcommand|providecommand|DeclareMathOperator|def|usepackage)\b.*$", re.M)
-
-
 def init(bp, ui_module):
     global ui
     ui = ui_module
@@ -438,18 +435,18 @@ def api_bank_completions(name):
 # ---------------------------------------------------------------- importing RJ-style LaTeX files
 
 def _definitions(text, known):
-    """Lines of TEXT's preamble that define macros or load packages the
-    bank doesn't have yet."""
+    """The package lines and whole macro definitions of TEXT's preamble
+    the bank doesn't have yet (KNOWN: its macro names and lines)."""
     pre = ltx.preamble(text) or ""
     out = []
-    for m in _DEFINES.finditer(pre):
-        line = m.group(0).strip()
-        names = ltx.macros(line)
-        if line.startswith("\\usepackage"):
-            if line not in known:
-                out.append(line)
-        elif names and not any(n in known for n in names):
+    for m in banks._PACKAGE.finditer(ltx._mask(pre)):
+        line = pre[m.start():m.end()]
+        if line not in known:
             out.append(line)
+    for name, a, b in banks.definition_spans(pre):
+        d = pre[a:b].strip()
+        if name not in known and d not in known:
+            out.append(d)
     return out
 
 
@@ -500,14 +497,15 @@ def api_bank_import(name):
                     if not qs:
                         report.append(f"{t}: no question found")
                         continue
-                    grp = banks.free_group({"groups": []}, os.path.splitext(t)[0])
+                    grp = banks.group_name(os.path.splitext(t)[0])
                     texts, found, figures = {}, [], []
                     for q in qs:
                         n = items.free_name(q["id"], taken | set(texts))
-                        texts[n] = text[q["span"][0]:q["span"][1]] + "\n"
+                        texts[n], moved = items.relocate_figures(text[q["span"][0]:q["span"][1]] + "\n", n, exists)
+                        figures += moved
                         found.append((grp, n))
                 for grp_raw, n in found:
-                    grp = grp_raw if banks.GROUP_RE.match(grp_raw) else banks.free_group(b, grp_raw)
+                    grp = banks.group_name(grp_raw)
                     if not banks.group(b, grp):
                         b["groups"].append({"name": grp, "title": grp_raw, "instructions": "", "scoring": "", "items": []})
                     body = texts[n]
@@ -602,12 +600,12 @@ def api_bank_pull():
             m = banks.item_meta(bdir, n)
             if not m.get("archived") and m.get("uid") not in have:
                 cands.append({"item": n, "group": gmap.get(n), "difficulty": m.get("difficulty") or "", "tags": m.get("tags") or []})
-        picked, short = banks.blueprint_pick(cands, blueprint, data.get("seed"))
+        picked, short = banks.blueprint_pick(cands, blueprint, banks.seed_of(data.get("seed")))
         return jsonify(ok=True, chosen=[{"item": n, "group": gmap.get(n), "title": banks.item_meta(bdir, n).get("title")
                                          or banks.plain_title(_read_text(os.path.join(bdir, items.item_file(n))))} for n in picked],
                        short=[banks.blueprint_words(blueprint[i], found) for i, found in short])
     pool = g["items"] if g else b["all"]
-    names = [n for n in (chosen if isinstance(chosen, list) else pool) if n in pool]
+    names = list(dict.fromkeys(n for n in (chosen if isinstance(chosen, list) else pool) if n in pool))
     if not isinstance(chosen, list):  # a whole group or a random pick: archived items stay out
         names = [n for n in names if not banks.item_meta(bdir, n).get("archived")]
     if not names:
@@ -615,7 +613,7 @@ def api_bank_pull():
     whole = bool(g) and not isinstance(chosen, list) and not data.get("count")
     if data.get("count"):
         try:  # drawn from the questions the exam doesn't have yet
-            names = banks.pick([n for n in names if banks.item_meta(bdir, n).get("uid") not in have], int(data["count"]), data.get("seed"))
+            names = banks.pick([n for n in names if banks.item_meta(bdir, n).get("uid") not in have], int(data["count"]), banks.seed_of(data.get("seed")))
         except (TypeError, ValueError):
             return _err("How many questions to pick: a whole number.")
     if data.get("preview"):
@@ -698,17 +696,17 @@ def api_bank_pull():
         with ui.history_change(pdir, what):
             for path, d in writes.items():
                 ui.save_source(pdir, path, d, what)
-            if new_main != main:
-                ui.save_source(pdir, main_fn, new_main.encode("utf-8"), what)
             ui.save_source(pdir, items.POOLS_FILE, pools.encode("utf-8"), what)
+            if new_main != main:  # last: should a write fail before, the paper still builds as before
+                ui.save_source(pdir, main_fn, new_main.encode("utf-8"), what)
     except (vcs.Conflict, OSError, ValueError) as e:
         return _err(f"Not added: {e}")
-    if whole:
+    if whole and mode == "new":  # a section made from a whole group follows it
         seen = [banks.item_meta(bdir, n).get("uid") for n in g["items"]]
         ui._update_record(pdir, lambda r: r.setdefault("sections_from", {}).__setitem__(
             sec, {"bank_uid": b["uid"], "bank": os.path.basename(bdir), "group": g["name"], "seen": sorted(u for u in seen if u)}))
-    elif g:
-        copies.note_seen(pdir, sec, b["uid"], g["name"], uids)
+    elif g:  # into a section: what it already follows (if the same group) learns of these items; nothing else changes
+        copies.note_seen(pdir, sec, b["uid"], g["name"], [banks.item_meta(bdir, n).get("uid") for n in g["items"]] if whole else uids)
     if blueprint:
         ui._update_record(pdir, lambda r: r.setdefault("blueprints", {}).__setitem__(sec, {"bank_uid": b["uid"], "rows": blueprint}))
     ui.add_activity(pdir, what)
@@ -766,11 +764,13 @@ def api_bank_save():
     plan = [p for p in plan if p[0] in exam_items]
     if not plan:
         return _err("Nothing to save: choose questions kept in item files (Questions › Move questions into item files).")
+    created = None
     try:
         if data.get("whole") or data.get("new_bank"):
             bname = banks.check_name(pd, data.get("new_bank") or name)
             bdir = banks.bank_dir(pd, bname)
             os.makedirs(bdir)
+            created = bdir
             nb = banks.new_bank(bname, f"Made from the exam \"{name}\"")
             with open(os.path.join(bdir, banks.BANK_FILE), "w", encoding="utf-8") as f:
                 f.write(banks.to_json(nb))
@@ -787,15 +787,18 @@ def api_bank_save():
         with _change(bdir, f"Saved from the exam {name}") as cs:
             b = banks.read(bdir)
             bank_ids = {q["id"] for q in _bank_questions(bdir, b)}
-            by_uid = {banks.item_meta(bdir, n).get("uid"): n for n in b["all"]}
+            by_uid = {u: n for n in b["all"] if (u := banks.item_meta(bdir, n).get("uid"))}
             for en, gname, gtitle, instr in plan:
                 folder = os.path.join(pdir, items.ITEMS_DIR, en)
                 files = banks.item_files(folder)
                 text = files[items.ITEM_FILE].decode("utf-8", "replace")
                 em = banks.item_meta(pdir, en)
-                origin = em.get("origin") or {}
-                target = by_uid.get(origin.get("item_uid")) if origin.get("bank_uid") == b["uid"] else None
+                origin = em.get("origin") if isinstance(em.get("origin"), dict) else {}
+                target = by_uid.get(origin.get("item_uid")) if b["uid"] and origin.get("bank_uid") == b["uid"] else None
                 if target and linked_mode == "update":
+                    bfiles = banks.item_files(os.path.join(bdir, items.ITEMS_DIR, target))
+                    if banks.fingerprint(bfiles[items.ITEM_FILE].decode("utf-8", "replace"), banks.figures_of(bfiles)) != origin.get("fingerprint"):
+                        raise banks.BankError(f"The bank's question {target} changed since this exam took it. Compare them (Questions › Review) to update it.")
                     back = {v: k for k, v in (origin.get("ids") or {}).items()}
                     btext = banks.way_back(text, origin)
                     own = set(banks.question_ids(_read_text(os.path.join(bdir, items.item_file(target)))))
@@ -817,11 +820,9 @@ def api_bank_save():
                         title=em.get("title") or banks.plain_title(btext), tags=em.get("tags") or [], difficulty=em.get("difficulty") or "",
                         origin={"exam": name, "exam_uid": exam_uid, "item": en, "at": int(time.time())}).encode("utf-8"))
                     if gname:
+                        gname = banks.group_name(gname)
                         if not banks.group(b, gname):
-                            if not banks.GROUP_RE.match(gname):
-                                gname = banks.free_group(b, gname)
-                            if not banks.group(b, gname):
-                                b["groups"].append({"name": gname, "title": gtitle or gname, "instructions": instr or "", "scoring": "", "items": []})
+                            b["groups"].append({"name": gname, "title": gtitle or gname, "instructions": instr or "", "scoring": "", "items": []})
                         banks.place(b, bn, gname)
                 bank_ids.update(banks.question_ids(btext))
                 cs.write(items.item_file(bn), btext.encode("utf-8"))
@@ -856,12 +857,24 @@ def api_bank_save():
                     uid=em.get("uid"), title=em.get("title") or "", tags=em.get("tags") or [], difficulty=em.get("difficulty") or "",
                     origin=origin, created=em.get("created")).encode("utf-8"), what)
     except banks.BankError as e:
+        _undo_created(created)
         return _err(str(e))
-    except (vcs.HistoryError, OSError) as e:
+    except (vcs.HistoryError, OSError, KeyError) as e:
+        _undo_created(created)
         ui.core.app.logger.error(f"Save to bank: {e}")
         return _err("This can't be done just now. The server log has the details.")
     ui.add_activity(pdir, what)
     return jsonify(ok=True, what=what, bank=os.path.basename(bdir), clashes=clashes)
+
+
+def _undo_created(bdir):
+    """A bank made for a save that then failed goes, with its history."""
+    if not bdir or not os.path.isdir(bdir):
+        return
+    uid = vcs.read_uid(bdir, "bank")
+    shutil.rmtree(bdir, ignore_errors=True)
+    if uid:
+        vcs._drop_history(vcs.amcweb_dir(bdir, ui._root(), "bank"), uid, "bank")
 
 
 # ---------------------------------------------------------------- search, usage (ui_bankindex.py)
@@ -957,6 +970,7 @@ def api_banks_import():
     up = request.files.get("file")
     if not up or not up.filename:
         return _err("Choose a bank's zip.")
+    moved = None
     tmp = ui.core.amc_user_tmp(f"bank-zip-{uuid.uuid4().hex[:8]}")
     os.makedirs(tmp, exist_ok=True)
     try:
@@ -987,16 +1001,20 @@ def api_banks_import():
         bdir = banks.bank_dir(pd, name)
         os.makedirs(banks.banks_root(pd), exist_ok=True)
         shutil.move(unpacked, bdir)
+        moved = bdir  # from here on, a failure takes the half-made bank away again
         history = bool(bundle) and vcs.import_bundle(bdir, ui._root(), bundle, "bank")
         what = f"Bank \"{name}\" imported from {os.path.basename(up.filename)[:120]}" + ("" if history or not bundle else " (its history couldn't be read, so it starts here)")
         vcs.snapshot(bdir, ui._root(), by=_who(), what=what, kind="save" if history else "create", target="bank")
         vcs.audit(vcs.amcweb_dir(bdir, ui._root(), "bank"), _who(), "bank imported", bank=name, uid=uid, history=history,
                   files=len(written), skipped=len(skipped))
     except bankzip.ZipError as e:
+        _undo_created(moved)
         return _err(str(e))
     except banks.BankError as e:
+        _undo_created(moved)
         return _err(str(e))
     except (vcs.HistoryError, OSError, ValueError) as e:
+        _undo_created(moved)
         ui.core.app.logger.error(f"Bank import: {e}")
         return _err("This zip couldn't be imported. The server log has the details.")
     finally:

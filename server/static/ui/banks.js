@@ -627,7 +627,7 @@ async function bsSave() {
    bank's copy, or combine both (by hand where they changed the same place). Sections made from a
    whole group offer the questions the group gained since. Server: ui_bankcopies.py. */
 
-const COPY_CLASS = { same: 'st-same', bank: 'st-bank', here: 'st-here', both: 'st-both', gone: 'st-gone' };
+const COPY_CLASS = { same: 'st-same', bank: 'st-bank', here: 'st-here', both: 'st-both', kept: 'st-here', gone: 'st-gone' };
 
 async function loadCopies() {
   const project = S.project;
@@ -656,7 +656,7 @@ function bankStrip() {
   const d = S.bcopies;
   if (!d || d.project !== S.project) return '';
   const n = d.counts || {};
-  const parts = [['bank', 'newer in the bank'], ['here', 'edited here'], ['both', 'changed in both'], ['gone', 'no longer in their bank']]
+  const parts = [['bank', 'newer in the bank'], ['here', 'edited here'], ['both', 'changed in both'], ['kept', 'with a newer bank version set aside'], ['gone', 'no longer in their bank']]
     .filter(([k]) => n[k]).map(([k, w]) => `${n[k]} ${w}`);
   let html = '';
   if (parts.length) {
@@ -733,6 +733,10 @@ function renderCompare() {
   } else if (r.status === 'here') {
     body = r.since_here ? diff('What changed in this exam since the copy', r.since_here, 'Nothing in the text (a figure changed).') : diff('What updating the bank\'s copy changes there', r.push, 'Nothing in the text (a figure changed).');
     acts = asNew + push;
+  } else if (r.status === 'kept') {
+    body = '<p class="subtle">You chose to keep this exam\'s version when the bank changed. It can still be taken.</p>'
+      + (r.since_bank ? diff('What changed in the bank since the copy', r.since_bank, 'Nothing in the text (a figure changed).') : diff('What taking the bank\'s version changes here', r.take, 'Nothing in the text (a figure changed).'));
+    acts = asNew + take;
   } else {
     body = (r.since_here ? diff('Changed in this exam since the copy', r.since_here, 'Nothing in the text.') + diff('Changed in the bank since the copy', r.since_bank, 'Nothing in the text.')
       : diff('What taking the bank\'s version changes here', r.take, 'Nothing in the text.'))
@@ -755,6 +759,9 @@ async function copyOp(op, text) {
   if (r.conflicts) { openMergeEditor(r.text, r.conflicts); return; }
   if (!r.ok) {
     if (S.bmerge) { const m = $('#bmerge-msg'); if (m) { m.innerHTML = banner('danger', 'warning-triangle', esc(r.error || 'Not saved.'), ''); return; } }
+    if (r.conflict) { // one side changed meanwhile: the comparison is read again, then the message
+      try { const n = await getJSON(`/ui/api/bank-copy?item=${enc(r0.item)}`); if (!n.error) { S.bcmp = n; renderCompare(); } } catch { /* the message below says to look again */ }
+    }
     if (!$('#bcmp-msg')) renderCompare();
     const m = $('#bcmp-msg'); if (m) m.innerHTML = banner('danger', 'warning-triangle', esc(r.error || 'Not done.'), '');
     return;

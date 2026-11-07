@@ -15,7 +15,7 @@ Standard library only, so tests run without Flask.
 """
 import re
 
-SEPARATOR = re.compile(r"^%%%% item ([A-Za-z0-9][A-Za-z0-9-]{0,63}) %%%%[ \t]*$", re.M)
+SEPARATOR = re.compile(r"^%%%% item ([A-Za-z0-9][A-Za-z0-9-]{0,63}) %%%%[ \t\r]*$", re.M)
 _SEPARATOR_LIKE = re.compile(r"^[ \t]*%{3,}[ \t]*item\b.*$", re.M | re.I)
 _VERBATIM = re.compile(r"\\begin\s*\{(verbatim\*?|lstlisting|minted|comment)\}(.*?)\\end\s*\{\1\}", re.S)
 _TOKENS = re.compile(r"\\begin\s*\{([^{}]*)\}|\\end\s*\{([^{}]*)\}|[{}]")
@@ -29,12 +29,24 @@ def _line(text, pos):
     return text.count("\n", 0, pos) + 1
 
 
+_INLINE_VERB = ("verb", "lstinline", "mintinline")
+
+
 def _mask(text):
-    """TEXT with comments, escaped characters (\\{ \\} \\% \\\\), \\verb and
-    verbatim environments replaced by spaces, positions kept."""
+    """TEXT with comments, escaped characters (\\{ \\} \\% \\\\), \\verb (and
+    \\lstinline, \\mintinline) and verbatim environments replaced by
+    spaces, positions kept. Verbatim bodies are cut first, so a \\verb or
+    a % inside one can't swallow its \\end."""
     out = list(text)
     i, n = 0, len(text)
+    skip = {m.start(2): m.end(2) for m in _VERBATIM.finditer(text)}
     while i < n:
+        if i in skip:
+            for k in range(i, skip[i]):
+                if out[k] != "\n":
+                    out[k] = " "
+            i = skip[i]
+            continue
         c = text[i]
         if c == "\\" and i + 1 < n:
             nxt = text[i + 1]
@@ -43,14 +55,27 @@ def _mask(text):
                 while j < n and text[j].isalpha():
                     j += 1
                 word = text[i + 1:j]
-                if word == "verb" and j < n and not text[j].isalpha() and text[j] not in " \n":
-                    end = text.find(text[j], j + 1)
-                    end = n - 1 if end < 0 else end
-                    for k in range(i, end + 1):
-                        if out[k] != "\n":
-                            out[k] = " "
-                    i = end + 1
-                    continue
+                if word in _INLINE_VERB:
+                    k = j
+                    if k < n and text[k] == "*":          # \verb*
+                        k += 1
+                    if word == "lstinline" and k < n and text[k] == "[":
+                        k = text.find("]", k)
+                        k = n if k < 0 else k + 1
+                    if word == "mintinline" and k < n and text[k] == "{":
+                        k = text.find("}", k)
+                        k = n if k < 0 else k + 1
+                    if k < n and not text[k].isalpha() and text[k] not in " \t\n":
+                        delim = "}" if text[k] == "{" else text[k]
+                        eol = text.find("\n", k + 1)
+                        eol = n if eol < 0 else eol
+                        end = text.find(delim, k + 1, eol)   # closed on its own line, else to the line end
+                        end = eol - 1 if end < 0 else end
+                        for m in range(i, end + 1):
+                            if out[m] != "\n":
+                                out[m] = " "
+                        i = end + 1
+                        continue
                 i = j
                 continue
             out[i] = " "
@@ -66,11 +91,7 @@ def _mask(text):
             i = end
             continue
         i += 1
-    masked = "".join(out)
-    for m in _VERBATIM.finditer(masked):
-        s, e = m.start(2), m.end(2)
-        masked = masked[:s] + re.sub(r"[^\n]", " ", masked[s:e]) + masked[e:]
-    return masked
+    return "".join(out)
 
 
 def problems(text):
@@ -108,36 +129,63 @@ def problems(text):
 
 # ---------------------------------------------------------------- LaTeX logs
 
-_FILE_TOKEN = re.compile(r"\(((?:\./|/)[^\s()]+)|\)")
+_FILE_TOKEN = re.compile(r"\(((?:\./|/)[^\s()]+)|[()]")
+_FILE_LINE = re.compile(r"^((?:\./|/)[^:\n]+\.(?:tex|sty|cls|ltx)):(\d+): (.*)$")
+LOG_WIDTH = 79  # TeX wraps its log at this width: a line that long goes on in the next one
+
+
+def _unwrap(log):
+    """The log's lines, with the ones TeX wrapped joined again."""
+    out, carry = [], ""
+    for line in (log or "").split("\n"):
+        if len(line) == LOG_WIDTH and not line.startswith("! "):
+            carry += line
+            continue
+        out.append(carry + line)
+        carry = ""
+    if carry:
+        out.append(carry)
+    return out
 
 
 def first_error(log, pdir=""):
     """The first error of a LaTeX log: {"file", "line", "message",
     "context"}; file is relative to the exam folder ("items/x/item.tex"),
-    or None when the error is in a package or can't be traced."""
-    stack = []
-    lines = (log or "").split("\n")
+    or None when the error is in a package or can't be traced. Reads the
+    file:line: form (-file-line-error) when the log has it; otherwise the
+    files TeX says it opened, telling a file's ( from a warning's."""
+    stack = []  # a file's path, or None for a ( that opened no file
+    lines = _unwrap(log)
     at = None
     for idx, line in enumerate(lines):
         if line.startswith("! "):
+            at = idx
+            break
+        m = _FILE_LINE.match(line)
+        if m:
             at = idx
             break
         for m in _FILE_TOKEN.finditer(line):
             if m.group(0) == ")":
                 if stack:
                     stack.pop()
+            elif m.group(0) == "(":
+                stack.append(None)
             else:
                 stack.append(m.group(1))
     if at is None:
         return None
-    message = lines[at][2:].strip()
-    lineno, context = None, ""
+    m = _FILE_LINE.match(lines[at])
+    if m:
+        path, lineno, message = m.group(1), int(m.group(2)), m.group(3).strip()
+    else:
+        path, lineno, message = next((f for f in reversed(stack) if f and f.endswith((".tex", ".sty", ".cls", ".ltx"))), None), None, lines[at][2:].strip()
+    context = ""
     for line in lines[at + 1:at + 40]:
         m = re.match(r"^l\.(\d+) ?(.*)$", line)
         if m:
             lineno, context = int(m.group(1)), m.group(2).strip()
             break
-    path = next((f for f in reversed(stack) if f.endswith((".tex", ".sty", ".cls"))), None)
     rel = None
     if path:
         root = (pdir or "").rstrip("/") + "/"
@@ -152,7 +200,7 @@ def first_error(log, pdir=""):
 
 def preamble(main_text):
     """The main file up to \\begin{document}, or None."""
-    m = _BEGIN_DOC.search(main_text or "")
+    m = _BEGIN_DOC.search(_mask(main_text or ""))
     return main_text[:m.start()] if m else None
 
 
@@ -171,7 +219,12 @@ def check_source(pre, body, item=None):
 # ---------------------------------------------------------------- a section as one document
 
 def section_document(entries):
-    """ENTRIES: [(item name, its LaTeX)] in pool order."""
+    """ENTRIES: [(item name, its LaTeX)] in pool order. Raises ValueError
+    naming an item whose text holds a line that reads like a separator:
+    the document couldn't be split back as it was."""
+    for name, text in entries:
+        if _SEPARATOR_LIKE.search(text):
+            raise ValueError(f"The item {name} holds a line that looks like a separator (%%%% item ...); edit it in the form.")
     return "".join(f"%%%% item {name} %%%%\n{text.strip(chr(10))}\n\n" for name, text in entries)
 
 
@@ -179,9 +232,10 @@ def split_section(text):
     """[(item name, LaTeX, line of its separator)] from a section document.
     Raises ValueError (with the line) when a separator is missing, changed
     or doubled, or text comes before the first one."""
-    seps = list(SEPARATOR.finditer(text or ""))
+    text = (text or "").replace("\r\n", "\n")
+    seps = list(SEPARATOR.finditer(text))
     good = {m.start() for m in seps}
-    for m in _SEPARATOR_LIKE.finditer(text or ""):
+    for m in _SEPARATOR_LIKE.finditer(text):
         if m.start() not in good:
             raise ValueError(f"Line {_line(text, m.start())}: this separator line was changed. It must read %%%% item <name> %%%%.")
     if not seps:

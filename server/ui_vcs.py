@@ -31,6 +31,7 @@ Standard library only (plus filelock, which the server already uses), so
 the logic tests run without Flask.
 """
 import contextlib
+import errno
 import difflib
 import hashlib
 import json
@@ -44,12 +45,13 @@ import subprocess
 import threading
 import time
 
-from filelock import FileLock
+from filelock import FileLock, Timeout
 
 AMCWEB_DIR = "_amcweb"
 LOCAL_OWNER = "_local"       # single-user mode (account names can't start with "_")
 TRASH_DAYS = 30
 MAX_FILE = 10 * 1024 * 1024  # bigger files (a scanned image dropped in the folder) aren't kept
+BUNDLE_MAX_UNPACKED = 512 * 1024 * 1024  # a history read from a bundle may not take more on disk
 TEXT_EXTENSIONS = ("tex", "latex", "txt", "sty", "cls", "bib", "yml", "yaml", "csv", "json")
 IMAGE_EXTENSIONS = ("png", "jpg", "jpeg", "gif", "svg", "eps", "pdf")
 NOT_TRACKED = ("amcweb.json", "options.xml", "description.xml")
@@ -82,6 +84,11 @@ class Conflict(Exception):
 
 class HistoryError(Exception):
     """Git failed, or a version doesn't exist; the message is for the log."""
+
+
+class GitUnavailable(HistoryError):
+    """Git couldn't run at all (missing, or it didn't answer in time): the
+    repository isn't to blame, so it is never taken for damaged."""
 
 
 # ---------------------------------------------------------------- small helpers
@@ -117,6 +124,10 @@ def tracked(path):
     elif len(parts) != 1:
         return False
     if not path or path.startswith((".", '"')) or re.search(r"[\x00-\x1f\x7f]", path):
+        return False
+    try:
+        path.encode("utf-8")  # a name the file system couldn't decode (lone surrogates) can't go to git
+    except UnicodeEncodeError:
         return False
     if path in NOT_TRACKED or path.startswith(MADE_BY_AMC) or "." not in path:
         return False
@@ -248,8 +259,13 @@ def _env():
 
 
 def _git(git_dir, *args, data=None, ok=(0,)):
-    p = subprocess.run([GIT, "--git-dir", git_dir, *_CONFIG, *args], input=data,
-                       capture_output=True, env=_env(), timeout=300)
+    try:
+        p = subprocess.run([GIT, "--git-dir", git_dir, *_CONFIG, *args], input=data,
+                           capture_output=True, env=_env(), timeout=300)
+    except subprocess.TimeoutExpired:
+        raise GitUnavailable(f"git {args[0]} didn't finish in 300 s")
+    except FileNotFoundError:
+        raise GitUnavailable(f"git isn't installed ({GIT})")
     if p.returncode not in ok:
         sub = next((a for i, a in enumerate(args) if not a.startswith("-") and (i == 0 or args[i - 1] != "-c")), "")
         raise HistoryError(f"git {sub} failed ({p.returncode}): "
@@ -276,6 +292,8 @@ def import_bundle(pdir, root, bundle, target="bank"):
         _git(tmp, *checked, "bundle", "verify", "-q", bundle)
         _git(tmp, *checked, "fetch", "-q", "--no-tags", "--no-write-fetch-head", bundle, f"+{BRANCH}:{BRANCH}")
         _git(tmp, "rev-parse", "--verify", "-q", BRANCH + "^{commit}")
+        if _size(tmp) > BUNDLE_MAX_UNPACKED:  # a small bundle can unpack to a lot (deltas)
+            raise HistoryError(f"the history unpacks to more than {BUNDLE_MAX_UNPACKED // 1024 // 1024} MB")
         os.replace(tmp, git_dir)
         return True
     except (HistoryError, subprocess.SubprocessError, OSError) as e:
@@ -387,22 +405,23 @@ class Repo:
         return self
 
     def _head_ref(self):
-        try:
-            with open(os.path.join(self.git_dir, *BRANCH.split("/")), encoding="ascii") as f:
-                h = f.read().strip()
-            return h if COMMIT_RE.match(h) else None
-        except OSError:
-            return None
+        """The branch's commit, loose or packed (git gc packs refs); None
+        when the repository has no branch."""
+        p = _git(self.git_dir, "rev-parse", "--verify", "--quiet", BRANCH + "^{commit}", ok=(0, 1))
+        h = p.stdout.decode("ascii", "replace").strip()
+        return h if p.returncode == 0 and COMMIT_RE.match(h) else None
 
     def _load(self):
         self.meta = _read_json(self.meta_path) or {}
-        head = self._head_ref()
-        if head and head == self.meta.get("head") and isinstance(self.meta.get("tree"), dict):
-            return
-        # The cache doesn't match the repository (first use, a crash between
-        # the commit and the cache): read the tree from git, or start again
-        # from the files when the repository is damaged.
+        # The cache may not match the repository (first use, a crash between
+        # the commit and the cache): then read the tree from git, or start
+        # again from the files when the repository is damaged. Git not
+        # answering at all isn't damage: the request fails and the next one
+        # tries again.
         try:
+            head = self._head_ref()
+            if head and head == self.meta.get("head") and isinstance(self.meta.get("tree"), dict):
+                return
             if head is None:
                 raise HistoryError("no branch")
             _git(self.git_dir, "cat-file", "-e", head + "^{commit}")
@@ -410,6 +429,8 @@ class Repo:
             self.meta["tree"] = self.tree_at(head)
             self.meta.setdefault("stat", {})
             self._save_meta()
+        except GitUnavailable:
+            raise
         except HistoryError as e:
             aside = os.path.join(self.dir, f"{self.uid}.damaged-{int(time.time())}.git")
             os.replace(self.git_dir, aside)
@@ -616,7 +637,9 @@ class Repo:
             info, _, path = rec.partition(b"\t")
             parts = info.split()
             if len(parts) == 3 and parts[1] == b"blob":
-                out[path.decode("utf-8", "surrogateescape")] = parts[2].decode()
+                name = path.decode("utf-8", "surrogateescape")
+                if tracked(name):  # a history that came in a bundle may hold paths the app never writes
+                    out[name] = parts[2].decode()
         return out
 
     def blob(self, bid):
@@ -877,10 +900,14 @@ class Repo:
             return False
         events = []  # (at, seq, path, data or None, by, what, built)
         seq = 0
+        skipped = 0  # entries that couldn't be read: the folder is then kept aside, not removed
         current = {}
         for name in sorted(os.listdir(root)):
             d = os.path.join(root, name)
-            if not tracked(name) or not os.path.isdir(d) or os.path.islink(d):
+            if not os.path.isdir(d) or os.path.islink(d):
+                continue
+            if not tracked(name):
+                skipped += 1
                 continue
             current[name] = _read_json(os.path.join(d, "current.json")) or {}
             ext = name.rsplit(".", 1)[-1].lower()
@@ -889,11 +916,16 @@ class Repo:
                     continue
                 e = _read_json(os.path.join(d, f))
                 if not e or not _OLD_ID.match(str(e.get("id", ""))) or e.get("file") != name:
+                    skipped += 1
                     continue
+                vf = os.path.join(d, e["id"] + "." + ext)
                 try:
-                    with open(os.path.join(d, e["id"] + "." + ext), "rb") as fh:
+                    if os.path.islink(vf):
+                        raise OSError("a link")
+                    with open(vf, "rb") as fh:
                         data = fh.read()
                 except OSError:
+                    skipped += 1
                     continue
                 at = int(e.get("at") or 0)
                 seq += 1
@@ -933,9 +965,15 @@ class Repo:
             self._commit([(fresh, None, "History started (files the old history didn't keep)", "start", None, {})])
         self.meta["built"] = (self.meta.get("built") or []) + built_marks
         self._save_meta()
-        shutil.rmtree(root, ignore_errors=True)
+        kept_as = None
+        if skipped:  # something wasn't understood: the old folder stays, out of the way
+            kept_as = f"{OLD_HISTORY_DIR}.unconverted-{int(time.time())}"
+            os.replace(root, os.path.join(self.pdir, kept_as))
+            _log.warning(f"{self.pdir}: {skipped} old history entries weren't understood; {OLD_HISTORY_DIR} kept as {kept_as}")
+        else:
+            shutil.rmtree(root, ignore_errors=True)
         audit(self.home, None, "old history converted", exam=os.path.basename(self.pdir), uid=self.uid,
-              versions=len(commits))
+              versions=len(commits), skipped=skipped, kept_as=kept_as)
         return bool(commits)
 
 
@@ -1028,19 +1066,29 @@ def change(pdir, root, by=None, what="Saved", kind="save", extra=None, target="e
     if key in sets:
         yield sets[key]
         return
+    lock = None
     try:
         repo = Repo(pdir, root, target).open(by=by)
-    except (HistoryError, subprocess.SubprocessError) as e:
-        _log.error(f"{pdir}: the history can't be opened ({e}); saving without it")
+        lock = repo.lock
+        lock.acquire()
+        try:
+            repo._load()
+            repo._record_outside()
+        except BaseException:
+            lock.release()
+            raise
+    except (HistoryError, OSError, ValueError, subprocess.SubprocessError, Timeout) as e:
+        # Saving the teacher's work matters more than recording it: the
+        # files are written all the same, and the next change that works
+        # records them as changed outside the app.
+        _log.error(f"{pdir}: the history can't be used ({e}); saving without it")
         cs = sets[key] = ChangeSet(None, by, what, kind, extra, pdir=pdir)
         try:
             yield cs
         finally:
             del sets[key]
         return
-    with repo.lock:
-        repo._load()
-        repo._record_outside()
+    try:
         cs = ChangeSet(repo, by, what, kind, extra)
         sets[key] = cs
         try:
@@ -1048,6 +1096,8 @@ def change(pdir, root, by=None, what="Saved", kind="save", extra=None, target="e
         finally:
             del sets[key]
             cs.commit()
+    finally:
+        lock.release()
 
 
 def write(pdir, root, path, data, by=None, what="Saved", based_on=None, target="exam"):
@@ -1191,7 +1241,10 @@ def trash_exam(pdir, root, by=None, target="exam"):
         try:
             shutil.move(repo.pdir, os.path.join(dest, "exam"))
         except OSError:
-            shutil.rmtree(dest, ignore_errors=True)
+            if os.path.isdir(repo.pdir):  # the exam is still where it was: nothing of it is in the trash
+                shutil.rmtree(dest, ignore_errors=True)
+            else:  # a copy across file systems stopped midway: both halves are kept for a person to look at
+                _log.error(f"{repo.pdir}: moving to the trash failed midway; the files are in {dest}")
             raise
         repo.meta["folder"] = os.path.join(dest, "exam")
         repo._save_meta()
@@ -1200,9 +1253,12 @@ def trash_exam(pdir, root, by=None, target="exam"):
     return info
 
 
-def list_trash(home, now=None):
-    """The exams in the trash, newest first, with the days they have left."""
-    purge_trash(home, now=now)
+def list_trash(home, now=None, purge=True):
+    """The exams in the trash, newest first, with the days they have left.
+    Exams kept too long are removed first, unless PURGE is false (a
+    read-only look, as the doctor's)."""
+    if purge:
+        purge_trash(home, now=now)
     now = now or time.time()
     out = []
     d = os.path.join(home, "trash")
@@ -1243,7 +1299,15 @@ def restore_trash(home, tid, projects_dir, by=None):
     into = os.path.join(projects_dir, BANKS_DIR) if target == "bank" else projects_dir
     os.makedirs(into, exist_ok=True)
     name = _free_name(into, name)
-    shutil.move(os.path.join(d, "exam"), os.path.join(into, name))
+    src, dest = os.path.join(d, "exam"), os.path.join(into, name)
+    try:
+        os.rename(src, dest)  # fails if the name was taken meanwhile, never nests the exam inside
+    except OSError as e:
+        if e.errno != errno.EXDEV:
+            raise
+        if os.path.exists(dest):
+            raise HistoryError(f"A {target} named \"{name}\" appeared meanwhile. Try again.")
+        shutil.move(src, dest)
     shutil.rmtree(d, ignore_errors=True)
     audit(home, by, f"{target} restored from the trash", **{target: name}, uid=info.get("uid"), trash=tid)
     return name, target
@@ -1256,7 +1320,8 @@ def _drop_history(home, uid, target="exam"):
     hdir = os.path.join(home, "history", TARGETS[target][2])
     meta = _read_json(os.path.join(hdir, uid + ".json")) or {}
     folder = meta.get("folder")
-    if folder and is_target(folder, target) and read_uid(folder, target) == uid and "/trash/" not in folder.replace(os.sep, "/"):
+    in_trash = os.path.abspath(folder or "").startswith(os.path.join(os.path.abspath(home), "trash") + os.sep)
+    if folder and is_target(folder, target) and read_uid(folder, target) == uid and not in_trash:
         return
     shutil.rmtree(os.path.join(hdir, uid + ".git"), ignore_errors=True)
     for ext in (".json", ".lock"):
