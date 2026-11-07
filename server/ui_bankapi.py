@@ -600,7 +600,7 @@ def api_bank_pull():
             m = banks.item_meta(bdir, n)
             if not m.get("archived") and m.get("uid") not in have:
                 cands.append({"item": n, "group": gmap.get(n), "difficulty": m.get("difficulty") or "", "tags": m.get("tags") or []})
-        picked, short = banks.blueprint_pick(cands, blueprint, data.get("seed"))
+        picked, short = banks.blueprint_pick(cands, blueprint, banks.seed_of(data.get("seed")))
         return jsonify(ok=True, chosen=[{"item": n, "group": gmap.get(n), "title": banks.item_meta(bdir, n).get("title")
                                          or banks.plain_title(_read_text(os.path.join(bdir, items.item_file(n))))} for n in picked],
                        short=[banks.blueprint_words(blueprint[i], found) for i, found in short])

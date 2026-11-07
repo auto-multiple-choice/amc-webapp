@@ -897,6 +897,19 @@ try:
     bix.note_stats(_home, "Exam 1", _eu, [{"bank_uid": "b", "item_uid": "i", "question": "q1", "n": 12, "right": 0.5, "separation": 1.0}])
     bix.note_stats(_home, "Exam 1", _eu, [{"bank_uid": "b", "item_uid": "i", "question": "q1", "n": 12, "right": 0.75, "separation": 0.5}])
     check3("stats: marking an exam again replaces its statistics", [(e["exam"], e["right"]) for e in bix.stats_of(_home, "b", "i")] == [("Exam 1", 0.75)])
+    import ui_stats as _st
+    _sc = {(p, 0): {1: (0.0 if p == 7 else 1.0, 1.0), 2: (1.0 if p <= 6 else 0.0, 1.0)} for p in range(1, 13)}
+    _tk = {(p, 0): {1: {1}, 2: {1 if p <= 6 else 2}} for p in range(1, 13)}
+    _q1 = next(x for x in _st.compute({"titles": {}, "scores": _sc, "ticks": _tk, "correct": {1: {1}, 2: {1}}, "indicative": set()}) if x["qnum"] == 1)
+    check("stats: copies tied at a cut all count (the paper number says nothing)", _q1["separation"] == 0.17 and _q1["ticks"])
+    _nt = _st.compute({"titles": {}, "scores": _sc, "ticks": {}, "correct": {1: {1}}, "indicative": set()})
+    check("stats: with no box read, no answer shares are made up", all(x["answers"] == [] and not x["ticks"] for x in _nt))
+    _odd_dir = os.path.join(tempfile.mkdtemp(), "a#b %20", "data"); os.makedirs(_odd_dir)
+    import sqlite3 as _sq
+    _c = _sq.connect(os.path.join(_odd_dir, "scoring.sqlite")); _c.executescript("CREATE TABLE scoring_score (student, copy, question, score, max); CREATE TABLE scoring_title (question, title);"
+                 " CREATE TABLE scoring_question (question, indicative); CREATE TABLE scoring_answer (question, answer, correct)"); _c.close()
+    check("stats: an exam folder with # or % in its path is read", _st.read(os.path.dirname(_odd_dir)) is None)
+    check("blueprint: a count that parses as infinity is dropped, not a crash", bk.tidy_blueprint([{"count": float("inf")}, {"count": 2}], {"groups": []}) == [{"count": 2, "difficulty": "", "group": "", "tag": ""}])
     # blueprints
     _cands = [{"item": f"e{i}", "group": "alg", "difficulty": "easy", "tags": ["x"]} for i in range(4)] + [{"item": f"m{i}", "group": "alg", "difficulty": "medium", "tags": []} for i in range(2)] \
         + [{"item": "g1", "group": "geo", "difficulty": "easy", "tags": []}]

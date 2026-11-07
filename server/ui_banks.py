@@ -317,7 +317,7 @@ def tidy_blueprint(rows, bank):
             continue
         try:
             n = int(r.get("count") or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):  # OverflowError: 1e999 parses as infinity
             continue
         if n < 1:
             continue

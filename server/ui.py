@@ -1523,8 +1523,8 @@ def question_stats(pdir):
                 text = re.sub(r"\s+", " ", re.sub(r"\\[A-Za-z]+\*?|[{}$]", " ", a.get("latex") or "")).strip()
                 labels[i] = f"\u201c{text[:40]}\u201d" if text else f"answer {i}"
             choices = list(labels)
-        if q and q.get("kind") == "numeric":
-            s["answers"] = []
+        if (q and q.get("kind") == "numeric") or not s.get("ticks", True):
+            s["answers"], choices = [], []  # no boxes read: no answer shares, and no "nobody chose" note
         have = {a["answer"] for a in s["answers"]}
         s["answers"] = sorted(s["answers"] + [{"answer": c, "share": 0.0, "upper": 0.0, "lower": 0.0, "correct": False}
                                               for c in choices if c not in have], key=lambda a: a["answer"])

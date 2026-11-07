@@ -31,7 +31,8 @@ GROUP = 0.27      # the strongest and weakest share of copies compared
 
 
 def _connect(path):
-    return sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=10)
+    from pathlib import Path
+    return sqlite3.connect(Path(os.path.abspath(path)).as_uri() + "?mode=ro", uri=True, timeout=10)  # as_uri quotes # ? % in the path
 
 
 def read(pdir, low=0.15, high=1.0):
@@ -95,21 +96,27 @@ def compute(data):
             continue
         right = sum(_right(s, m) for _, s, m in rows) / n
         mean = sum(s / m for _, s, m in rows) / n
-        # the copies ranked by their total without this question
-        ranked = sorted(rows, key=lambda r: (totals[r[0]] - r[1], r[0]))
+        # the copies ranked by their total without this question; copies tied at a cut
+        # all go in (the paper number says nothing about a student)
+        rest = {r[0]: totals[r[0]] - r[1] for r in rows}
+        ranked = sorted(rows, key=lambda r: (rest[r[0]], r[0]))
         k = max(1, math.ceil(n * GROUP))
-        lower, upper = ranked[:k], ranked[-k:]
+        lower = [r for r in ranked if rest[r[0]] <= rest[ranked[k - 1][0]]]
+        upper = [r for r in ranked if rest[r[0]] >= rest[ranked[-k][0]]]
         share = lambda grp: sum(_right(s, m) for _, s, m in grp) / len(grp)
         sep = None if n < MIN_COPIES else round(share(upper) - share(lower), 2)
         answers = []
-        seen = sorted({a for p, _, _ in rows for a in data["ticks"].get(p, {}).get(q, ())} | data["correct"].get(q, set()))
+        # no box read for this question on any copy (no scans: marks typed in, or capture data gone):
+        # the answers' shares would all read 0%, so none is given
+        ticks_known = any(q in data["ticks"].get(p, {}) for p, _, _ in rows)
+        seen = sorted({a for p, _, _ in rows for a in data["ticks"].get(p, {}).get(q, ())} | data["correct"].get(q, set())) if ticks_known else []
         for a in seen:
             ticked = lambda grp: sum(a in data["ticks"].get(p, {}).get(q, ()) for p, _, _ in grp) / len(grp)
             answers.append({"answer": a, "share": round(ticked(rows), 3), "upper": round(ticked(upper), 3),
                             "lower": round(ticked(lower), 3), "correct": a in data["correct"].get(q, set())})
         out.append({"qnum": q, "title": data["titles"].get(q, f"Question {q}"), "n": n, "right": round(right, 3),
                     "mean": round(mean, 3), "separation": sep, "upper": round(share(upper), 3), "lower": round(share(lower), 3),
-                    "answers": answers, "notes": []})
+                    "answers": answers, "ticks": ticks_known, "notes": []})
     return out
 
 
