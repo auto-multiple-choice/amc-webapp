@@ -37,6 +37,7 @@ import ui_items as items
 import ui_latex as ltx
 import ui_banks as banks
 import ui_bankindex as bankindex
+import ui_stats as stats
 import ui_vcs as vcs
 
 HISTORY_DIR = vcs.OLD_HISTORY_DIR  # the old per-file history: kept out of exam downloads until converted (amc.py)
@@ -1492,9 +1493,79 @@ def on_mark(data=None):
         entry = {"at": int(time.time()), "by": _who(), "inputs": inputs}
         _update_record(pdir, lambda rec: rec.__setitem__("marks", entry))
         add_activity(pdir, f"Marks computed for {n} cop{'y' if n == 1 else 'ies'}")
+        note_bank_stats(pdir)
         core.emit_msg("ui-toast", f"Marks computed for {n} cop{'y' if n == 1 else 'ies'}.")
     core.show_messages(messages, variables)
     core.emit_msg("ui-changed", "marks")
+
+
+# ---- question statistics (ui_stats.py)
+
+def question_stats(pdir):
+    """The exam's question statistics, with the questions' answers named
+    from the source and the notes in words."""
+    low, high = _thresholds()
+    found = stats.compute(stats.read(pdir, low, high))
+    by_id, order = {}, {}
+    try:
+        for i, q in enumerate(_all_questions(pdir, _source_files(pdir))):
+            by_id.setdefault(q["id"], q)
+            order.setdefault(q["id"], i)
+    except (OSError, ValueError):
+        pass
+    found.sort(key=lambda s: (order.get(s["title"], len(order)), s["title"]))  # as the exam lists them
+    for s in found:
+        q = by_id.get(s["title"])
+        labels, choices = {}, []
+        if q and q.get("kind") != "numeric":
+            for i, a in enumerate(q.get("answers") or [], 1):
+                text = re.sub(r"\s+", " ", re.sub(r"\\[A-Za-z]+\*?|[{}$]", " ", a.get("latex") or "")).strip()
+                labels[i] = f"\u201c{text[:40]}\u201d" if text else f"answer {i}"
+            choices = list(labels)
+        if q and q.get("kind") == "numeric":
+            s["answers"] = []
+        have = {a["answer"] for a in s["answers"]}
+        s["answers"] = sorted(s["answers"] + [{"answer": c, "share": 0.0, "upper": 0.0, "lower": 0.0, "correct": False}
+                                              for c in choices if c not in have], key=lambda a: a["answer"])
+        s["labels"] = {str(k): v for k, v in labels.items()}
+        s["notes"] = stats.notes(s, labels, choices)
+        s["flag"] = stats.worth_a_look(s, s["notes"])
+        s["file"] = q.get("file") if q else None
+    return found
+
+
+def note_bank_stats(pdir):
+    """After marking: the statistics of the exam's copies of bank items are
+    kept with the teacher's banks (ui_bankindex.note_stats), so a bank's
+    question shows how it did in every exam."""
+    try:
+        found = question_stats(pdir)
+        entries = []
+        for s in found:
+            item = items.item_of(s.get("file") or "")
+            o = banks.item_meta(pdir, item).get("origin") or {} if item else {}
+            if o.get("bank_uid") and o.get("item_uid"):
+                back = {v: k for k, v in (o.get("ids") or {}).items()}
+                entries.append({"bank_uid": o["bank_uid"], "item_uid": o["item_uid"], "question": back.get(s["title"], s["title"]),
+                                "n": s["n"], "right": s["right"], "separation": s["separation"],
+                                "answers": [{k: a[k] for k in ("answer", "share", "correct")} for a in s["answers"]]})
+        bankindex.note_stats(vcs.amcweb_dir(pdir, _root()), os.path.basename(pdir), vcs.read_uid(pdir), entries)
+    except (OSError, ValueError, sqlite3.Error) as e:
+        core.app.logger.error(f"Bank statistics: {pdir}: {e}")
+
+
+@bp.route("/ui/api/question-stats")
+def api_question_stats():
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    try:
+        found = question_stats(pdir)
+    except (OSError, sqlite3.Error) as e:
+        core.app.logger.error(f"Question statistics: {e}")
+        return jsonify(project=name, stats=[], error="The statistics couldn't be read.")
+    return jsonify(project=name, stats=found, min_copies=stats.MIN_COPIES)
 
 
 # ---- matching sheets to students

@@ -531,3 +531,32 @@ input[type="color"] { width: 44px; height: 34px; padding: 2px; border: 1px solid
 .b-arch { align-self: center; margin: 0; }
 .b-usage { font-size: 12.5px; margin: 0 0 8px; }
 .b-usage svg { width: 14px; height: 14px; vertical-align: -2px; }
+/* Question statistics (stats.js, ui_stats.py) */
+.qs-help { padding: 12px 16px 0; margin: 0; }
+.qs-head, .qs-row > summary { display: grid; grid-template-columns: minmax(90px, 1fr) 120px 48px 72px minmax(0, 3fr); gap: 10px; align-items: center; }
+.qs-head { padding: 10px 16px 4px; font-size: 12px; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+.qs-list { padding: 0 8px 8px; }
+.qs-row { border-top: 1px solid var(--border); }
+.qs-row > summary { padding: 8px; cursor: pointer; list-style: none; }
+.qs-row > summary::-webkit-details-marker { display: none; }
+.qs-row > summary:hover { background: var(--accent-softer); }
+.qs-row.is-flagged .qs-note { color: var(--warning); }
+.qs-note { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qs-note svg { width: 14px; height: 14px; vertical-align: -2px; }
+.qs-bar { display: block; height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.qs-bar > span { display: block; height: 100%; background: var(--brand); }
+.qs-num { font-variant-numeric: tabular-nums; font-size: 13px; text-align: right; }
+.qs-good { color: var(--success); font-weight: 600; } .qs-weak { color: var(--warning); } .qs-bad { color: var(--danger); font-weight: 600; }
+.qs-detail { padding: 4px 8px 12px; }
+.qs-notes { margin: 4px 0 10px 18px; padding: 0; font-size: 13px; }
+.qs-answers { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.qs-ans { display: grid; grid-template-columns: minmax(0, 2fr) 120px 48px minmax(0, 1.4fr); gap: 10px; align-items: center; font-size: 13px; }
+.qs-ans.is-correct .qs-bar > span { background: var(--success); }
+.qs-ans-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qs-ans-label svg { width: 14px; height: 14px; color: var(--success); vertical-align: -2px; margin-right: 2px; }
+.qs-split { font-size: 12px; }
+/* Blueprints in "From a bank" (banks.js) */
+.bp-blue { display: flex; flex-direction: column; gap: 6px; margin: 0 0 10px; align-items: flex-start; }
+.bp-blue-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.bp-blue-row .input[type="number"] { width: 70px; }
+.bp-blue-row .select { width: auto; }

@@ -200,6 +200,49 @@ def usage(home):
     return out
 
 
+# ---------------------------------------------------------------- statistics (ui_stats.py)
+
+STATS_DIR = "stats"
+
+
+def note_stats(home, exam, exam_uid, entries):
+    """An exam's marks were computed: the statistics of its copies of bank
+    items, [{bank_uid, item_uid, question (the bank's name), n, right,
+    separation, answers}], replace the exam's earlier ones."""
+    if not exam_uid or not vcs.UID_RE.match(exam_uid):
+        return
+    d = os.path.join(home, STATS_DIR)
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, f"{exam_uid}.json")
+    if not entries:
+        if os.path.exists(path):
+            os.unlink(path)
+        return
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"exam": exam, "exam_uid": exam_uid, "at": int(time.time()), "items": entries}, f, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def stats_of(home, bank_uid, item_uid):
+    """The statistics of a bank item in every exam marked with a copy of it:
+    [{exam, at, question, n, right, separation, answers}], newest first."""
+    d = os.path.join(home, STATS_DIR)
+    out = []
+    for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        if not f.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(d, f), encoding="utf-8") as fh:
+                rec = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        for e in rec.get("items") or []:
+            if isinstance(e, dict) and e.get("bank_uid") == bank_uid and e.get("item_uid") == item_uid:
+                out.append(dict(e, exam=rec.get("exam"), at=rec.get("at")))
+    return sorted(out, key=lambda e: -(e.get("at") or 0))
+
+
 # ---------------------------------------------------------------- searching
 
 def fts_query(text):

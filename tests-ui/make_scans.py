@@ -18,6 +18,9 @@ Options, as JSON in a third argument (defaults in brackets):
                    (\\AMCcodeGrid...) so copy n reads base + n
   double  [[]]     copies whose first question on page 1 gets two ticks,
                    which breaks a single-answer question's rules
+  pick    [{}]     {"q1": {"3": 2, ...}}: on copy 3, question q1 gets answer
+                   2 ticked (answers are numbered in the source's order;
+                   0 ticks nothing); other copies and questions as usual
 
 Run inside the app's container (it has pdftoppm and Pillow):
   /venv/bin/python make_scans.py "/amc-web/files/MC-Projects/<exam>" /tmp/scans '{"blank": false}'
@@ -50,7 +53,7 @@ def fill(draw, box, scale, share):
 
 def main():
     pdir, out = sys.argv[1], sys.argv[2]
-    opts = {"faint": True, "blank": True, "omit": True, "code": None, "double": []}
+    opts = {"faint": True, "blank": True, "omit": True, "code": None, "double": [], "pick": {}}
     if len(sys.argv) > 3:
         opts.update(json.loads(sys.argv[3]))
     os.makedirs(out, exist_ok=True)
@@ -99,6 +102,14 @@ def main():
                     if box:
                         fill(draw, box, scale, TICK)
                         codes.setdefault(code, {})[student] = value
+                continue
+            chosen = (opts["pick"].get(names.get(q) or "") or {}).get(str(student))
+            if chosen is not None:
+                hit = next(((a, c, co) for a, c, co in answers if a == chosen), None)
+                if hit:
+                    fill(draw, hit[2], scale, TICK)
+                    drawn.append({"student": student, "page": page, "question": q, "name": names.get(q), "answer": chosen, "faint": False})
+                n += 1
                 continue
             a, _, coords = answers[(student + q) % len(answers)]
             faint = opts["faint"] and student in (1, 2) and page == 1 and n == 0

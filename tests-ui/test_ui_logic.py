@@ -791,6 +791,45 @@ try:
     print(f"     (5,000 items: index built in {(_t1 - _t0) * 1000:.0f} ms, then a search in {(_t2 - _t1) * 1000:.0f} ms)")
     check3("index: a search of 5,000 items once the index is built takes well under a second (target 200 ms)", _t2 - _t1 < 1.0 and len(_hits) == 1667, f"{_t2 - _t1:.3f}s {len(_hits)}")
     shutil.rmtree(_big)
+    # question statistics (ui_stats.py) on a class of 12: copies 7-12 strong (q4, q5 right), 1-6 weak
+    import ui_stats as qst
+    _sd = {"titles": {1: "q1", 2: "q2", 3: "q3", 4: "q4", 5: "q5"}, "indicative": set(), "scores": {}, "ticks": {}, "correct": {q: {1} for q in range(1, 6)}}
+    for _st in range(1, 13):
+        strong = _st > 6
+        pick = {1: 1 if strong else 2, 2: 1, 3: 2 if strong else 1, 4: 1 if strong else 3, 5: 1 if strong else 2}
+        _sd["ticks"][(_st, 0)] = {q: {a} for q, a in pick.items()}
+        _sd["scores"][(_st, 0)] = {q: (1.0 if a == 1 else 0.0, 1.0) for q, a in pick.items()}
+    _qs = {s["title"]: s for s in qst.compute(_sd)}
+    check3("stats: share right and separation (strongest 27% against weakest 27%)", _qs["q1"]["right"] == 0.5 and _qs["q1"]["separation"] == 1.0
+           and _qs["q2"]["right"] == 1.0 and _qs["q2"]["separation"] == 0.0 and _qs["q3"]["separation"] == -1.0, J({k: (v["right"], v["separation"]) for k, v in _qs.items()}))
+    check3("stats: which answers were chosen, overall and by the strongest and weakest", {a["answer"]: (a["share"], a["upper"], a["lower"], a["correct"]) for a in _qs["q3"]["answers"]}
+           == {1: (0.5, 0.0, 1.0, True), 2: (0.5, 1.0, 0.0, False)}, J(_qs["q3"]["answers"]))
+    _n3 = qst.notes(_qs["q3"], {1: "“Right”", 2: "“Tempting”"}, [1, 2, 3, 4])
+    check3("stats: notes in words: a key to check, a wrong answer strong students chose, answers nobody chose",
+           any("check the answer key" in x for x in _n3) and any("“Tempting” attracts strong students" in x for x in _n3)
+           and any("Nobody chose answer 3" in x for x in _n3) and any("Nobody chose answer 4" in x for x in _n3), J(_n3))
+    check3("stats: a very easy question, and too few copies to say much",
+           any("Very easy" in x for x in qst.notes(_qs["q2"])) and qst.notes(dict(_qs["q1"], n=4)) == ["Only 4 copies: too few to say much."])
+    check3("stats: no marks, no statistics", qst.compute(None) == [] and qst.read(_tmpb) is None)
+    check3("stats: a bank item over several exams, weighted by copies", qst.summary([{"n": 30, "right": 0.5, "separation": 0.4}, {"n": 10, "right": 0.9, "separation": None}])
+           == {"exams": 2, "n": 40, "right": 0.6, "separation": 0.4})
+    _eu = vcs.new_uid()
+    bix.note_stats(_home, "Exam 1", _eu, [{"bank_uid": "b", "item_uid": "i", "question": "q1", "n": 12, "right": 0.5, "separation": 1.0}])
+    bix.note_stats(_home, "Exam 1", _eu, [{"bank_uid": "b", "item_uid": "i", "question": "q1", "n": 12, "right": 0.75, "separation": 0.5}])
+    check3("stats: marking an exam again replaces its statistics", [(e["exam"], e["right"]) for e in bix.stats_of(_home, "b", "i")] == [("Exam 1", 0.75)])
+    # blueprints
+    _cands = [{"item": f"e{i}", "group": "alg", "difficulty": "easy", "tags": ["x"]} for i in range(4)] + [{"item": f"m{i}", "group": "alg", "difficulty": "medium", "tags": []} for i in range(2)] \
+        + [{"item": "g1", "group": "geo", "difficulty": "easy", "tags": []}]
+    _bp = bk.tidy_blueprint([{"count": "3", "difficulty": "easy", "group": "algebra"}, {"count": 5, "difficulty": "medium"}, {"count": 0}, {"count": 2, "group": "nope", "difficulty": "odd"}], _r)
+    check3("blueprints: rows checked (a count, a known difficulty and group, else any)", _bp == [{"count": 3, "difficulty": "easy", "group": "algebra", "tag": ""},
+           {"count": 5, "difficulty": "medium", "group": "", "tag": ""}, {"count": 2, "difficulty": "", "group": "", "tag": ""}], J(_bp))
+    _rows = [{"count": 3, "difficulty": "easy", "group": "alg", "tag": ""}, {"count": 5, "difficulty": "medium", "group": "", "tag": ""}, {"count": 9, "difficulty": "", "group": "", "tag": ""}]
+    _got, _short = bk.blueprint_pick(_cands, _rows, seed=3)
+    check3("blueprints: each row draws matching questions, none twice; rows short of questions are said",
+           len(set(_got)) == len(_got) == 7 and sum(x.startswith("e") for x in _got[:3]) == 3 and set(_got[3:5]) == {"m0", "m1"}
+           and _short == [(1, 2), (2, 2)] and bk.blueprint_pick(_cands, _rows, seed=3)[0] == _got, J([_got, _short]))
+    check3("blueprints: ...in words", bk.blueprint_words(_rows[1], 2) == "5 medium questions: only 2 available"
+           and bk.blueprint_words({"count": 1, "difficulty": "", "group": "alg", "tag": "x"}, 0) == "1 tagged x question from alg: only 0 available")
     # a bank as a zip (ui_bankzip.py)
     import ui_bankzip as bz, zipfile, io
     _zb = io.BytesIO(); bz.write(_bd, _zb)

@@ -585,7 +585,7 @@ async function loadQuestions({ refresh = false } = {}) {
 }
 function loadStepData() {
   const step = S.route.step;
-  if (step === 'mark') loadMarks();
+  if (step === 'mark') { loadMarks(); if (typeof loadQStats === 'function') loadQStats(); }
   if (step === 'match-students') loadStudents();
   if (step === 'export-marks') { loadMarks(); loadExport(); }
   if (step === 'annotate') { loadMarks(); loadAnnotate(); }
@@ -3115,6 +3115,7 @@ function viewMark() {
       ${clear ? '' : '<p class="muted" style="margin-top:12px">Settle these in Check scans first, so every mark is based on what students really ticked.</p>'}</div>
       <div class="card-foot">${actions}</div></section>
     ${breaks.length ? ruleBreaksCard(breaks) : ''}
+    ${st.marked && typeof qstatsCard === 'function' ? qstatsCard() : ''}
   </div>`;
 }
 

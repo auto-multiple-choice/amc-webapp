@@ -132,7 +132,7 @@ def copies_payload(pdir, name):
     for c in copies:
         counts[c["status"]] = counts.get(c["status"], 0) + 1
     return {"project": name, "copies": copies, "counts": counts, "lock": lock,
-            "follow": [] if lock else _follow(pdir, rec, bk, copies)}
+            "follow": [] if lock else _follow(pdir, rec, bk, copies), "blueprints": rec.get("blueprints") or {}}
 
 
 def api_bank_copies():
