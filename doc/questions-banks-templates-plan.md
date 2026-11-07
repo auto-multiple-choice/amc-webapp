@@ -384,6 +384,13 @@ into the exam folder; the sandboxed LaTeX run never touches them.
 
 ## 8. RJ template and the Paper design panel
 
+> **Superseded (November 2026, review of MR !12).** The Olympiad paper
+> starter described here, a fixed list of parts switched on and off, is
+> not what we want. It is replaced by the RJ Style Paper Builder: rows and
+> columns of blocks on a 12-column grid, for the question paper and the
+> OMR sheet. See `paper-builder-plan.md`. The sections model (section 6)
+> stays.
+
 **The starter** (`server/school_templates/olympiad/`): the RJ files
 reorganised into one `exam.tex` plus `amc-preamble.tex` and
 `paper-template.tex`, where every optional part is a **block** between
@@ -439,6 +446,46 @@ is built with `TEXLIVE_PKGS=texmf-dist-fontsextra` (the Dockerfile
 already has that build argument). The gallery build fails if a starter
 doesn't compile, so the starter is tested on every image build.
 
+How it was built (phase 8):
+- `server/ui_structure.py` reads and edits the paper's structure. A
+  section is a marked region (`%%AMCUI:SECTION name%%` …
+  `%%AMCUI:END SECTION%%`) rewritten from its fields: heading
+  (`\amcuiSectionHeading`), instructions (`\amcuiSectionText`), new page,
+  `\shufflegroup`, `multicols`, `\insertgroup[n]`. A plain
+  `\insertgroup` without markers is read as a section too and gets its
+  markers on its first edit; the heading macros (`%%AMCUI:MACROS%%`) and
+  `multicol` are added to the preamble when first needed. Each section
+  shows its pool against the count per copy, the marks of its questions
+  (from `\scoring`, the file's `\scoringDefaultS/M` or `\AMCnumericOpts`,
+  with `\def` macros expanded) and a warning when the pool is too small or
+  empty. Removing a section keeps its questions; groups no section uses
+  are listed with "Add a section for it". Renaming renames the
+  `\element` wrappers in every source file.
+- "Organise into a section" moves questions written directly in
+  `\onecopy` into `\element{main}{...}` blocks before it and puts one
+  section in their place; the questions read the same afterwards.
+- The instructions summary (`%%AMCUI:SUMMARY%%`), when a paper has one,
+  is regenerated on demand from the sections: one `\amcuiPoint` per
+  section with its count, kind and marks. Versions: `\onecopy{n}` is
+  edited from the panel and the app's copies follow.
+- The Olympiad paper starter built first (fixed parts switched on and
+  off with `%%AMCUI:BLOCK%%` markers and `%%AMCUI:PARAMS%%` values, a
+  wizard page for them) was removed again before the merge (step B0 of
+  `paper-builder-plan.md`): it is replaced by the RJ Style Paper Builder.
+  Its layout LaTeX (header boxes, OMR grids and answer areas) lives in
+  the branch's history (commit 1f3a53c, `paper-design.tex`) and feeds the
+  builder's block templates.
+- Paper design is a third tab in Questions (`/ui/api/structure` GET and
+  POST, operations with `based_on`, written through `save_source()` and
+  refused by the lock after printing). Typing is coalesced and saved
+  0.9 s after the last keystroke; other changes at once. "Add a question"
+  in a section adds it in the file of that section's questions and opens
+  it in the form.
+- Not done: drag-and-drop (Move up/down buttons instead); editing the
+  notation list and the table of values in a form (they are edited in
+  the LaTeX tab); a second logo upload from the wizard (it is a setting
+  of the title lines afterwards); "copies differ" in the Papers step.
+
 ## 9. Technical approach
 
 Same rules as before: new code in new files, upstream files touched in
@@ -479,7 +526,7 @@ Each phase one branch and one merge request, as before.
 |---|---|---|---|
 | **6 Source history** | `write_source()` with history, "changed meanwhile" check, deleted files kept, built-OK marker, History tab with diff and restore, editor drafts in the browser, main source undeletable | new | M |
 | **7 Question editor** | Parser extension (spans, numeric, explanation, figure, macro rules), question list and form with instant maths preview, add / delete / reorder / retype, read-only after printing, "Edit in LaTeX" at the line | #4 | L |
-| **8 Structure and RJ template** | Sections model and panel, conversion of unstructured exams, generated instructions, the olympiad starter with blocks, Paper design tab, second logo, `pifont`/FontAwesome switch | new | L |
+| **8 Structure and RJ template** | Sections model and panel, conversion of unstructured exams, generated instructions, Paper design tab. The olympiad starter with blocks built here was removed again (B0): the RJ Style Paper Builder replaces it (`paper-builder-plan.md`, steps B1 to B4) | new | L |
 | **9 Question banks** | Bank folders and page, import from editor, exams and files, tags and search, picker with fixed and per-copy insertion, usage, "Update the bank's copy" | #5 | L |
 | later | Shared school banks published by admins; "save an exam as a template" (from the earlier plan); AMC-TXT support if wanted | | |
 
@@ -507,6 +554,9 @@ be built in parallel by two people once 6 is merged; 9 needs both.
    file (decided 7 Nov), inside the exam folder, excluded from the
    downloadable zip?
 4. Blocks rather than a free-form canvas for the paper builder?
-5. Build the image with `texmf-dist-fontsextra` for the icons, or accept
-   the `pifont` look?
+5. ~~Build the image with `texmf-dist-fontsextra` for the icons, or accept
+   the `pifont` look?~~ Decided 7 Nov: no icons at all, nothing added to
+   the image for them.
 6. Order: 6 → 7 → 8 → 9, or banks (9) before the RJ template (8)?
+   Decided 6 → 7 → 8 → 9; the paper builder that replaces the olympiad
+   starter is placed in `paper-builder-plan.md` (section 14, point 3).

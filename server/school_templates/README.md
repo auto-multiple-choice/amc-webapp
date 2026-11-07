@@ -16,6 +16,20 @@ source (`server/ui.py`, `starter_source()`):
 - `%%AMCUI:OPTIONS%%`: AMC-TXT header lines (code boxes, separate answer
   sheet).
 
+## Markers for Paper design
+
+Questions › Paper design (`server/ui_structure.py`) reads and writes these
+markers in a LaTeX source, each on a line of its own:
+
+- `%%AMCUI:SECTION name%%` … `%%AMCUI:END SECTION%%`: one section, rewritten
+  from the panel's fields (heading, instructions, count, shuffle, columns,
+  new page). Questions belong to it by `\element{name}{...}`. A plain
+  `\insertgroup{name}` without markers is also read as a section, and
+  gets its markers when it is first edited.
+- `%%AMCUI:SUMMARY%%` … `%%AMCUI:END SUMMARY%%`: one `\amcuiPoint{...}`
+  per section, regenerated from the sections' counts and marks, when the
+  paper has them.
+
 A school name that pdflatex can't print (letters outside Latin-1, such as
 Cyrillic or Devanagari) switches the new exam to XeLaTeX; the LaTeX
 starters load `inputenc`/`fontenc` or `fontspec` according to the engine.

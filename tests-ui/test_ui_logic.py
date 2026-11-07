@@ -527,6 +527,40 @@ except qe.EditError:
     check("editor: unbalanced braces are refused", True)
 check("editor: the lock still allows answer key edits but not text", same(rj, qe.apply(rj, [{"op": "answer_correct", "id": "q01", "i": 0, "correct": True}])[0]) and not same(rj, qe.apply(rj, [{"op": "text", "id": "q01", "latex": "Other"}])[0]))
 
+# ---- paper design: sections (ui_structure.py)
+import ui_structure as st
+blank_src = open(os.path.join(SERVER, "school_templates/blank/exam.tex")).read()
+secs = st.read_sections(blank_src)
+check("structure: a plain \\insertgroup is a section without markers", [(x["name"], x["count"], x["shuffle"], x["markers"]) for x in secs] == [("general", None, True, False)])
+r = st.read(blank_src, "exam.tex", sc.read_latex(blank_src, "exam.tex"))
+check("structure: pool, marks from AMC's defaults, no inline questions", r["sections"][0]["pool"] == 2 and r["sections"][0]["marks"]["right"] == "1" and r["inline"] == 0 and r["copies"] == 10 and not r["summary"])
+t1, what, ren = st.apply(blank_src, [{"op": "section_set", "name": "general", "heading": "Part A", "count": 1, "columns": 2, "shuffle": False}])
+s1 = st.read_sections(t1)[0]
+check("structure: editing adds the markers, the macros and multicol", s1["markers"] and s1["heading"] == "Part A" and s1["count"] == 1 and s1["columns"] == 2 and "%%AMCUI:MACROS%%" in t1 and "\\usepackage{multicol}" in t1 and what.startswith("Paper design: section general changed"))
+check("structure: shuffle off removes the stray \\shufflegroup", not s1["shuffle"] and "\\shufflegroup{general}" not in t1)
+check("structure: the questions and the rest of the file are untouched", t1.count("\\element{general}{\n") == 2 and "%%AMCUI:SCHOOL%%" in t1 and "\\AMCcleardoublepage" in t1)
+t2, what, ren = st.apply(t1, [{"op": "section_add", "name": "partB", "heading": "Part B", "shuffle": True, "newpage": True}, {"op": "section_rename", "name": "general", "new": "partA"}, {"op": "section_move", "name": "partB", "before": "partA"}])
+check("structure: add, rename (elements too) and move", [x["name"] for x in st.read_sections(t2)] == ["partB", "partA"] and t2.count("\\element{partA}{\n") == 2 and ren == [("general", "partA")] and "\\clearpage" in t2)
+r2 = st.read(t2, "exam.tex", sc.read_latex(t2, "exam.tex"))
+check("structure: an empty section is flagged; too few questions too", r2["sections"][0]["problem"] == "No question in this section yet." and st.read(st.apply(t2, [{"op": "section_set", "name": "partA", "count": 5}])[0], "exam.tex", sc.read_latex(t2, "exam.tex"))["sections"][1]["problem"] == "Only 2 questions for 5 per copy.")
+t3, _, _ = st.apply(t2, [{"op": "section_delete", "name": "partA"}])
+check("structure: deleting a section keeps its questions, listed as unused", st.read(t3, "exam.tex", sc.read_latex(t3, "exam.tex"))["unused"] == [{"name": "partA", "pool": 2}] and t3.count("\\element{partA}{\n") == 2)
+for bad in ({"op": "section_add", "name": "part B"}, {"op": "section_add", "name": "partB"}, {"op": "section_set", "name": "partB", "count": "x"}, {"op": "section_set", "name": "partB", "heading": "a {b"}, {"op": "section_rename", "name": "partB", "new": "partA"}):
+    try:
+        st.apply(t2, [bad]); check(f"structure: refused {bad}", False)
+    except st.EditError:
+        check(f"structure: refused {bad['op']} {bad.get('name')} {bad.get('new', bad.get('count', bad.get('heading', '')))}", True)
+inline_src = src.replace("\\begin{question}{q1}", "\\noindent Exam\n\n\\begin{question}{q1}")
+r = st.read(inline_src, "exam.tex", sc.read_latex(inline_src, "exam.tex"))
+check("structure: questions inside \\onecopy are counted as inline", r["inline"] == 2 and r["sections"] == [])
+t4, what, _ = st.apply(inline_src, [{"op": "convert"}])
+r4 = st.read(t4, "exam.tex", sc.read_latex(t4, "exam.tex"))
+check("structure: organising moves them into \\element blocks before \\onecopy", r4["inline"] == 0 and [(x["name"], x["pool"]) for x in r4["sections"]] == [("main", 2)] and t4.index("\\element{main}{") < t4.index("\\onecopy") and "\\noindent Exam" in t4)
+check("structure: the moved questions still read the same", [(q["id"], q["text_latex"], [a["correct"] for a in q["answers"]]) for q in sc.read_latex(t4)] == [(q["id"], q["text_latex"], [a["correct"] for a in q["answers"]]) for q in sc.read_latex(inline_src)])
+fr_src = inline_src.replace("\\onecopy{10}{", "\\exemplaire{10}{")
+t4b, _, _ = st.apply(fr_src, [{"op": "convert"}, {"op": "copies", "n": 3}])
+check("structure: AMC's French \\exemplaire works like \\onecopy", st.read(fr_src, "exam.tex", sc.read_latex(fr_src, "exam.tex"))["inline"] == 2 and "\\exemplaire{3}{" in t4b and t4b.index("\\element{main}{") < t4b.index("\\exemplaire"))
+
 
 # question editor: inputs that must not break the file (review of !11)
 _shared = r"""\documentclass{article}
@@ -575,6 +609,60 @@ _t, _ = qe.apply(_shared, [{"op": "type", "id": "b", "kind": "single"}])
 check("editor: multiple -> single keeps the first correct answer only", [a["correct"] for a in sc.read_latex(_t)[1]["answers"]] == [True, False, False])
 _t, _ = qe.apply(_shared, [{"op": "answer_correct", "id": "a", "i": 1, "correct": "true"}, {"op": "answer_correct", "id": "a", "i": 0, "correct": "false"}])
 check("editor: correct is read as a real boolean", [a["correct"] for a in sc.read_latex(_t)[0]["answers"]] == [False, True])
+
+# paper design: what the teacher wrote stays (review of !12)
+import ui_structure as pst
+_doc = r"""\documentclass{article}
+\def\ptsA{b=3,m=-1}
+\begin{document}
+\element{a}{\begin{question}{q1} T \begin{choices}\correctchoice{y}\wrongchoice{n}\end{choices}\end{question}}
+\element{Part 1}{\begin{question}{q2} T \begin{choices}\correctchoice{y}\wrongchoice{n}\end{choices}\end{question}}
+\onecopy{3}{ % note: { here
+%%AMCUI:SECTION a%%
+\amcuiSectionHeading{Section 1}
+\vspace{3cm}
+\insertgroup[3]{a}
+\insertgroup{b}
+%%AMCUI:END SECTION%%
+\newpage \insertgroup{Part 1}
+\begin{multicols}{2}\insertgroup{d}\end{multicols}
+\setgroupmode{a}{withoutreplacement}
+}
+\end{document}
+"""
+check("design: \\onecopy is found when a comment inside holds a brace", pst.onecopy(_doc) is not None)
+_t = pst.set_section(_doc, "a", {"count": 2, "heading": "New"})
+check("design: a rewrite keeps the LaTeX written between the markers", all(x in _t for x in ("\\vspace{3cm}", "\\insertgroup{b}", "\\insertgroup[2]{a}", "\\amcuiSectionHeading{New}")) and "Section 1" not in _t)
+_t2 = pst.set_section(_t, "a", {"shuffle": True})
+check("design: a second rewrite adds nothing twice", _t2.count("%%AMCUI:SECTION a%%") == 1 and _t2.count("\\insertgroup{b}") == 1 and _t2.count("\\vspace{3cm}") == 1)
+_t3 = pst.set_section(_doc, "Part 1", {"count": 1})
+_t4 = pst.set_section(_t3, "Part 1", {"count": 2})
+check("design: a group named with a space gets markers that are read back, and keeps the \\newpage on its line",
+      "%%AMCUI:SECTION Part 1%%" in _t3 and "\\newpage" in _t3 and _t4.count("%%AMCUI:SECTION Part 1%%") == 1 and "\\insertgroup[2]{Part 1}" in _t4)
+_t5 = pst.set_section(_doc, "d", {"count": 1})
+check("design: a multicols around a plain \\insertgroup is kept, and read as the section's columns",
+      "\\begin{multicols}{2}" in _t5 and "\\end{multicols}" in _t5 and [s["columns"] for s in pst.read_sections(_t5) if s["name"] == "d"] == [2])
+def _refused_s(fn, *a, **k):
+    try:
+        fn(*a, **k)
+        return False
+    except qe.EditError:
+        return True
+check("design: columns can't nest a multicols the teacher wrote", _refused_s(pst.set_section, _doc, "d", {"columns": 2}))
+_t6, _ = pst.rename_section(_doc, "a", "alpha")
+check("design: a rename reaches \\setgroupmode and \\element", "\\setgroupmode{alpha}" in _t6 and "\\element{alpha}" in _t6 and "{a}" not in _t6.replace("\\ptsA", ""))
+check("design: a rename can't take a group name of another file", _refused_s(pst.rename_section, _doc, "a", "other", other_groups={"other"}))
+check("design: an existing group with an odd name can get a section, a new section can't",
+      "%%AMCUI:SECTION part_1%%" in pst.add_section(_doc, {"name": "part_1"}, existing={"part_1"})[0] and _refused_s(pst.add_section, _doc, {"name": "part_1"}))
+check("design: a macro's value comes from its definition, not a use", pst._macro_value(_doc, "ptsA") == "b=3,m=-1" and pst._macro_value("\\ptsA{x}", "ptsA") is None)
+check("design: a bare % in a heading is escaped", "100\\% marks" in pst.set_section(_doc, "a", {"heading": "Total 100% marks"}))
+_simple = "\\documentclass{article}\\begin{document}\n\\onecopy{10}{\n\\noindent Header\n\n\\begin{question}{p}\n  T\n  \\begin{choices}\n    \\correctchoice{a}\n  \\end{choices}\n\\end{question}\n\n% \\AMCaddpagesto{3}\n\n\\begin{questionmult}{q}\n    T2\n  \\begin{choices}\n    \\correctchoice{a}\n  \\end{choices}\n\\end{questionmult}\n\n}\n\\end{document}\n"
+_t9, _ = pst.convert_inline(_simple)
+check("design: organising moves the questions as written", "\\element{main}{\n\\begin{question}{p}\n  T\n  \\begin{choices}\n    \\correctchoice{a}\n  \\end{choices}\n\\end{question}\n}" in _t9)
+check("design: organising is refused when LaTeX sits between the questions", _refused_s(pst.convert_inline, _simple.replace("% \\AMCaddpagesto{3}", "\\section*{Part B}")))
+_summ = _doc.replace("\\onecopy{3}{ % note: { here", "\\onecopy{3}{\n%%AMCUI:SUMMARY%%\n%%AMCUI:END SUMMARY%%")
+_t10, _, _ = pst.apply(_summ, [{"op": "summary"}], [])
+check("design: the summary defines the macro its lines use", "\\providecommand{\\amcuiPoint}" in _t10 and "\\amcuiPoint{" in _t10)
 
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

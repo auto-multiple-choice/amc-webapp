@@ -4,6 +4,7 @@
 
 - Pick a question on the left and change it in the form: its text, answers, which answers are correct, scoring. Changes are saved as you type.
 - Add, move and delete questions with the buttons. Build the preview to see the question paper on the right.
+- **Paper design** sets the sections: which questions are printed, how many per copy, shuffled or not, and their headings; and how many versions of the paper are printed.
 - Prefer LaTeX? The **LaTeX** tab edits the source itself; **Edit in LaTeX** jumps to the question.
 
 ## What this step is for
@@ -19,6 +20,25 @@ The questions live in a source file, written in LaTeX or in AMC's plain-text for
 - **Figure:** insert an image file; it goes under the question text.
 - **Name:** how the question is called in the marks (letters, digits, `.`, `_`, `-`). **Scoring:** the question's own rule, if it shouldn't follow the default from [Marking scheme](guide:marking-scheme).
 - A question written in a way the form can't read (a macro, two `\scoring` commands) is listed with a warning: open it with **Edit in LaTeX**.
+
+## Paper design
+
+The **Paper design** tab lays out the paper. It changes the exam's LaTeX like the form does, and every change goes to History.
+
+**Sections.** A section is a group of questions printed together, under a heading. For each one:
+
+- **Questions per copy:** all of them, or fewer. With fewer, each copy draws its own questions from the section: "15 of 18 per copy" prints 15 questions chosen among 18. A warning shows when a section has fewer questions than it should print.
+- **Shuffle** the questions in each copy, **columns** (1 to 4), **start on a new page**.
+- **Heading** and **instructions** printed above the questions.
+- **Add a question** to a section opens it in the form. **Add a section**, move sections up and down, rename or remove one. A removed section's questions stay in the source and are listed as not printed, with a button to give them a section again.
+- In an exam written by hand (AMC's own templates, for example), a heading printed above a section in the LaTeX stays as it is; a heading set here is printed in addition.
+- An exam whose questions are written directly in the paper, outside any section, shows **Organise into a section**: the questions are moved into one section, unchanged, so they can be counted and shuffled.
+
+**The paper.** The layout of the paper (its header, instructions and answer sheet) is edited in the LaTeX tab; the sections are printed where the file inserts them. A paper whose instructions carry a line per section (between `%%AMCUI:SUMMARY%%` markers) has **Update the line per section**, which rewrites those lines from the sections' counts and marks.
+
+**Versions.** A paper can be printed in a few versions (A, B, C…), each drawing its own questions from the sections; the copies are photocopied from them, and the app's number of copies follows. When you upload the scans, say that the sheets were photocopied.
+
+Once the exam is printed, Paper design is read-only.
 
 ## In LaTeX
 
