@@ -791,6 +791,16 @@ try:
     _nm, _tg = vcs.restore_trash(_home, _info["id"], os.path.join(_root, "ann"), by="ann")
     check("banks: ...and comes back into _banks with its history", _tg == "bank" and os.path.isfile(os.path.join(_bd, "bank.json"))
           and vcs.Repo(_bd, _root, "bank").open().log()[0][0]["what"] == "edited")
+_pre = "\\usepackage{amssymb}\n\\newcommand{\\foo}[1]{%\n  \\mathrm{#1}%\n}\n\\newcommand{\\bar}{\\foo{x}}\n\\def\\Z#1{z#1}\n\\let\\a=\\b\n% \\newcommand{\\hidden}{}\n\\RequirePackage{tikz}\n"
+_defs = bk.definitions(_pre)
+check("banks: a definition is taken whole (several lines, [n], #1, \\let), comments left out",
+      _defs["foo"] == "\\newcommand{\\foo}[1]{%\n  \\mathrm{#1}%\n}" and _defs["Z"] == "\\def\\Z#1{z#1}" and _defs["a"] == "\\let\\a=\\b" and "hidden" not in _defs)
+check("banks: a macro's own macros come along, in the preamble's order", bk.needed(["\\bar"], _pre, []) == [_defs["foo"], _defs["bar"]]
+      and bk.needed(["\\bar"], _pre, ["foo"]) == [_defs["bar"]] and "tikz" in bk.packages_of(_pre))
+check("banks: a region with a marker missing is made again, not misread",
+      bk.add_definitions("\\documentclass{a}\n" + bk.MACROS_BEGIN + "\n\\begin{document}", ["\\newcommand{\\r}{2}"]).index(bk.MACROS_END) < 60)
+check("banks: an imported group name is the same for every item of the group", bk.group_name("Algebra_1") == "Algebra-1" == bk.group_name("Algebra_1")
+      and bk.group_name("ok") == "ok" and bk.seed_of([1]) is None and bk.seed_of("s") == "s")
 finally:
     shutil.rmtree(_tmpb, ignore_errors=True)
 
