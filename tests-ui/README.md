@@ -78,6 +78,16 @@ Screenshots are saved to the folder given as the second argument, if any.
 node tests-ui/e2e-scans.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 ```
 
+It also checks the upload parts that big uploads go in (`/ui/api/upload-part`). With `AMC_E2E_PARTS=1`, the scans themselves go up in 8 KB parts, the way uploads over 64 MB do on a public server.
+
+### Public server
+
+`check_public.py` checks the tunnel site of public server mode (`./amc public on`, `doc/public-hosting.md`) without a browser or Cloudflare: it runs in the `amc-auth` container and talks to `caddy:8091` the way `cloudflared` does. It checks sign-in, that failed sign-ins count per visitor address (`CF-Connecting-IP`) and ignore the browser's `X-Forwarded-For`, the live connection's allowed origin, the cache headers and the host name. It makes a temporary account and deletes it.
+
+```
+docker compose exec -T amc-auth python - amc.example.org < tests-ui/check_public.py
+```
+
 ### Results
 
 `e2e-results.mjs` tests Mark, Match students, Export marks and Annotate:

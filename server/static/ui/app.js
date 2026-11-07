@@ -177,11 +177,11 @@ async function getJSON(url) {
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
   return r.json();
 }
-function upload(url, files, fields = {}, onProgress = null) {
+function postForm(url, files, fields = {}, onProgress = null) {
   return new Promise((resolve, reject) => {
     const form = new FormData();
     files.forEach(([blob, name]) => form.append('file', blob, name));
-    Object.entries(fields).forEach(([k, v]) => form.append(k, v));
+    Object.entries(fields).forEach(([k, v]) => [].concat(v).forEach((x) => form.append(k, x)));
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url, true);
     Object.entries(headers()).forEach(([k, v]) => xhr.setRequestHeader(k, v));
@@ -189,11 +189,50 @@ function upload(url, files, fields = {}, onProgress = null) {
     xhr.onload = () => {
       let r = {};
       try { r = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
-      if (xhr.status === 200 && r.ok) resolve(r); else reject(new Error(r.error || `Upload failed (${xhr.status})`));
+      if (xhr.status === 200 && r.ok) resolve(r);
+      else reject(Object.assign(new Error(r.error || `Upload failed (${xhr.status})`), { status: xhr.status, body: r }));
     };
-    xhr.onerror = () => reject(new Error('Upload failed: no connection'));
+    xhr.onerror = () => reject(Object.assign(new Error('Upload failed: no connection'), { status: 0, body: {} }));
     xhr.send(form);
   });
+}
+
+/* A request through Cloudflare (on a public server) carries at most 100 MB,
+   so bigger uploads go in parts: each file is sent in pieces to
+   /ui/api/upload-part, then the request names the assembled files instead
+   of carrying them (server/ui.py, staged_files). */
+const UPLOAD_LIMITS = { direct: 64 * 1024 * 1024, part: 32 * 1024 * 1024 };
+
+async function sendPart(id, offset, piece, onProgress) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await postForm('/ui/api/upload-part', [[piece, 'part']], { id, offset }, onProgress);
+    } catch (e) {
+      // The part arrived but its answer was lost: the server has it already.
+      if (e.status === 409 && e.body && e.body.size === offset + piece.size) return e.body;
+      if (attempt >= 3 || !(e.status === 0 || e.status >= 500)) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+  }
+}
+
+async function upload(url, files, fields = {}, onProgress = null) {
+  const total = files.reduce((n, [blob]) => n + blob.size, 0);
+  if (total <= UPLOAD_LIMITS.direct) return postForm(url, files, fields, onProgress);
+  const staged = [];
+  let done = 0;
+  for (const [blob, name] of files) {
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+    let offset = 0;
+    do {
+      const piece = blob.slice(offset, offset + UPLOAD_LIMITS.part);
+      await sendPart(id, offset, piece, onProgress && ((p) => onProgress((done + p * piece.size) / total)));
+      offset += piece.size;
+      done += piece.size;
+    } while (offset < blob.size);
+    staged.push(`${id}:${name}`);
+  }
+  return postForm(url, [], { ...fields, staged });
 }
 
 socket.on('connect', () => {

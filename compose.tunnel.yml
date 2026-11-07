@@ -1,0 +1,41 @@
+# Public server mode: the app is reached at https://AMC_PUBLIC_HOST through
+# a Cloudflare Tunnel. `./amc public on` adds this file (after
+# compose.login.yml) through COMPOSE_FILE in .env; see doc/public-hosting.md.
+#
+#   browser ─HTTPS─> Cloudflare ═tunnel═> cloudflared ─HTTP─> caddy:8091 ─> amc-auth / amc-web
+#
+# cloudflared connects out to Cloudflare, so the server opens no port for
+# the app. Caddy's own HTTPS address (AMC_PORT) stays on 127.0.0.1, for the
+# launcher's checks and for an admin over SSH.
+services:
+  caddy:
+    volumes:
+      # The tunnel's site (caddy/tunnel/site.caddy). The Caddyfile imports
+      # /etc/caddy-extra/*.caddy, which doesn't exist in the other modes.
+      - ./caddy/tunnel:/etc/caddy-extra:ro
+    environment:
+      AMC_PUBLIC_HOST: ${AMC_PUBLIC_HOST:-}
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.1
+    # The ingress rule in cloudflared/config.yml sends every request to
+    # caddy (a tunnel created with `cloudflared tunnel create`). A tunnel
+    # created in the Cloudflare dashboard uses its own rule there instead:
+    # set its public hostname's service to http://caddy:8091.
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared:/etc/cloudflared:ro
+    environment:
+      # The tunnel's token, from `cloudflared tunnel token NAME` or the
+      # dashboard. It gives control of the tunnel: keep .env private.
+      TUNNEL_TOKEN: ${AMC_TUNNEL_TOKEN:-}
+    depends_on:
+      - caddy
+    restart: unless-stopped
+    mem_limit: 256m
+
+  amc-web:
+    # A public server usually runs other things too: keep LaTeX and the
+    # scan reader from taking all its memory and processors.
+    mem_limit: ${AMC_MEMORY:-2g}
+    cpus: ${AMC_CPUS:-2}

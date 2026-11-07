@@ -325,8 +325,10 @@ failed_sign_ins = FailedSignIns()
 
 
 def client_addr():
-    # Caddy sets X-Forwarded-For to the real client address (it trusts no
-    # proxy in front of it), and only Caddy can reach this service.
+    # Caddy sets X-Forwarded-For to the visitor's address alone: the
+    # connection's address, or Cloudflare's CF-Connecting-IP behind the
+    # tunnel (caddy/Caddyfile, caddy/tunnel/site.caddy). Only Caddy can
+    # reach this service.
     return (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
 
 

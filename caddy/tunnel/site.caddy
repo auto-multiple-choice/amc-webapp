@@ -1,0 +1,11 @@
+# The app's public address (./amc public on), served to the Cloudflare
+# tunnel. cloudflared (compose.tunnel.yml) forwards visitors' requests here
+# over the compose network; this port is not published, so no browser
+# reaches it directly.
+#
+# Cloudflare has already handled HTTPS. It puts the visitor's address in
+# CF-Connecting-IP, replacing any value the browser sent; X-Forwarded-For
+# isn't usable, as Cloudflare keeps what the browser put there.
+http://{$AMC_PUBLIC_HOST}:8091 {
+	import amc {http.request.header.CF-Connecting-IP}
+}

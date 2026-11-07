@@ -7,6 +7,9 @@
 #                  (the launcher lists localhost, the LAN address and host name)
 # AMC_DEFAULT_SNI: certificate name for browsers that connect by IP address
 #                  and so don't send a server name
+#
+# On a public server (./amc public on), compose.tunnel.yml adds the site in
+# caddy/tunnel/, which serves the same routes to a Cloudflare tunnel.
 
 {
 	admin off
@@ -15,9 +18,10 @@
 	default_sni {$AMC_DEFAULT_SNI:localhost}
 }
 
-{$AMC_SITES:https://localhost:8090} {
-	tls internal
-
+# What every site serves. {args[0]} is the visitor's IP address: AMC and
+# amc-auth receive it as X-Forwarded-For (amc-auth limits failed sign-ins
+# per address).
+(amc) {
 	# AMC trusts these headers as the signed-in user and whether they are
 	# an admin, so they must only ever come from amc-auth, never from a
 	# browser.
@@ -35,13 +39,19 @@
 	}
 
 	handle /auth/* {
-		reverse_proxy amc-auth:8000
+		reverse_proxy amc-auth:8000 {
+			header_up X-Forwarded-For {args[0]}
+			header_up X-Forwarded-Proto https
+		}
 	}
 
 	# Shareable marks links. AMC serves these only for projects whose owner
 	# turned them on, and they work without signing in, as upstream intends.
 	handle /public/* {
-		reverse_proxy amc-web:8080
+		reverse_proxy amc-web:8080 {
+			header_up X-Forwarded-For {args[0]}
+			header_up X-Forwarded-Proto https
+		}
 	}
 
 	handle {
@@ -53,8 +63,30 @@
 			header_up -Connection
 			header_up -Upgrade
 		}
-		reverse_proxy amc-web:8080
+		reverse_proxy amc-web:8080 {
+			header_up X-Forwarded-For {args[0]}
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	# Exams, scans and marks belong to the signed-in teacher: a shared cache
+	# (Cloudflare, on a public server) must not keep them, and two teachers
+	# with an exam of the same name get the same file addresses. Only the
+	# app's static files, whose names change with their content, may be
+	# cached. amc-auth's pages already say no-store.
+	@private not path /static/* /auth/*
+	header @private {
+		Cache-Control "private, no-cache"
+		defer
 	}
 
 	header -Server
 }
+
+{$AMC_SITES:https://localhost:8090} {
+	tls internal
+	import amc {client_ip}
+}
+
+# Sites added by compose.tunnel.yml (caddy/tunnel/); none otherwise.
+import /etc/caddy-extra/*.caddy

@@ -388,6 +388,10 @@ function Invoke-Start([string[]]$Options) {
   Assert-Docker
   Initialize-EnvFile
   Read-Settings
+  # Public server mode (compose.tunnel.yml) is set up by ./amc on Linux.
+  if ((Get-EnvValue 'AMC_PUBLIC_HOST' '') -ne '') {
+    Die "AMC_PUBLIC_HOST is set in .env: public server mode is only run by ./amc (Linux or macOS). Remove it from .env to use this launcher."
+  }
   if (Test-LoginMode) {
     Set-SiteVariables
     if ((Get-EnvValue 'AMC_ALLOW_UNISOLATED' '0') -eq '1') { $env:AMC_ISOLATE = '0' }
