@@ -78,6 +78,12 @@ In **plain text** (AMC-TXT), start a single-answer question with `*`, a multiple
 
 Once the exam is printed, the questions are read-only: only the correct answers and scoring can still change, here or in [Marking scheme](guide:marking-scheme).
 
+## Questions in their own files
+
+An exam made in the app keeps each question in its own file, `items/<name>/item.tex`, with its figures beside it. A question that shares a text or a figure with others (a passage and its questions) is one item, a **set**: its questions stay together and are drawn as one. `pools.tex` lists which items each section draws from, in order. The paper prints the same as when the questions were written in the main file.
+
+In the form, **Add**, the arrows and **Delete** add, move and delete items; moving past the first or last question of a section moves it into the next one. **Edit in LaTeX** opens the question's own file. An older exam, or one made from one of AMC's templates, keeps its questions in its main file: **Move questions into item files** (under the list of questions) moves them, figures included, in one step that History can undo. Question banks will take questions from these files.
+
 ## Earlier versions
 
 Every save is kept as a version of the exam, for good: who saved it, when, and what changed. A save that touches several files (the Paper builder writes the design and its layout) is one version. **History** (in the bar above the editor, in Paper design and in the Paper builder) lists the versions; saves made close together by the same person are grouped into one editing session, which opens with a click. The version the question paper was last built from is marked **built OK**, and printing names the version that was printed.

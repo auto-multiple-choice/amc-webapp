@@ -1143,7 +1143,7 @@ function renderEditorBar() {
     <span class="spacer"></span>
     ${S.source.dirty ? `<button class="btn btn-ghost btn-sm" data-act="revert">${ic('undo')} Revert</button>` : ''}
     <button class="btn btn-ghost btn-sm" data-act="history" ${cur && S.source.tracked ? '' : 'disabled'} title="Earlier versions of this file">${ic('clock-rotate-right')} History</button>
-    ${cur && f && cur !== f.main && !locked() ? `<button class="btn btn-ghost btn-sm" data-act="delete-file" title="Delete this file; it stays in History">${ic('trash')} Delete</button>` : ''}
+    ${cur && f && cur !== f.main && !/^items\/[^/]+\/item\.tex$/.test(cur) && !locked() ? `<button class="btn btn-ghost btn-sm" data-act="delete-file" title="Delete this file; it stays in History">${ic('trash')} Delete</button>` : ''}
     <label class="btn btn-sm">${ic('upload')} Add a file<input type="file" id="add-file" hidden></label>
     ${others.length ? `<select class="select input-sm" id="other-file" style="min-width:160px" aria-label="Other project files"><option value="">Other files…</option>${others.map((x) => `<option>${esc(x.name)}</option>`).join('')}</select>` : ''}`;
   const save = $('#save-btn');
@@ -1826,6 +1826,18 @@ const useForm = () => canForm() && S.qtab === 'form';
 const useDesign = () => canForm() && S.qtab === 'design';
 const qfile = (name) => S.qdata && S.qdata.files.find((f) => f.file === name);
 const qsel = () => { const f = S.qform; const fl = f && qfile(f.file); return (fl && fl.questions.find((q) => q.id === f.id)) || null; };
+/* Questions kept in items (server: ui_items.py): an item is a folder with its own item.tex; adding,
+   deleting and moving one changes pools.tex. An item holding several questions (a set) is edited
+   like a file. */
+const itemEntries = () => (S.qdata ? S.qdata.files.filter((f) => f.item && f.questions.length) : []);
+const loneItem = (file) => { const f = qfile(file); return f && f.item && f.questions.length === 1 ? f : null; };
+async function itemOp(body) {
+  await flushQ();
+  const r = await postJSON('/ui/api/items', body);
+  if (!r.ok) { toast(r.error || 'Not saved.', 'warning-triangle'); if (r.conflict) loadEditor(); return null; }
+  S.qdata = r;
+  return r;
+}
 const KIND_NAMES = { single: 'Single answer', multiple: 'Multiple answers', numeric: 'Numeric answer' };
 
 function enterQuestions() {
@@ -1865,19 +1877,21 @@ function renderQList() {
   let files = d.files.filter((f) => f.questions.length);
   if (!files.length) files = d.files.filter((f) => f.file === d.main);
   let html = `<div class="q-list-head"><b>Questions</b><span class="chip">${total}</span><span class="spacer"></span>${L || d.error ? '' : `<button class="btn btn-sm" data-act="q-add" title="Add a question after the selected one">${ic('plus')} Add</button>`}</div>`;
+  let group; let started = false;
   files.forEach((f) => {
-    if (files.length > 1) html += `<div class="q-file">${esc(f.file)}</div>`;
-    if (f.problem) html += `<p class="subtle q-note">${esc(f.problem)}</p>`;
-    let group;
-    f.questions.forEach((q, i) => {
-      if (i === 0 || q.group !== group) { group = q.group; html += `<div class="q-group">${group ? `Section · ${esc(group)}` : (i === 0 ? 'Questions' : 'Other questions')}</div>`; }
+    if (!f.item && files.length > 1) { html += `<div class="q-file">${esc(f.file)}</div>`; started = false; }
+    if (f.problem) html += `<p class="subtle q-note">${esc(f.item ? `${f.file}: ${f.problem}` : f.problem)}</p>`;
+    f.questions.forEach((q) => {
+      if (!started || q.group !== group) { group = q.group; html += `<div class="q-group">${group ? `Section · ${esc(group)}` : (!started ? 'Questions' : 'Not in a section')}</div>`; started = true; }
       const sel = !!(S.qform && S.qform.file === f.file && S.qform.id === q.id);
-      html += `<button class="q-item ${sel ? 'is-selected' : ''} ${q.problem ? 'is-problem' : ''}" data-act="q-pick" data-file="${esc(f.file)}" data-id="${esc(q.id)}" aria-pressed="${sel}">
+      const set = f.item && f.questions.length > 1;
+      html += `<button class="q-item ${sel ? 'is-selected' : ''} ${q.problem ? 'is-problem' : ''} ${set ? 'in-set' : ''}" data-act="q-pick" data-file="${esc(f.file)}" data-id="${esc(q.id)}" aria-pressed="${sel}" ${set ? `title="In the set ${esc(f.item)}: its questions stay together"` : ''}>
         <span class="q-item-id">${esc(q.id)}</span><span class="q-item-kind">${q.kind}</span>
         <span class="q-item-text">${q.problem ? `${ic('warning-triangle')} ${esc(q.problem)}` : esc(trunc(q.text || '(no text yet)', 70))}</span></button>`;
     });
     if (!f.questions.length) html += '<p class="subtle q-note">No question yet.</p>';
   });
+  if (d.can_split && !L) html += `<div class="q-split"><button class="btn btn-ghost btn-sm" data-act="q-split" title="Each question gets its own file, ready for question banks">${ic('folder')} Move questions into item files…</button></div>`;
   host.innerHTML = html;
 }
 
@@ -1899,11 +1913,15 @@ function renderQForm() {
   const ro = L || !q.editable;
   const fileQs = qfile(f.file).questions;
   const idx = fileQs.findIndex((x) => x.id === q.id);
+  const li = loneItem(f.file); const ents = li ? itemEntries() : null; const ii = li ? ents.indexOf(li) : -1;
+  const canUp = li ? ii > 0 : idx > 0; const canDown = li ? ii < ents.length - 1 : idx < fileQs.length - 1;
+  const itemName = (qfile(f.file) || {}).item;
   const dis = ro ? 'disabled' : '';
   const head = `<div class="q-form-head"><label class="sr-only" for="qf-kind">Type</label>
     <select class="select" id="qf-kind" ${dis}>${Object.entries(KIND_NAMES).map(([v, l]) => `<option value="${v}" ${q.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    ${itemName ? `<span class="chip" title="${esc(f.file)}">${ic('folder')} ${esc(itemName)}${fileQs.length > 1 ? ' · set' : ''}</span>` : ''}
     <span class="spacer"></span>
-    ${ro ? '' : `<button class="btn btn-ghost btn-icon btn-sm" data-act="q-move" data-d="-1" ${idx > 0 ? '' : 'disabled'} title="Move up" aria-label="Move up">${ic('nav-arrow-up')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="q-move" data-d="1" ${idx < fileQs.length - 1 ? '' : 'disabled'} title="Move down" aria-label="Move down">${ic('nav-arrow-down')}</button>`}
+    ${ro ? '' : `<button class="btn btn-ghost btn-icon btn-sm" data-act="q-move" data-d="-1" ${canUp ? '' : 'disabled'} title="Move up" aria-label="Move up">${ic('nav-arrow-up')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="q-move" data-d="1" ${canDown ? '' : 'disabled'} title="Move down" aria-label="Move down">${ic('nav-arrow-down')}</button>`}
     <button class="btn btn-ghost btn-sm" data-act="q-latex" data-file="${esc(f.file)}" data-line="${q.line}">${ic('code')} Edit in LaTeX</button>
     ${L ? '' : `<button class="btn btn-ghost btn-sm" data-act="q-delete">${ic('trash')} Delete</button>`}</div>`;
   if (!q.editable) {
@@ -2049,6 +2067,12 @@ async function addQuestion() {
     choices: [['numeric', 'Numeric answer', ''], ['multiple', 'Multiple answers', ''], ['single', 'Single answer', 'btn-primary']] });
   if (!kind) return;
   const f = S.qform; const file = f ? f.file : S.qdata.main;
+  const sel = qsel(); const selItem = f && qfile(f.file) ? qfile(f.file).item : null;
+  if (S.qdata.modular && (selItem || !sel)) { // a new item, after the selected one (or at the end of the first section)
+    const r = await itemOp({ op: 'add', kind, after: selItem, group: sel ? sel.group : null });
+    if (r && r.added) { S.qform = { file: r.added.file, id: r.added.id, pending: [], saving: false, lastSaved: Date.now() }; renderQuestionsForm(); const t = $('#qf-text'); if (t) { t.focus(); t.select(); } }
+    return;
+  }
   const before = (qfile(file) || { questions: [] }).questions.map((q) => q.id);
   if (!f) S.qform = { file, id: null, pending: [], saving: false };
   const r = await qop({ op: 'add', id: null, kind, after: f ? f.id : null }, { now: true });
@@ -2057,11 +2081,25 @@ async function addQuestion() {
     if (added) { S.qform = { file, id: added.id, pending: [], saving: false, lastSaved: Date.now() }; renderQuestionsForm(); const t = $('#qf-text'); if (t) { t.focus(); t.select(); } }
   }
 }
+async function splitQuestions() {
+  const ok = await confirmDialog({ title: 'Move the questions into item files?', icon: 'folder', ok: 'Move them',
+    body: '<p>Each question, or set of questions kept together, gets its own file (<code>items/&lt;name&gt;/item.tex</code>) with its figures, and <code>pools.tex</code> lists which ones each section draws from. The paper prints the same.</p><p class="subtle">Question banks will take questions from these files. This is one version in History, so it can be undone there.</p>' });
+  if (!ok) return;
+  const r = await itemOp({ op: 'split' });
+  if (r) { toast(r.what); S.qform = null; loadEditor(); loadFiles(); }
+}
 async function deleteQuestion() {
   const q = qsel(); const f = S.qform;
   if (!q) return;
   const ok = await confirmDialog({ title: `Delete ${esc(q.id)}?`, body: '<p>The question is removed from the source. The file as it is now stays in History.</p>', ok: 'Delete', danger: true, icon: 'trash' });
   if (!ok) return;
+  const li = loneItem(f.file);
+  if (li) { // the item goes, with its folder
+    const ents = itemEntries(); const i = ents.indexOf(li); const nx = ents[i + 1] || ents[i - 1] || null;
+    const r = await itemOp({ op: 'delete', item: li.item });
+    if (r) { S.qform = nx ? { file: nx.file, id: nx.questions[0].id, pending: [], saving: false } : null; renderQuestionsForm(); }
+    return;
+  }
   const qs = qfile(f.file).questions; const i = qs.findIndex((x) => x.id === q.id);
   const next = qs[i + 1] || qs[i - 1] || null;
   const r = await qop({ op: 'delete' }, { now: true });
@@ -2070,6 +2108,18 @@ async function deleteQuestion() {
 function moveQuestion(d) {
   const q = qsel(); const f = S.qform;
   if (!q) return;
+  const li = loneItem(f.file);
+  if (li) { // items move in pools.tex, into the next section when they pass its edge
+    const ents = itemEntries(); const i = ents.indexOf(li);
+    const t = ents[i + d];
+    if (!t) return;
+    const tg = t.questions[0].group;
+    let before;
+    if (d < 0) before = t.item;
+    else { const after = ents[i + 2]; before = after && after.questions[0].group === tg ? after.item : null; }
+    itemOp({ op: 'move', item: li.item, before, group: tg }).then((r) => { if (r) renderQuestionsForm(); });
+    return;
+  }
   const qs = qfile(f.file).questions; const i = qs.findIndex((x) => x.id === q.id);
   const before = d < 0 ? (qs[i - 1] ? qs[i - 1].id : null) : (qs[i + 2] ? qs[i + 2].id : null);
   if (d < 0 && !before) return;
@@ -2311,6 +2361,14 @@ async function addQuestionTo(group) {
     choices: [['numeric', 'Numeric answer', ''], ['multiple', 'Multiple answers', ''], ['single', 'Single answer', 'btn-primary']] });
   if (!kind) return;
   await flushD();
+  if (S.design.modular) {
+    const r = await postJSON('/ui/api/items', { op: 'add', kind, group });
+    if (!r.ok) { toast(r.error || 'Not added.', 'warning-triangle'); return; }
+    S.qdata = null; S.qform = { file: r.added.file, id: r.added.id, pending: [], saving: false };
+    S.qtab = 'form'; store.set('qtab', 'form');
+    renderMain(); loadEditor();
+    return;
+  }
   const s = dsec(group);
   const file = (s && s.file) || S.design.file;
   let r;
@@ -3877,6 +3935,7 @@ const ACTIONS = {
   qtab: (el) => switchQTab(el.dataset.v),
   'q-pick': (el) => selectQuestion(el.dataset.file, el.dataset.id),
   'q-add': () => addQuestion(),
+  'q-split': () => splitQuestions(),
   'q-delete': () => deleteQuestion(),
   'q-move': (el) => moveQuestion(+el.dataset.d),
   'q-latex': (el) => editInLatex(el.dataset.file, +el.dataset.line),

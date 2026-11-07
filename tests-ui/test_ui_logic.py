@@ -532,6 +532,90 @@ finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+# questions kept in items (ui_items.py)
+import ui_items as itm
+import ui_structure as _st
+pt = itm.pools_insert("", "sectionI", "alg-017")
+pt = itm.pools_insert(pt, "sectionI", "alg-018")
+pt = itm.pools_insert(pt, "sectionII", "geo-001")
+pt = itm.pools_insert(pt, "sectionI", "alg-016", before="alg-017")
+check("items: pools.tex starts with the \\amcuiItem macro and lists items by section, in order",
+      pt.startswith("% The questions") and itm.MACRO in pt and [(p["group"], p["name"]) for p in itm.read_pools(pt)]
+      == [("sectionI", "alg-016"), ("sectionI", "alg-017"), ("sectionI", "alg-018"), ("sectionII", "geo-001")])
+check("items: a section without items gets its own region", "%%AMCUI:POOL sectionII%%\n\\element{sectionII}{\\amcuiItem{geo-001}}\n%%AMCUI:END POOL%%" in pt)
+pt2 = itm.pools_remove(pt, "geo-001")
+check("items: removing the last item of a section removes its region", "sectionII" not in pt2 and len(itm.read_pools(pt2)) == 3)
+pt3 = itm.pools_insert(itm.pools_remove(pt, "alg-016"), "sectionII", "alg-016", before="geo-001")
+check("items: moving an item into another section", [(p["group"], p["name"]) for p in itm.read_pools(pt3)][-2:] == [("sectionII", "alg-016"), ("sectionII", "geo-001")])
+check("items: renaming a section renames its pool lines and region", "%%AMCUI:POOL part2%%" in itm.pools_rename_group(pt, "sectionII", "part2")
+      and itm.pool_map(itm.pools_rename_group(pt, "sectionII", "part2"))["geo-001"] == "part2")
+check("items: lines in comments are ignored", itm.read_pools("% \\element{a}{\\amcuiItem{x}}\n\\element{b}{\\amcuiItem{y}}\n") and [p["name"] for p in itm.read_pools("% \\element{a}{\\amcuiItem{x}}\n\\element{b}{\\amcuiItem{y}}\n")] == ["y"])
+check("items: item names from question ids, unique (whatever the case)", itm.sanitize("alg_017:b") == "alg-017-b" and itm.free_name("Q1", {"q1"}) == "Q1-2" and itm.sanitize("::") == "q")
+check("items: item files are recognised by path only", itm.item_of("items/alg-017/item.tex") == "alg-017" and not itm.item_of("items/../x/item.tex") and not itm.item_of("items/a/b.tex"))
+check("items: the history keeps the items' files and refuses odd paths", vcs.tracked("items/alg-017/item.tex") and vcs.tracked("items/alg-017/alg-017-1.png")
+      and not vcs.tracked("items/a_b/item.tex") and not vcs.tracked("items/x/.h.tex") and not vcs.tracked("items/x/y/z.tex"))
+qs = itm.annotate(sc.read_latex("\\begin{question}{s1}A\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n\\begin{question}{s2}B\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n", "items/set-1/item.tex"),
+                  "items/set-1/item.tex", {"set-1": "sectionI"})
+qs += itm.annotate(sc.read_latex("\\begin{question}{q9}C\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n", "items/q9/item.tex"), "items/q9/item.tex", {"q9": "sectionI"})
+check("items: an item's questions belong to its section", all(q["group"] == "sectionI" and q["element"] == "item" for q in qs) and qs[0]["item"] == "set-1")
+check("items: a section's pool counts elements (a set of two questions is one)", _st.pools(qs)["sectionI"]["n"] == 2 and _st.pools(qs)["sectionI"]["questions"] == 3)
+inline = "\\element{g}{\n\\begin{question}{a}x\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n\\begin{question}{b}y\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n}\n\\element{g}{\n\\begin{question}{c}z\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n}\n"
+check("items: pools count elements in inline exams too (the bug in section 2 of the plan)", _st.pools(itm.annotate(sc.read_latex(inline, "exam.tex"), "exam.tex", {}))["g"]["n"] == 2)
+check("items: an item file must hold a question and no \\element", itm.check_item_text("hello", "x") and itm.check_item_text("\\element{g}{\\begin{question}{a}\\end{question}}", "x")
+      and itm.check_item_text("\\begin{question}{a}x\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}", "x") is None)
+# split
+main_src = r"""\documentclass{article}
+\usepackage{automultiplechoice}
+\begin{document}
+% questions
+\element{alg}{
+  \begin{question}{alg_1}
+    Pick one. \includegraphics[width=2cm]{fig}
+    \begin{choices}\correctchoice{1}\wrongchoice{2}\end{choices}
+  \end{question}
+}
+
+\element{alg}{
+  \begin{minipage}{\linewidth}Read this.\end{minipage}
+  \begin{question}{p1}A\begin{choices}\correctchoice{1}\end{choices}\end{question}
+  \begin{question}{p2}B\begin{choices}\correctchoice{1}\end{choices}\end{question}
+}
+\input{more}
+\onecopy{2}{
+\begin{question}{loose}Not in a section\begin{choices}\correctchoice{1}\end{choices}\end{question}
+\insertgroup{alg}\insertgroup{geo}
+}
+\end{document}
+"""
+more_src = "% the geometry questions\n\\element{geo}{\n  \\begin{question}{g1}Angle?\\begin{choices}\\correctchoice{90}\\end{choices}\\end{question}\n}\n"
+r = itm.split({"exam.tex": main_src, "more.tex": more_src}, "exam.tex", lambda p: p == "fig.png")
+check("items: split makes an item per \\element, a set staying together, and names them after their questions",
+      sorted(r["items"]) == ["alg-1", "g1", "p1-set"] and "\\begin{question}{p2}" in r["items"]["p1-set"] and r["items"]["alg-1"].startswith("\\begin{question}{alg_1}"))
+check("items: split puts \\input{pools} where the questions were, and a file that only held questions goes",
+      "\\input{pools}" in r["files"]["exam.tex"] and "\\element" not in r["files"]["exam.tex"] and r["files"]["more.tex"] is None
+      and "\\input{more}" not in r["files"]["exam.tex"] and r["files"]["exam.tex"].index("\\input{pools}") < r["files"]["exam.tex"].index("\\onecopy"))
+check("items: split moves figures into the item and renames them after it", r["figures"] == [("fig.png", "items/alg-1/alg-1-1.png")] and "{alg-1-1}" in r["items"]["alg-1"])
+check("items: split keeps sections and order in pools.tex, and leaves questions outside sections in place",
+      [(p["group"], p["name"]) for p in itm.read_pools(r["pools"])] == [("alg", "alg-1"), ("alg", "p1-set"), ("geo", "g1")] and r["kept"] == 1
+      and "{loose}" in r["files"]["exam.tex"])
+try:
+    itm.split({"exam.tex": "\\begin{document}\\onecopy{1}{}\\end{document}"}, "exam.tex", lambda p: False); check("items: nothing to split is said so", False)
+except itm.EditError:
+    check("items: nothing to split is said so", True)
+r2 = itm.split({"exam.tex": main_src, "more.tex": more_src.replace("% the geometry", "\\newcommand{\\keep}{1}\n% the geometry")}, "exam.tex", lambda p: False)
+check("items: a file with other content keeps it, and its \\input stays", r2["files"]["more.tex"].startswith("\\newcommand{\\keep}") and "\\input{more}" in r2["files"]["exam.tex"])
+_t = tempfile.mkdtemp(); os.makedirs(os.path.join(_t, "E", "items", "a")); open(os.path.join(_t, "E", "options.xml"), "w").close()
+check("items: a file in an item's folder counts as a file of its exam (history, lock); other folders don't",
+      ui._exam_and_rel(os.path.join(_t, "E", "items", "a", "fig.png")) == (os.path.join(_t, "E"), "items/a/fig.png")
+      and ui._exam_and_rel(os.path.join(_t, "E", "x.tex")) == (os.path.join(_t, "E"), "x.tex")
+      and ui._exam_and_rel(os.path.join(_t, "E", "scans", "p.png")) == (None, None))
+shutil.rmtree(_t)
+for _st_name in ("blank", "builder"):
+    _d = os.path.join(SERVER, "school_templates", _st_name)
+    _files = {f: open(os.path.join(_d, f), encoding="utf-8").read() for f in os.listdir(_d) if f.endswith(".tex")}
+    _r = itm.split(_files, "exam.tex", lambda p: False)
+    check(f"items: the {_st_name} starter splits cleanly", _r["items"] and "\\input{pools}" in _r["files"]["exam.tex"])
+
 # the question editor (ui_scale.read_latex spans and ui_questions edits)
 import ui_questions as qe
 rj = r"""\documentclass{article}

@@ -464,3 +464,8 @@ input[type="color"] { width: 44px; height: 34px; padding: 2px; border: 1px solid
 .b-presets { display: grid; grid-template-columns: 1fr; gap: 6px; }
 .b-presets .choice { text-align: left; }
 @media (max-width: 1100px) { .b-main { grid-template-columns: 1fr; } .b-side { position: static; } }
+
+/* Questions kept in items (ui_items.py) */
+.q-item.in-set { border-left: 3px solid var(--accent-soft); }
+.q-split { padding: 10px 12px; border-top: 1px solid var(--border); }
+.q-form-head .chip svg { width: 12px; height: 12px; vertical-align: -2px; }

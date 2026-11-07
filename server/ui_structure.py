@@ -729,14 +729,19 @@ def regenerate_summary(text, sections):
 # ---------------------------------------------------------------- reading it all
 
 def pools(questions):
-    """Per group: how many questions, of which kinds, with which rules."""
-    out = {}
+    """Per group: how many elements (what \\insertgroup[n] draws: a question,
+    or a set of questions kept together), of which kinds, with which rules."""
+    out, seen = {}, set()
     for q in questions:
         g = q.get("group")
         if not g:
             continue
-        p = out.setdefault(g, {"n": 0, "kinds": {}, "rules": {}, "numeric": "", "file": q.get("file")})
-        p["n"] += 1
+        p = out.setdefault(g, {"n": 0, "questions": 0, "kinds": {}, "rules": {}, "numeric": "", "file": q.get("file")})
+        el = q.get("element_id") or id(q)
+        if (g, el) not in seen:
+            seen.add((g, el))
+            p["n"] += 1
+        p["questions"] += 1
         p["kinds"][q["kind"]] = p["kinds"].get(q["kind"], 0) + 1
         rule = (q["scoring"] or {}).get("rule", "") or ""
         p["rules"][rule] = p["rules"].get(rule, 0) + 1
