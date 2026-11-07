@@ -591,6 +591,23 @@ Tests to add:
   P1a. `server/ui_latex.py`; the LaTeX view and checks in the form; the
   check compiles in the same sandbox as the build (shared mode: landrun),
   in a scratch folder of the exam that is removed afterwards.
+- **P2a (banks): built** on `feature/banks-p2a` (MR !19): per-instructor
+  banks in groups with history and trash, the bank page, From a bank /
+  Save to a bank, RJ-style import, macros and packages carried.
+- **P2b (copies): built** on `feature/banks-p2b` (MR !20): status of each
+  copy, compare, take / update the bank's copy / keep / combine, the
+  printed-exam rule, a section following its group.
+- **P2c (finding questions): built** on `feature/banks-p2c` (MR !21): the
+  FTS5 index and filters, usage at printing, archiving, the exams using an
+  item, bank zips with their history.
+- **P3 (analysis and blueprints): built** on `feature/analysis-p3` (MR !22).
+- **P4a (history extras) and P4b (editor extras): built** on
+  `feature/history-extras-p4a` (MR !23) and `feature/editor-extras-p4b`
+  (MR !24): what was left from P0, the security section and
+  `questions-banks-templates-plan.md`.
+
+Every item of both plans is now built or marked not doing, with the
+reason (12.1). The merge requests form one chain: merge !16 to !24 in order.
 
 ### 12.1 Everything from both plans, and where it stands
 
@@ -638,13 +655,13 @@ updated as each phase lands. ✅ built, ⬜ to build, ✖ not doing (why).
 - ✅ `./amc doctor` (and `amc doctor` on Windows): `git fsck` on every history, histories whose exam or bank is gone (listed, kept), the trash, the bank index looked at (`--rebuild-index` to throw it away and build it again); otherwise changes nothing, the trash included
 - ✅ Archive import and exam copy drop dot-folders (a planted `.git` anywhere) and the app's scratch folders; the old `.history/` stays, as it is converted into the history
 
-**Left from `questions-banks-templates-plan.md`**
-- ⬜ Drag-and-drop ordering of questions and sections (buttons today)
-- ⬜ Jump to the selected question's page in the preview
-- ⬜ "Copies differ" in the Papers step when a section draws at random
-- ⬜ The scoring dialog offers the scoring macros of the exam's preamble
-- ⬜ Duplicate a question
-- ⬜ Save an exam as a template (for the teacher's own new exams)
+**Left from `questions-banks-templates-plan.md`** (P4b, built on `feature/editor-extras-p4b`)
+- ✅ Drag-and-drop ordering of questions (in an exam's list, into another section by its heading), of sections in Paper design, and of a bank's questions (between groups too); the buttons stay, for the keyboard
+- ✅ Jump to the selected question's page in the preview ("In the paper": the page of its boxes on the first copy; the preview follows the question picked while it shows the paper)
+- ✅ "Copies differ" in the Papers step when a section draws some of its questions at random
+- ✅ The scoring dialog offers the scoring macros of the exam's preamble (by name, with their rule)
+- ✅ Duplicate a question (kept in an item file: a copy with new names right after it, one version, no bank link)
+- ✅ Save an exam as a template for the teacher's own new exams (`MC-Projects/<user>/_templates/`: sources and settings without scans, marks or history, the last build as its preview; New exam › My templates; delete from there)
 - ✖ Shared school banks — decided 7 Nov: banks belong to one instructor
 - ✖ The notation page and table of values as forms — superseded by the Paper builder's text blocks
 - ✖ A second logo upload in the wizard — the Paper builder's logo block does it

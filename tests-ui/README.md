@@ -142,6 +142,14 @@ node tests-ui/e2e-stats.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 node tests-ui/e2e-history-extras.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 ```
 
+### Editor extras
+
+`e2e-editor-extras.mjs`: Duplicate (a copy with a new name right after it, the same question, one version); a question dragged onto another (real drag events); the scoring dialog offering the preamble's `\def\exactS{b=3,m=-1}` and using it by name; with enough questions for two pages and the paper built, "In the paper" opening the preview at the question's page, then following another question picked (the section shuffles, so its page is asked for); a section drawing 5 of 13 questions and the Papers step saying the copies differ; a section dragged before another in Paper design; a bank's question dragged into another group; the exam saved as a template (in "My templates", with a preview), offered in the wizard with a way to delete it, a new exam made from it (the same sections and questions, a history of its own), and the template deleted.
+
+```
+node tests-ui/e2e-editor-extras.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
+```
+
 ### LaTeX for pro users
 
 `e2e-latex.mjs`: the Form | LaTeX switch on an item (completion on, a save with an unclosed brace refused with its line, "Check this question" compiling it with a picture, the save, a failing check pointing at its line, leaving the question saving what was typed, the choice remembered after a reload); a section edited as one document (reordered, an item added after "what will happen", a changed separator refused); a build error traced to the item's file, line and question, and "Open it"; and a question written inline in an AMC template exam, renamed through its LaTeX. In shared mode the check runs in the sandbox; a check that `\input`s another teacher's file fails without showing it.

@@ -116,7 +116,8 @@ function renderBankList(host) {
     return f.questions.map((q) => {
       const sel = !!(S.qform && S.qform.file === f.file && S.qform.id === q.id);
       const m = f.meta || {};
-      return `<button class="q-item ${sel ? 'is-selected' : ''} ${q.problem ? 'is-problem' : ''} ${f.questions.length > 1 ? 'in-set' : ''} ${m.archived ? 'is-archived' : ''}" data-act="q-pick" data-file="${esc(f.file)}" data-id="${esc(q.id)}" aria-pressed="${sel}">
+      return `<button class="q-item ${sel ? 'is-selected' : ''} ${q.problem ? 'is-problem' : ''} ${f.questions.length > 1 ? 'in-set' : ''} ${m.archived ? 'is-archived' : ''}" data-act="q-pick" data-file="${esc(f.file)}" data-id="${esc(q.id)}" aria-pressed="${sel}"
+        draggable="true" data-drag="q" data-item="${esc(f.item)}" data-group="${esc(d.bank.groups.find((g) => g.items.includes(n)) ? d.bank.groups.find((g) => g.items.includes(n)).name : '')}">
         <span class="q-item-id">${esc(q.id)}</span><span class="q-item-kind">${m.archived ? 'archived · ' : ''}${m.difficulty ? `${DIFF_LABEL[m.difficulty]} · ` : ''}${q.kind}${u && u.used ? ` · printed ${u.used}×` : ''}</span>
         <span class="q-item-text">${q.problem ? `${ic('warning-triangle')} ${esc(q.problem)}` : esc(trunc(m.title || q.text || '(no text yet)', 70))}${(m.tags || []).length ? ` <span class="b-tags">${m.tags.map(esc).join(' · ')}</span>` : ''}</span></button>`;
     }).join('');
@@ -126,7 +127,7 @@ function renderBankList(host) {
   if (bf && bf.active) html += `<p class="subtle q-note">${plural(Object.keys(bf.info).length, 'question matches', 'questions match')} the search.</p>`;
   d.bank.groups.forEach((g, i) => {
     if (bf && bf.active && !g.items.some(shown)) return;
-    html += `<div class="q-group b-group"><span>${esc(g.title || g.name)} <span class="subtle">· ${g.items.length}</span></span><span class="spacer"></span>
+    html += `<div class="q-group b-group" data-dropgroup="${esc(g.name)}"><span>${esc(g.title || g.name)} <span class="subtle">· ${g.items.length}</span></span><span class="spacer"></span>
       <button class="btn btn-ghost btn-icon btn-xs" data-act="bitem-add" data-group="${esc(g.name)}" title="Add a question to this group" aria-label="Add a question to ${esc(g.name)}">${ic('plus')}</button>
       <button class="btn btn-ghost btn-icon btn-xs" data-act="bgroup-edit" data-group="${esc(g.name)}" title="Title, instructions and scoring of the group" aria-label="Edit the group ${esc(g.name)}">${ic('edit-pencil')}</button>
       <button class="btn btn-ghost btn-icon btn-xs" data-act="bgroup-move" data-group="${esc(g.name)}" data-d="-1" ${i ? '' : 'disabled'} title="Move up" aria-label="Move the group up">${ic('nav-arrow-up')}</button></div>`;

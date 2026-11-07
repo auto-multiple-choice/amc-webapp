@@ -10,6 +10,8 @@
 
 Building makes the final question paper, the answer key and the other documents, and records where every box is on every page. That record is what lets AMC read the scans later, so it's worth a look before printing.
 
+**The copies differ** when a section puts only some of its questions on each copy (Paper design: "3 of 10 per copy"): they are drawn at random for each copy. The step says so; look at several copies in the preview, not only the first. The answer key and marking follow each copy.
+
 ## How to do it
 
 1. Set the **number of copies**. Leave it empty to use the number in the source.
