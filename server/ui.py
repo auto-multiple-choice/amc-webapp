@@ -2045,7 +2045,8 @@ def api_editor_edit():
     name = _open_project()
     if not name:
         return jsonify(error="This exam doesn't exist any more.")
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
     fn = str(data.get("file") or "")
     pdir = core.project_dir()
     if _main_source()[0] != "latex":

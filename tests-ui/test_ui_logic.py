@@ -528,5 +528,53 @@ except qe.EditError:
 check("editor: the lock still allows answer key edits but not text", same(rj, qe.apply(rj, [{"op": "answer_correct", "id": "q01", "i": 0, "correct": True}])[0]) and not same(rj, qe.apply(rj, [{"op": "text", "id": "q01", "latex": "Other"}])[0]))
 
 
+# question editor: inputs that must not break the file (review of !11)
+_shared = r"""\documentclass{article}
+\begin{document}
+\element{g}{
+  \begin{question}{a}
+    Text % \end{question} not the end
+    \begin{choices}
+      \correctchoice{yes}
+      \wrongchoice{no}
+    \end{choices}
+  \end{question}
+  \begin{questionmult}{b}
+    T2
+    \begin{choices}
+      \correctchoice{x}
+      \correctchoice{y}
+      \wrongchoice{z}
+    \end{choices}
+  \end{questionmult}
+}
+\end{document}
+"""
+_qs = sc.read_latex(_shared)
+check("editor: an \\end{question} in a comment isn't the end of the question", len(_qs) == 2 and len(_qs[0]["answers"]) == 2)
+check("editor: questions sharing one \\element{}{} belong to its group", [(q["group"], q.get("element")) for q in _qs] == [("g", "shared"), ("g", "shared")])
+_t, _ = qe.apply(_shared, [{"op": "add", "after": "b"}])
+check("editor: a question added inside a shared \\element goes in bare, in the group", _t.count("\\element") == 1 and [q["group"] for q in sc.read_latex(_t)] == ["g", "g", "g"])
+_t, _ = qe.apply(_shared, [{"op": "answer_text", "id": "a", "i": 0, "latex": "50% sure"}])
+check("editor: a bare % in a field is escaped, so it can't comment out the closing brace", "\\correctchoice{50\\% sure}" in _t)
+_t, _ = qe.apply(_shared, [{"op": "text", "id": "a", "latex": "ok $\\{1,2\\}$ 100\\% \\textbf{b}"}])
+check("editor: escaped braces and \\% pass as typed", "ok $\\{1,2\\}$ 100\\% \\textbf{b}" in _t)
+def _refused(ops):
+    try:
+        qe.apply(_shared, ops)
+        return False
+    except qe.EditError:
+        return True
+check("editor: question structure typed in a field is refused",
+      all(_refused([{"op": "text", "id": "a", "latex": v}]) for v in ("hi \\end{question} x", "\\begin{choices}", "\\correctchoice{y}", "\\explain{e}", "\\scoring{b=1}")))
+check("editor: braces closing before opening are refused", _refused([{"op": "text", "id": "a", "latex": "a } b {"}]))
+check("editor: bad indices and a refused answer key are errors in words, not crashes",
+      _refused([{"op": "answer_correct", "id": "a", "i": None}]) and _refused([{"op": "answer_move", "id": "a", "i": None, "j": 0}])
+      and _refused([{"op": "answer_correct", "id": "a", "i": 0, "correct": False}]) and _refused([{"op": "numeric", "id": "a", "value": "-", "options": ""}]))
+_t, _ = qe.apply(_shared, [{"op": "type", "id": "b", "kind": "single"}])
+check("editor: multiple -> single keeps the first correct answer only", [a["correct"] for a in sc.read_latex(_t)[1]["answers"]] == [True, False, False])
+_t, _ = qe.apply(_shared, [{"op": "answer_correct", "id": "a", "i": 1, "correct": "true"}, {"op": "answer_correct", "id": "a", "i": 0, "correct": "false"}])
+check("editor: correct is read as a real boolean", [a["correct"] for a in sc.read_latex(_t)[0]["answers"]] == [False, True])
+
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

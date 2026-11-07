@@ -250,7 +250,7 @@ socket.on('project-files-list', () => {
 socket.on('ui-history-restored', (r) => {
   toast(`${r.file} restored.`, 'undo');
   if (S.source.name === r.file) { if (S.source.dirty) saveDraft(); S.source.dirty = false; S.source.loaded = false; loadSource(r.file); } else if (S.history) loadHistory();
-  if (S.route.step === 'questions') loadFiles();
+  if (S.route.step === 'questions') { loadFiles(); if (useForm() && S.qdata) { const f = S.qform; if (!f || (!f.pending.length && !f.saving)) loadEditor(); } }
 });
 socket.on('ui-changed', (what) => {
   if (what === 'unlock') { toast('Exam unlocked. Rebuild the papers, then check the layout again.', 'lock-slash'); S.previewMode = null; }
@@ -1738,6 +1738,7 @@ function qop(op, { now = false } = {}) {
   const f = S.qform;
   if (!f) return Promise.resolve(null);
   op = { ...op, id: 'id' in op ? op.id : f.id };
+  if (op.op === 'rename') { op.old_id = f.id; f.id = op.new_id; } // later edits name the question by its new name
   const last = f.pending[f.pending.length - 1];
   if (last && last.op === op.op && last.id === op.id && last.i === op.i && ['text', 'answer_text', 'explain', 'numeric'].includes(op.op)) f.pending[f.pending.length - 1] = op;
   else f.pending.push(op);
@@ -1750,12 +1751,20 @@ async function flushQ() {
   clearTimeout(qflushTimer);
   const f = S.qform;
   if (!f) return null;
-  if (f.saving) { await f.inflight; if (S.qform !== f) return null; } // one save at a time, in order
+  if (f.saving) await f.inflight; // one save at a time, in order (even if another question was picked meanwhile)
   if (!f.pending.length) return null;
   f.inflight = sendQ(f);
   return f.inflight;
 }
+let qChain = Promise.resolve(); // the editor's saves go one after another, whichever question they belong to
 async function sendQ(f) {
+  const prev = qChain; let done; qChain = new Promise((r) => { done = r; });
+  f.saving = true; renderQStatus();
+  await prev;
+  try { return await sendQNow(f); } finally { done(); }
+}
+async function sendQNow(f) {
+  if (!f.pending.length) { f.saving = false; renderQStatus(); return { ok: true }; }
   const ops = f.pending; f.pending = []; f.saving = true;
   renderQStatus();
   const file = f.file; const project = S.project;
@@ -1772,16 +1781,16 @@ async function sendQ(f) {
     const i = S.qdata.files.findIndex((x) => x.file === file);
     if (i >= 0) S.qdata.files[i] = r.file; else S.qdata.files.push(r.file);
   }
-  if (S.qform !== f) { renderQList(); return r; } // another question was picked meanwhile
   if (!r.ok) {
-    f.pending = [];
+    const rename = ops.find((o) => o.op === 'rename');
+    if (rename) f.id = rename.old_id; // the name didn't change
     toast(r.error || 'Not saved.', 'warning-triangle');
-    renderQStatus('error');
-    if (r.conflict || r.locked) loadEditor(); // show the file as it is
+    if (S.qform === f) renderQStatus('error');
+    if (r.conflict || r.locked) { f.pending = []; loadEditor(); } // show the file as it is
+    else if (f.pending.length) { clearTimeout(qflushTimer); qflushTimer = setTimeout(flushQ, 200); } // typed meanwhile: still to save
     return r;
   }
-  const rename = ops.filter((o) => o.op === 'rename').pop();
-  if (rename) f.id = rename.new_id;
+  if (S.qform !== f) { renderQList(); if (f.pending.length) { clearTimeout(qflushTimer); qflushTimer = setTimeout(() => sendQ(f), 200); } return r; } // another question was picked meanwhile
   f.lastSaved = Date.now();
   renderQList();
   if (ops.some((o) => ['add', 'delete', 'move', 'type', 'answer_add', 'answer_remove', 'answer_move', 'rename', 'scoring'].includes(o.op))) renderQForm(); else renderQStatus();
@@ -1840,12 +1849,24 @@ async function editRuleForm() {
   if (!data) return;
   qop({ op: 'scoring', rule: data.choice === 'default' ? '' : data.choice === 'custom' ? data.custom.trim() : data.choice.slice(7) }, { now: true });
 }
+async function changeQKind(sel) {
+  const q = qsel();
+  if (!q || sel.value === q.kind) return;
+  const toNumeric = sel.value === 'numeric', fromNumeric = q.kind === 'numeric';
+  if (toNumeric || fromNumeric) {
+    const ok = await confirmDialog({ title: `Make ${esc(q.id)} a ${KIND_NAMES[sel.value].toLowerCase()} question?`, icon: 'warning-triangle', ok: 'Change the type',
+      body: toNumeric ? '<p>Its answers are replaced by one numeric answer. The file as it is now stays in History.</p>' : '<p>Its numeric answer is replaced by two answers to fill in. The file as it is now stays in History.</p>' });
+    if (!ok) { sel.value = q.kind; return; }
+  }
+  qop({ op: 'type', kind: sel.value }, { now: true });
+}
 async function insertFigure(file) {
   const q = qsel();
   if (!q) return;
   try { await upload('/upload/project', [[file, file.name]]); } catch (err) { toast(err.message, 'warning-triangle'); return; }
   loadFiles();
-  const latex = (q.latex.replace(/\s*\\includegraphics\s*(\[[^\]]*\])?\s*\{[^{}]*\}/, '') + '\n\n\\includegraphics[width=.5\\linewidth]{' + file.name + '}').trim();
+  const typed = $('#qf-text');
+  const latex = ((typed ? typed.value : q.latex).replace(/\s*\\includegraphics\s*(\[[^\]]*\])?\s*\{[^{}]*\}/, '') + '\n\n\\includegraphics[width=.5\\linewidth]{' + file.name + '}').trim();
   const ta = $('#qf-text'); if (ta) ta.value = latex;
   renderQPreview();
   qop({ op: 'text', latex }, { now: true });
@@ -3387,7 +3408,7 @@ document.addEventListener('change', async (e) => {
     saveDraft(); S.source.loaded = false; S.source.dirty = false; loadSource(t.value);
   }
   if (t.id === 'hist-file' && S.history && t.value !== S.history.file) openHistory(t.value);
-  if (t.id === 'qf-kind' && S.qform) qop({ op: 'type', kind: t.value }, { now: true });
+  if (t.id === 'qf-kind' && S.qform) changeQKind(t);
   if (t.id === 'qf-id' && S.qform) { const v = t.value.trim(); if (v && v !== S.qform.id) qop({ op: 'rename', new_id: v }, { now: true }); }
   if (t.classList.contains('qf-ans-correct') && S.qform) qop({ op: 'answer_correct', i: +t.dataset.i, correct: t.checked }, { now: true });
   if (t.id === 'qf-figure-file' && t.files[0]) { insertFigure(t.files[0]); t.value = ''; }
@@ -3458,7 +3479,10 @@ document.addEventListener('input', (e) => {
   if (t.id === 'qf-text' && S.qform) { qop({ op: 'text', latex: t.value }); scheduleQPreview(); }
   if (t.id === 'qf-explain' && S.qform) qop({ op: 'explain', latex: t.value });
   if (t.classList && t.classList.contains('qf-ans-text') && S.qform) qop({ op: 'answer_text', i: +t.dataset.i, latex: t.value });
-  if ((t.id === 'qf-num-value' || t.id === 'qf-num-options') && S.qform) qop({ op: 'numeric', value: $('#qf-num-value').value, options: $('#qf-num-options').value });
+  if ((t.id === 'qf-num-value' || t.id === 'qf-num-options') && S.qform) {
+    const value = $('#qf-num-value').value.trim(); // half-typed numbers ("-", "1.") wait
+    if (/^-?\d+([.,]\d+)?$/.test(value)) qop({ op: 'numeric', value, options: $('#qf-num-options').value });
+  }
   if (t.dataset && t.dataset.wiz && S.wizard) { S.wizard[t.dataset.wiz] = t.value; if (t.dataset.wiz === 'name') { S.wizard.error = ''; const er = $('#wiz-error'); if (er) er.textContent = ''; } }
   if (t.id === 'wiz-search' && S.wizard) {
     S.wizard.query = t.value;
