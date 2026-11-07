@@ -31,7 +31,10 @@ if not HOST:
     sys.exit("Usage: python - HOST < check_public.py")
 
 ORIGIN = f"https://{HOST}"
-USER = "check-" + secrets.token_hex(4)
+# One fixed name: the app gives each account that opens it a projects
+# folder, which this container cannot remove, so at most one is left behind
+# (empty; remove it with the command in doc/public-hosting.md).
+USER = "check-public"
 PASSWORD = secrets.token_urlsafe(12)
 failures = 0
 checks = 0
@@ -82,6 +85,8 @@ def sign_in(password, ip, extra_headers=None):
 
 
 with auth.app.app_context():
+    with auth.db():  # left over from an interrupted run
+        auth.db().execute("DELETE FROM users WHERE username = ?", (USER,))
     auth.create_user(USER, PASSWORD, False, must_change=False)
 
 try:
