@@ -249,7 +249,7 @@ socket.on('project-files-list', () => {
 });
 socket.on('ui-history-restored', (r) => {
   toast(`${r.file} restored.`, 'undo');
-  if (S.source.name === r.file) { S.source.dirty = false; S.source.loaded = false; loadSource(r.file); } else if (S.history) loadHistory();
+  if (S.source.name === r.file) { if (S.source.dirty) saveDraft(); S.source.dirty = false; S.source.loaded = false; loadSource(r.file); } else if (S.history) loadHistory();
   if (S.route.step === 'questions') loadFiles();
 });
 socket.on('ui-changed', (what) => {
@@ -1095,7 +1095,10 @@ function renderEditorBar() {
   const db = $('#draft-bar');
   if (db) {
     const d = S.source.draft;
-    db.innerHTML = d ? banner('info', 'floppy-disk', `Unsaved text from ${esc(fmtWhen(d.at / 1000))} was found on this computer.`, 'It was typed in this file but not saved. Use it to put it back in the editor, then save.',
+    const stale = !!(d && d.base && S.source.digest && d.base !== S.source.digest);
+    db.innerHTML = d ? banner(stale ? 'warning' : 'info', 'floppy-disk', `Unsaved text from ${esc(fmtWhen(d.at / 1000))} was found on this computer.`,
+      stale ? 'It was typed in this file, which has been saved since (from another tab, or by another teacher). Use it to put it back in the editor; saving then asks which version to keep.'
+        : 'It was typed in this file but not saved. Use it to put it back in the editor, then save.',
       `<button class="btn btn-sm btn-primary" data-act="draft-use">Use it</button><button class="btn btn-sm" data-act="draft-discard">Discard</button>`) : '';
     resizeEditor();
   }
@@ -1303,7 +1306,7 @@ function historyPreview() {
         <a class="btn btn-sm" href="/ui/api/history/${enc(v.id)}?file=${enc(h.file)}&raw=1">${ic('download')} Download</a>
         <button class="btn btn-sm btn-primary" data-act="hist-restore" data-id="${esc(v.id)}">${ic('undo')} Restore this version</button></div>
       ${h.text === null ? '<div class="preview-empty">Loading…</div>' : now === null ? `<pre class="preview-text">${esc(h.text)}</pre>`
-    : `<div class="diff-note">Compared with the file now: red lines are only in this version, green lines only in the file now.</div>${diffHtml(h.text, now)}`}</div>`;
+    : `<div class="diff-note">Compared with the text in the editor: red lines are only in this version, green lines only in the editor.</div>${diffHtml(h.text, now)}`}</div>`;
   }
   return { title, body: list + detail, tabs };
 }
@@ -3324,7 +3327,12 @@ const ACTIONS = {
   history: () => { if (S.source.name) openHistory(S.source.name); },
   'hist-pick': (el) => pickVersion(el.dataset.id),
   'hist-restore': (el) => restoreVersion(el.dataset.id),
-  'draft-use': () => { const d = S.source.draft; if (!d || !editor) return; S.source.draft = null; setEditorText(d.text); S.source.dirty = true; renderEditorBar(); toast('The unsaved text is back in the editor. Save it to keep it.', 'floppy-disk'); },
+  'draft-use': () => {
+    const d = S.source.draft; if (!d || !editor) return;
+    // Typed against an earlier version of the file: save against that version, so the conflict dialog asks which to keep.
+    if (d.base && S.source.digest && d.base !== S.source.digest) S.source.digest = d.base;
+    S.source.draft = null; setEditorText(d.text); S.source.dirty = true; renderEditorBar(); toast('The unsaved text is back in the editor. Save it to keep it.', 'floppy-disk');
+  },
   'draft-discard': () => { S.source.draft = null; clearDraft(); renderEditorBar(); },
   'delete-file': () => deleteCurrentFile(),
   'dialog-result': (el) => closeDialog(el.dataset.v),

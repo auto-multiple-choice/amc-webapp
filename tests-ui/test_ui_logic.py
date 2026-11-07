@@ -384,6 +384,31 @@ try:
     fake(os.path.join(exam, hist.HISTORY_DIR, "d.tex"), "d.tex", "tex", hist.MAX_VERSIONS + 20, lambda i: (hist.MAX_VERSIONS + 20 - i) / 1000.0, -1)
     hist.prune(exam, "d.tex", now=now)
     check("history: versions from the last days are kept, but never more than MAX_VERSIONS", len(hist.versions(exam, "d.tex")) == hist.MAX_VERSIONS)
+    # a file copied in with an old date: pruning goes by when the version was kept, not by that date
+    hist.write_source(exam, "old.tex", b"a\n", what="Saved")
+    fake(os.path.join(exam, hist.HISTORY_DIR, "old.tex"), "old.tex", "tex", 20, lambda i: 0.001 * (20 - i), -1)
+    with open(os.path.join(exam, "old.tex"), "wb") as f: f.write(b"copied in\n")
+    os.utime(os.path.join(exam, "old.tex"), (now - 400 * 86400, now - 400 * 86400))
+    hist.write_source(exam, "old.tex", b"b\n", what="Saved")
+    check("history: a version with an old date is kept when it was just replaced",
+          any(v["digest"] == hist.digest(b"copied in\n") for v in hist.versions(exam, "old.tex")))
+    # only the newest deleted version is kept for ever
+    for i in range(3):
+        time.sleep(1.1)
+        hist.write_source(exam, "del.tex", b"d%d\n" % i, what="Saved"); hist.delete_source(exam, "del.tex")
+    for v in hist.versions(exam, "del.tex"):
+        e = json.load(open(os.path.join(exam, hist.HISTORY_DIR, "del.tex", v["id"] + ".json"))); e["kept_at"] = int(now - 30 * 86400); e["at"] = e["kept_at"]
+        json.dump(e, open(os.path.join(exam, hist.HISTORY_DIR, "del.tex", v["id"] + ".json"), "w"))
+    fake(os.path.join(exam, hist.HISTORY_DIR, "del.tex"), "del.tex", "tex", hist.KEEP_AT_LEAST, lambda i: 0.001 * i, -1)
+    hist.prune(exam, "del.tex", now=now)
+    dels = [v for v in hist.versions(exam, "del.tex") if v["deleted"]]
+    check("history: of a file deleted several times, the newest deleted version is kept", len(dels) == 1 and dels[0]["digest"] == hist.digest(b"d2\n") and dels[0].get("deleted_at"))
+    # a deleted exam's folder isn't brought back by a late save
+    gone = os.path.join(tmp, "gone"); os.makedirs(gone); hist.write_source(gone, "exam.tex", b"x\n"); shutil.rmtree(gone)
+    try:
+        hist.write_source(gone, "exam.tex", b"y\n"); check("history: a save into a deleted exam is refused", False)
+    except OSError:
+        check("history: a save into a deleted exam is refused, and the folder stays gone", not os.path.exists(gone))
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

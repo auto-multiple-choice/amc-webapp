@@ -1332,6 +1332,7 @@ def io_doc_update(t):
     emit_msg("begin-command")
 
     if t == "sujet":
+        ui.note_building()  # history: the sources this build reads (ui.py)
         emit_msg("t", _('t.clear'))
         clear_data("mep:")
         db = get_db()
