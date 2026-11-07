@@ -1575,12 +1575,27 @@ def _ensure_match_key(pdir):
 
 def _symbol_options():
     """The AMC settings that draw the symbols: AMC keeps them per teacher
-    (cf.default.xml in their settings folder), not per exam. {name: value}"""
+    (cf.default.xml in their settings folder), not per exam. {name: value},
+    or None while the teacher has no settings file."""
     try:
         o = core.get_options(["global:" + n for n in legend.option_names()])
-    except OSError:  # no settings file yet: AMC uses its defaults
-        return {}
+    except OSError:
+        return None
     return {k.split(":", 1)[1]: v for k, v in o.items()}
+
+
+def _make_settings_file():
+    """An empty AMC settings file for the teacher. AMC writes the file
+    itself when an exam is opened, so it is normally there already; but
+    without it the symbols chosen here would never reach AMC, which would
+    draw its own while the page shows another choice."""
+    path = core.user_confdir() + "/cf.default.xml"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        with open(path, "x", encoding="utf-8") as f:
+            f.write('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<global>\n</global>\n')
+    except FileExistsError:
+        pass
 
 
 def _annotate_style(pdir):
@@ -1588,11 +1603,14 @@ def _annotate_style(pdir):
     the teacher's AMC settings just before AMC annotates, so each exam gets
     its own. A change remakes every sheet."""
     have = _symbol_options()
-    st = legend.style_of(read_record(pdir), have)
+    st = legend.style_of(read_record(pdir), have or {})
     want = legend.amc_options(st["scheme"])
+    if have is None:
+        _make_settings_file()
+        have = {}
     changed = False
     for k, v in want.items():
-        if have and str(have.get(k) or "") != v:
+        if str(have.get(k) or "") != v:
             core.change_option("global:" + k, v)
             changed = True
     if changed:
@@ -1611,7 +1629,7 @@ def _stamp_key(pdir, st, pdf=None):
             legend.stamp_folder(_annotated_dir(pdir), st["scheme"], st["legend"], f"{pdir}/{PREVIEW_DIR}")
     except (RuntimeError, OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"Annotation key: {e}")
-        core.dialog_msg(warn=f"The sheets are annotated, but without the key: {e}")
+        core.dialog_msg(warn=f"The sheets are annotated, but the key couldn't be added to all of them: {e}")
 
 
 def on_annotate_style(data):
@@ -1649,7 +1667,7 @@ def api_annotate():
     pdir = core.project_dir()
     o = core.get_options(list(ANNOTATE_OPTIONS))
     preview = f"{pdir}/{PREVIEW_DIR}/{PREVIEW_FILE}"
-    st = legend.style_of(read_record(pdir), _symbol_options())
+    st = legend.style_of(read_record(pdir), _symbol_options() or {})
     return jsonify(project=name, options=o, default_verdict=DEFAULT_VERDICT,
                    style=st, presets=legend.PRESETS, cases=legend.CASES,
                    shapes=[[k, v] for k, v in legend.SHAPE_NAMES.items()],

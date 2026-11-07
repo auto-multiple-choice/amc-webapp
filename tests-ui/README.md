@@ -20,7 +20,8 @@ The app's icon file only keeps icons named in `server/templates/*.html`, so icon
 - the marking scheme panel (`server/ui_scale.py`): question maximums the way AMC computes them, reading questions from LaTeX and AMC-TXT, and answer key and scoring edits;
 - branding: the contrast-checked palette, logo file types, and the starters' school header.
 - the source history (`server/ui_source.py`): versions kept and read back, the "changed meanwhile" check, deleted files, "built OK", restore and pruning.
-- the question editor (`server/ui_questions.py`): the spans the parser finds (text, answers, choices, numeric, explanation, figure, `\element` groups) and every edit operation, including where new questions go.
+- the question editor (`server/ui_questions.py`): the spans the parser finds (text, answers, choices, numeric, explanation, figure, `\element` groups) and every edit operation, including where new questions go;
+- the annotated sheets' symbols and key (`server/ui_legend.py`): AMC's settings read back as a preset, the default and custom choices, refused schemes, and the key stamped once on each file, with a file whose key failed left for the next run.
 
 It runs with the app's image:
 

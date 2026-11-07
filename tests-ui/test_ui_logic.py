@@ -766,5 +766,58 @@ check("builder: a logo file name may hold spaces", pb.normalize({"paper": [{"cel
 check("builder: an ID grid twice on the sheet is refused",
       any(x["level"] == "error" and "grid printed twice" in x["text"] for x in pb.check(pb.normalize({"kind": "separate", "paper": [{"cells": [{"block": {"type": "questions"}}]}], "answer_sheet": [{"cells": [{"block": {"type": "student"}}]}, {"cells": [{"block": {"type": "id_grid"}}]}, {"cells": [{"block": {"type": "id_grid"}}]}, {"cells": [{"block": {"type": "all_answers"}}]}]}), 2)))
 
+# ---- annotated sheets: the symbols and the key (ui_legend.py)
+import subprocess
+import ui_legend as lg
+check("legend: AMC's own settings, as it writes them, read as the amc preset",
+      lg.same_scheme(lg.scheme_from_options({"annote_color": "red", "symboles_trait": "2", "symbole_0_0_type": "none", "symbole_0_0_color": "black",
+                                             "symbole_0_1_type": "circle", "symbole_0_1_color": "#ffff00000000", "symbole_1_0_type": "mark", "symbole_1_0_color": "red",
+                                             "symbole_1_1_type": "mark", "symbole_1_1_color": "blue"}), lg.PRESETS["amc"]))
+check("legend: an exam without a choice gets the clear scheme, with no settings or AMC's defaults",
+      lg.style_of({}, {})["preset"] == "clear" and lg.style_of({}, lg.amc_options(lg.PRESETS["amc"]))["preset"] == "clear")
+check("legend: settings customised elsewhere are kept as custom", lg.style_of({}, lg.amc_options(dict(lg.PRESETS["clear"], text="#123456")))["preset"] == "custom")
+check("legend: a damaged custom choice falls back to clear", lg.style_of({"annotate_style": {"preset": "custom", "scheme": {"text": "#000000"}}}, {})["preset"] == "clear")
+for bad in ({"text": "red"}, dict(lg.PRESETS["clear"], **{"1_1": ["star", "#000000"]}), dict(lg.PRESETS["clear"], width="x")):
+    try:
+        lg.check_scheme(bad); check("legend: a bad custom scheme is refused", False)
+    except ValueError:
+        check("legend: a bad custom scheme is refused", True)
+check("legend: a custom scheme keeps AMC's option names", set(lg.amc_options(lg.check_scheme(lg.PRESETS["clear"]))) == set(lg.option_names()))
+
+# The key on a folder of sheets: each stamped once and listed; a file whose key fails is left for the next run.
+def _blank_pdf(path):
+    objs = [b"<</Type/Catalog/Pages 2 0 R>>", b"<</Type/Pages/Kids[3 0 R]/Count 1>>", b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 595.28 841.89]>>"]
+    out, offs = b"%PDF-1.4\n", []
+    for i, o in enumerate(objs, 1):
+        offs.append(len(out)); out += b"%d 0 obj" % i + o + b"endobj\n"
+    x = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1) + b"".join(b"%010d 00000 n \n" % o for o in offs)
+    out += b"trailer<</Size %d/Root 1 0 R>>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, x)
+    with open(path, "wb") as f:
+        f.write(out)
+_d = tempfile.mkdtemp(); _pdfs = os.path.join(_d, "pdf"); os.makedirs(_pdfs)
+for n in ("a.pdf", "b.pdf"):
+    _blank_pdf(os.path.join(_pdfs, n))
+_keys = lambda n: subprocess.run(["pdftotext", os.path.join(_pdfs, n), "-"], capture_output=True, text=True).stdout.count("Key:")
+check("legend: a blank page has no key", lg.page_size(os.path.join(_pdfs, "a.pdf")) == (595.28, 841.89) and _keys("a.pdf") == 0)
+_stamp = lg.stamp
+def _failing(pdf, legend):
+    if pdf.endswith("b.pdf"):
+        raise RuntimeError("no key for b")
+    return _stamp(pdf, legend)
+lg.stamp = _failing
+try:
+    lg.stamp_folder(_pdfs, lg.PRESETS["clear"], "right", _d); _raised = False
+except RuntimeError:
+    _raised = True
+lg.stamp = _stamp
+with open(os.path.join(_d, lg.STAMPED), encoding="utf-8") as f:
+    _rec = json.load(f)
+check("legend: a file whose key fails is reported, and the others listed as stamped", _raised and "a.pdf" in _rec and "b.pdf" not in _rec and _keys("a.pdf") == 1 and _keys("b.pdf") == 0)
+check("legend: the next run stamps only that file", lg.stamp_folder(_pdfs, lg.PRESETS["clear"], "right", _d) == 1 and _keys("a.pdf") == 1 and _keys("b.pdf") == 1)
+check("legend: ...and a run after that stamps nothing", lg.stamp_folder(_pdfs, lg.PRESETS["clear"], "right", _d) == 0 and _keys("a.pdf") == 1)
+check("legend: the key names the cases", "Correct, not ticked" in subprocess.run(["pdftotext", os.path.join(_pdfs, "a.pdf"), "-"], capture_output=True, text=True).stdout)
+shutil.rmtree(_d)
+
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

@@ -260,6 +260,7 @@ def stamp_folder(pdf_dir, scheme, where, cache_dir):
     pdfs = sorted(f for f in os.listdir(pdf_dir) if f.lower().endswith(".pdf")) if os.path.isdir(pdf_dir) else []
     n = 0
     new = {}
+    failed = None
     for f in pdfs:
         path = os.path.join(pdf_dir, f)
         entry = done.get(f)
@@ -270,13 +271,22 @@ def stamp_folder(pdf_dir, scheme, where, cache_dir):
             new[f] = entry
             continue
         if where != "none":
-            size = page_size(path)
-            if size:
-                stamp(path, make_legend(scheme, where, size, cache_dir))
-                n += 1
+            try:
+                size = page_size(path)
+                if size:
+                    stamp(path, make_legend(scheme, where, size, cache_dir))
+                    n += 1
+            except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+                # Left out of the list, so the next annotation tries it
+                # again; the files stamped before it are listed, so they
+                # don't get a second key.
+                failed = failed or e
+                continue
         new[f] = _signature(path) + [key]
     tmp = record_path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(new, fh)
     os.replace(tmp, record_path)
+    if failed:
+        raise failed
     return n
