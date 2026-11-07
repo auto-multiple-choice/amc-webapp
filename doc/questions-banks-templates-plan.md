@@ -144,6 +144,8 @@ write_source(pdir, filename, new_text, by, what, based_on=None)
   an accidental close. Cheap, and it completes the "never lose work"
   story; it is not a server-side feature.
 
+Replaced by git history in P0 (`server/ui_vcs.py`, see `question-bank-plan.md` section 6); the per-file `.history/` folders are converted when an exam is first opened.
+
 How it was built (phase 6):
 - `server/ui_source.py` keeps the versions: `write_source()` (with the
   `based_on` check), `delete_source()`, `versions()`, `restore()`,

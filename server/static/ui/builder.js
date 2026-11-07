@@ -148,6 +148,20 @@ function blockSummary(b) {
   }
 }
 
+/* A version's design drawn as the builder draws its pages, read-only
+   (History, app.js). INFO has the block titles and field labels. */
+function designPicture(design, info) {
+  const keep = { builder: S.builder, bform: S.bform };
+  S.builder = { ...(S.builder || {}), design, problems: [], codes: null, blocks: info.blocks, fields: info.fields };
+  S.bform = null;
+  try {
+    const sheets = design.kind === 'separate' || design.answer_sheet.length ? ['paper', 'sheet'] : ['paper'];
+    return sheets.map((sh) => `<div class="b-pic"><div class="b-pic-title">${sh === 'paper' ? 'Question paper' : 'Answer sheet'}</div>${renderCanvas(sh, true)}</div>`).join('')
+      .replace(/\sdata-act="[^"]*"/g, '').replace(/\s(draggable|tabindex|role|aria-pressed)="[^"]*"/g, '').replace(/ Add a row below\./g, '')
+      .replace(/<button\b/g, '<span').replace(/<\/button>/g, '</span>'); // a picture: nothing in it takes the focus
+  } finally { S.builder = keep.builder; S.bform = keep.bform; }
+}
+
 /* The settings of what is selected: a column and its block, or a row. */
 function renderBSide(sheet, L) {
   const sel = bsel();

@@ -65,7 +65,10 @@ export async function startBrowser({ base, user = '', pass = '', shots = null, p
       const listed = await b.js(`fetch('/ui/api/projects', {cache: 'no-store'}).then(r => r.json()).then(r => r.projects.some(p => p.name === ${JSON.stringify(name)}))`);
       if (!listed) return true; // never made, or gone already
       await b.js(`socket_emit('project-delete', ${JSON.stringify(name)}); true`);
-      return b.waitFor(`fetch('/ui/api/projects', {cache: 'no-store'}).then(r => r.json()).then(r => !r.projects.some(p => p.name === ${JSON.stringify(name)}))`, 20000);
+      const gone = await b.waitFor(`fetch('/ui/api/projects', {cache: 'no-store'}).then(r => r.json()).then(r => !r.projects.some(p => p.name === ${JSON.stringify(name)}))`, 20000);
+      // A deleted exam goes to the trash: empty it from there too, so test copies don't fill up.
+      await b.js(`fetch('/ui/api/trash', {cache: 'no-store'}).then(r => r.json()).then(async (r) => { for (const x of (r.items || []).filter((x) => x.name === ${JSON.stringify(name)})) await fetch('/ui/api/trash/delete', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: x.id})}); return true; }).catch(() => false)`);
+      return gone;
     },
     /* Refuses to run against a copy of the app that holds real work, unless AMC_E2E_FORCE=1. */
     async preflight({ exams = [], emptyOnly = false, neutralBranding = false } = {}) {

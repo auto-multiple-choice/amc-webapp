@@ -309,108 +309,276 @@ import basic
 check("names: '_branding', '.hidden', '-x' refused", all(basic.project_name_problem(n) for n in ("_branding", ".hidden", "-x", "", "  ", "a/b", "a\\b", "a:b", "x" * 130, "tab\there")))
 check("names: ordinary names allowed", all(basic.project_name_problem(n) is None for n in ("Physics 10B", "Quiz #3", "Épreuve n°2 (2026)", "exam.v2")))
 
-# source history (ui_source.py)
+# version history on git, trash and audit log (ui_vcs.py), changes in words (ui_changes.py)
 import json, shutil, tempfile, time
-import ui_source as hist
+import ui_vcs as vcs
+import ui_changes as chg
 tmp = tempfile.mkdtemp()
 try:
-    exam = os.path.join(tmp, "exam"); os.makedirs(exam); open(os.path.join(exam, "options.xml"), "w").close()
-    check("history: sources, class lists and includes are tracked, images and folders aren't",
-          all(hist.tracked(n) for n in ("exam.tex", "a.txt", "list.csv", "macros.sty", "x.yml"))
-          and not any(hist.tracked(n) for n in ("logo.png", "paper.pdf", "a/b.tex", ".hidden.tex", "noext", "")))
-    d1 = hist.write_source(exam, "exam.tex", b"v1\n", by="ann", what="Created")
-    check("history: a new file has no earlier version", hist.versions(exam, "exam.tex") == [] and d1 == hist.digest(b"v1\n"))
-    time.sleep(1.1)  # ids are per second
-    d2 = hist.write_source(exam, "exam.tex", b"v2\n", by="bob", what="Saved in the editor", based_on=d1)
-    vs = hist.versions(exam, "exam.tex")
-    check("history: the replaced version is kept, with how it was made", len(vs) == 1 and vs[0]["digest"] == d1 and vs[0]["by"] == "ann" and vs[0]["what"] == "Created" and not vs[0]["built"])
-    check("history: the file holds the new text", open(os.path.join(exam, "exam.tex"), "rb").read() == b"v2\n")
+    root = os.path.join(tmp, "MC-Projects")
+    def new_exam(name, files=None, owner=None):
+        d = os.path.join(root, owner, name) if owner else os.path.join(root, name)
+        os.makedirs(d)
+        open(os.path.join(d, "options.xml"), "w").close()
+        for fn, data in (files or {"exam.tex": b"v1\n"}).items():
+            with open(os.path.join(d, fn), "wb") as f:
+                f.write(data)
+        return d
+    read = lambda d, fn: open(os.path.join(d, fn), "rb").read()
+    check("vcs: sources, class lists, designs and images are tracked; folders, dot-files and AMC's files aren't",
+          all(vcs.tracked(n) for n in ("exam.tex", "a.txt", "list.csv", "macros.sty", "x.yml", "paper.json", "logo.png", "fig.pdf"))
+          and not any(vcs.tracked(n) for n in ("a/b.tex", ".hidden.tex", "noext", "", "amcweb.json", "options.xml",
+                                               "DOC-sujet.pdf", "amc-compiled.amc", "bad\nname.tex", '"q.tex')))
+    exam = new_exam("Exam 1")
+    t0 = time.time()
+    d2 = vcs.write(exam, root, "exam.tex", b"v2\n", by="ann", what="Saved in the editor")
+    first_ms = (time.time() - t0) * 1000
+    repo = vcs.Repo(exam, root).open()
+    es, total = repo.log()
+    check("vcs: the first save starts the history with the file as it was, then the save",
+          total == 2 and [e["what"] for e in es] == ["Saved in the editor", "History started"] and es[1]["by"] is None and es[0]["by"] == "ann"
+          and d2 == vcs.digest(b"v2\n") and read(exam, "exam.tex") == b"v2\n")
+    check("vcs: the repository is outside the exam folder, in the owner's server folder",
+          repo.git_dir.startswith(os.path.join(root, "_amcweb", "_local", "history", "exams") + os.sep)
+          and not os.path.exists(os.path.join(exam, ".git")) and vcs.read_uid(exam) == repo.uid)
+    ux = new_exam("Uid race")
+    u1, u2 = vcs.write_uid(ux, unless=""), vcs.write_uid(ux, unless="")
+    check("vcs: two requests giving an exam its uid at once agree on the first", u1 == u2 == vcs.read_uid(ux) and vcs.UID_RE.match(u1))
+    check("vcs: a version can be read back", repo.read(es[1]["id"], "exam.tex") == b"v1\n" and repo.read(es[0]["id"], "exam.tex") == b"v2\n")
     try:
-        hist.write_source(exam, "exam.tex", b"v3\n", based_on=d1); check("history: a stale based_on is refused", False)
-    except hist.Conflict as c:
-        check("history: a stale based_on is refused, naming the digest on disk", str(c) == d2)
-    check("history: an unchanged save keeps nothing", hist.write_source(exam, "exam.tex", b"v2\n", based_on=d2) == d2 and len(hist.versions(exam, "exam.tex")) == 1)
-    time.sleep(1.1)
-    hist.write_source(exam, "exam.tex", b"v3\n", by="bob", what="Saved in the editor", built_digest=d2)
-    vs = hist.versions(exam, "exam.tex")
-    check("history: newest first, and the built version is marked", [v["digest"] for v in vs] == [d2, d1] and vs[0]["built"] and not vs[1]["built"])
-    hist.mark_built(exam, {"exam.tex": d1})
-    check("history: mark_built marks an older version too", all(v["built"] for v in hist.versions(exam, "exam.tex")))
-    check("history: a version can be read back", hist.read_version(exam, "exam.tex", vs[1]["id"]) == b"v1\n")
-    check("history: bad ids and names are refused", hist.read_version(exam, "exam.tex", "../x") is None and hist.read_version(exam, "../exam.tex", vs[0]["id"]) is None)
-    time.sleep(1.1)
-    hist.restore(exam, "exam.tex", vs[1]["id"], by="ann")
-    check("history: restore writes the old text and keeps the replaced one", open(os.path.join(exam, "exam.tex"), "rb").read() == b"v1\n" and len(hist.versions(exam, "exam.tex")) == 3)
-    with open(os.path.join(exam, "exam.tex"), "wb") as f: f.write(b"outside\n")
-    time.sleep(1.1)
-    hist.write_source(exam, "exam.tex", b"v5\n", by="ann", what="Saved")
-    check("history: a change made outside the app is kept and said so", hist.versions(exam, "exam.tex")[0]["what"] == "Changed outside the app")
-    # deleted files
-    hist.write_source(exam, "extra.tex", b"e1\n", by="ann", what="Uploaded")
-    e = hist.delete_source(exam, "extra.tex", by="bob")
-    check("history: a deleted file is kept as deleted", e and e["deleted"] and not os.path.exists(os.path.join(exam, "extra.tex")) and hist.versions(exam, "extra.tex")[0]["deleted"])
-    fl = {f["file"]: f for f in hist.files_with_history(exam)}
-    check("history: files_with_history tells deleted from existing", fl["exam.tex"]["exists"] and not fl["extra.tex"]["exists"] and fl["extra.tex"]["deleted_at"])
-    hist.restore(exam, "extra.tex", hist.versions(exam, "extra.tex")[0]["id"], by="bob")
-    check("history: restoring a deleted file brings it back", open(os.path.join(exam, "extra.tex"), "rb").read() == b"e1\n")
-    open(os.path.join(exam, "logo.png"), "wb").write(b"png")
-    check("history: deleting an untracked file just removes it", hist.delete_source(exam, "logo.png") is None and not os.path.exists(os.path.join(exam, "logo.png")))
-    # pruning: fake old versions (older than KEEP_DAYS)
-    d = os.path.join(exam, hist.HISTORY_DIR, "exam.tex")
-    now = time.time()
-    real = len(hist.versions(exam, "exam.tex"))
-    def fake(d, name, ext, n, days_ago, built_i):
-        for i in range(n):
-            vid = "20200101T%06dZ" % i
-            open(os.path.join(d, vid + "." + ext), "wb").write(b"old")
-            json.dump({"id": vid, "file": name, "at": int(now - days_ago(i) * 86400), "by": None, "what": "Saved",
-                       "size": 3, "digest": "%s%d" % (name, i), "built": i == built_i, "deleted": False}, open(os.path.join(d, vid + ".json"), "w"))
-    fake(d, "exam.tex", "tex", 45, lambda i: 200 - i, 3)
-    before_vs = hist.versions(exam, "exam.tex")
-    newest_built = next(v["id"] for v in before_vs if v["built"])
-    hist.prune(exam, "exam.tex", now=now)
-    after = hist.versions(exam, "exam.tex")
-    check("history: pruning keeps the newest KEEP_AT_LEAST and the newest built version, and drops older ones (a built one too)",
-          len(before_vs) == real + 45 and len(after) == hist.KEEP_AT_LEAST and any(v["id"] == newest_built for v in after)
-          and not any(v["id"] == "20200101T000003Z" for v in after))
-    # ...but an old built version is kept when no newer one built
-    hist.write_source(exam, "c.csv", b"a\n", what="Uploaded"); hist.write_source(exam, "c.csv", b"b\n", what="Uploaded")
-    fake(os.path.join(exam, hist.HISTORY_DIR, "c.csv"), "c.csv", "csv", 40, lambda i: 200 - i, 2)
-    hist.prune(exam, "c.csv", now=now)
-    after = hist.versions(exam, "c.csv")
-    check("history: the newest version that built survives pruning however old", len(after) == hist.KEEP_AT_LEAST + 1 and any(v["id"] == "20200101T000002Z" for v in after))
-    # recent versions are all kept, up to MAX_VERSIONS
-    hist.write_source(exam, "d.tex", b"a\n", what="Saved")
-    fake(os.path.join(exam, hist.HISTORY_DIR, "d.tex"), "d.tex", "tex", hist.MAX_VERSIONS + 20, lambda i: (hist.MAX_VERSIONS + 20 - i) / 1000.0, -1)
-    hist.prune(exam, "d.tex", now=now)
-    check("history: versions from the last days are kept, but never more than MAX_VERSIONS", len(hist.versions(exam, "d.tex")) == hist.MAX_VERSIONS)
-    # a file copied in with an old date: pruning goes by when the version was kept, not by that date
-    hist.write_source(exam, "old.tex", b"a\n", what="Saved")
-    fake(os.path.join(exam, hist.HISTORY_DIR, "old.tex"), "old.tex", "tex", 20, lambda i: 0.001 * (20 - i), -1)
-    with open(os.path.join(exam, "old.tex"), "wb") as f: f.write(b"copied in\n")
-    os.utime(os.path.join(exam, "old.tex"), (now - 400 * 86400, now - 400 * 86400))
-    hist.write_source(exam, "old.tex", b"b\n", what="Saved")
-    check("history: a version with an old date is kept when it was just replaced",
-          any(v["digest"] == hist.digest(b"copied in\n") for v in hist.versions(exam, "old.tex")))
-    # only the newest deleted version is kept for ever
-    for i in range(3):
-        time.sleep(1.1)
-        hist.write_source(exam, "del.tex", b"d%d\n" % i, what="Saved"); hist.delete_source(exam, "del.tex")
-    for v in hist.versions(exam, "del.tex"):
-        e = json.load(open(os.path.join(exam, hist.HISTORY_DIR, "del.tex", v["id"] + ".json"))); e["kept_at"] = int(now - 30 * 86400); e["at"] = e["kept_at"]
-        json.dump(e, open(os.path.join(exam, hist.HISTORY_DIR, "del.tex", v["id"] + ".json"), "w"))
-    fake(os.path.join(exam, hist.HISTORY_DIR, "del.tex"), "del.tex", "tex", hist.KEEP_AT_LEAST, lambda i: 0.001 * i, -1)
-    hist.prune(exam, "del.tex", now=now)
-    dels = [v for v in hist.versions(exam, "del.tex") if v["deleted"]]
-    check("history: of a file deleted several times, the newest deleted version is kept", len(dels) == 1 and dels[0]["digest"] == hist.digest(b"d2\n") and dels[0].get("deleted_at"))
-    # a deleted exam's folder isn't brought back by a late save
-    gone = os.path.join(tmp, "gone"); os.makedirs(gone); hist.write_source(gone, "exam.tex", b"x\n"); shutil.rmtree(gone)
+        vcs.write(exam, root, "exam.tex", b"v3\n", based_on=vcs.digest(b"v1\n")); check("vcs: a stale based_on is refused", False)
+    except vcs.Conflict as c:
+        check("vcs: a stale based_on is refused, naming the digest on disk", str(c) == d2 and read(exam, "exam.tex") == b"v2\n")
+    vcs.write(exam, root, "exam.tex", b"v2\n", by="ann", based_on=d2)
+    check("vcs: an unchanged save makes no version", repo.log()[1] == 2)
+    t0 = time.time()
+    with vcs.change(exam, root, by="ann", what="Paper builder: row added") as cs:
+        cs.write("paper.json", b'{"paper": []}\n')
+        vcs.write(exam, root, "paper-layout.tex", b"% layout 1\n", by="ann", what="inner")  # a nested save joins
+    save_ms = (time.time() - t0) * 1000
+    es, total = repo.log()
+    check("vcs: a change set is one version holding every file it wrote (the builder's design and layout)",
+          total == 3 and es[0]["what"] == "Paper builder: row added" and sorted(f["file"] for f in es[0]["files"]) == ["paper-layout.tex", "paper.json"])
+    print(f"     (first save {first_ms:.0f} ms, a two-file save {save_ms:.0f} ms)")
+    check("vcs: a save takes well under a second", save_ms < 1000)
+    with open(os.path.join(exam, "exam.tex"), "wb") as f:
+        f.write(b"by the desktop app\n")
+    vcs.write(exam, root, "paper.json", b'{"paper": [1]}\n', by="bob", what="Paper builder: logo added")
+    es, total = repo.log()
+    check("vcs: a change made outside the app becomes its own version before the next save",
+          [e["what"] for e in es[:2]] == ["Paper builder: logo added", vcs.OUTSIDE] and es[1]["kind"] == "outside" and es[1]["by"] is None)
+    check("vcs: one file's history", [e["what"] for e in repo.log("paper.json")[0]] == ["Paper builder: logo added", "Paper builder: row added"])
+    design_v1 = es[2]["id"]
+    # issue #15: restore the design, then undo the restore
+    plan = repo.plan_file(design_v1, "paper.json")
+    check("vcs: restoring one file plans that file only", plan == {"paper.json": b'{"paper": []}\n'})
+    restored = repo.apply(plan, "bob", "paper.json: restored", "restore", extra={"Restores": design_v1})
+    es, _ = repo.log()
+    check("vcs: a restore is a new version that says what it restored", read(exam, "paper.json") == b'{"paper": []}\n'
+          and es[0]["id"] == restored and es[0]["kind"] == "restore" and es[0]["restores"] == design_v1)
+    plan, problems = repo.plan_undo(restored)
+    repo.apply(plan, "bob", "Undid the restore", "undo", extra={"Undoes": restored})
+    check("vcs: undoing the restore brings back the design it replaced", not problems and read(exam, "paper.json") == b'{"paper": [1]}\n'
+          and repo.log()[0][0]["undoes"] == restored)
+    # whole exam, removed files
+    vcs.write(exam, root, "list.csv", b"id,name\n1,A\n", by="ann", what="Class list")
+    vcs.delete(exam, root, "list.csv", by="ann")
+    fl = {f["file"]: f for f in repo.files()}
+    check("vcs: a deleted file keeps its history and says when it went", not fl["list.csv"]["exists"] and fl["list.csv"]["deleted_at"] and fl["exam.tex"]["exists"])
+    check("vcs: a deleted file can be restored from the version before", repo.plan_file(repo.log("list.csv")[0][1]["id"], "list.csv") == {"list.csv": b"id,name\n1,A\n"})
+    first = repo.log()[0][-1]["id"]
+    plan = repo.plan_exam(first)
+    check("vcs: restoring the whole exam brings every file back together and removes later files",
+          plan == {"exam.tex": b"v1\n", "paper.json": None, "paper-layout.tex": None})
+    # undo with later changes
+    vcs.write(exam, root, "exam.tex", b"l1\nl2\nl3\nl4\nl5\nl6\n", by="ann")
+    vcs.write(exam, root, "exam.tex", b"L1\nl2\nl3\nl4\nl5\nl6\n", by="ann", what="first line")
+    first_line = repo.log()[0][0]["id"]
+    vcs.write(exam, root, "exam.tex", b"L1\nl2\nl3\nl4\nl5\nL6\n", by="ann", what="last line")
+    plan, problems = repo.plan_undo(first_line)
+    check("vcs: undoing one change keeps the later changes to the same file", not problems and plan == {"exam.tex": b"l1\nl2\nl3\nl4\nl5\nL6\n"})
+    vcs.write(exam, root, "exam.tex", b"X1\nl2\nl3\nl4\nl5\nL6\n", by="ann", what="first line again")
+    plan, problems = repo.plan_undo(first_line)
+    check("vcs: undoing a change that was changed again in the same place is refused", problems and problems[0][0] == "exam.tex")
+    check("vcs: versions of other exams, and nonsense, aren't accepted", repo.check_commit("0" * 40) is None and repo.check_commit("../x") is None
+          and repo.check_commit(first_line) == first_line)
+    repo.mark_built(first_line)
+    repo.name_version(first_line, "Checked by the head of department", by="ann")
+    e = [x for x in repo.log()[0] if x["id"] == first_line][0]
+    check("vcs: built and named versions", e["built"] and e["names"][0]["name"] == "Checked by the head of department" and repo.last_built() == first_line)
+    # a planted .gitattributes or .git does nothing: git never reads the exam folder
+    with open(os.path.join(exam, ".gitattributes"), "w") as f:
+        f.write("* filter=evil diff=evil\n")
+    os.makedirs(os.path.join(exam, ".git"))
+    with open(os.path.join(exam, ".git", "config"), "w") as f:
+        f.write("[filter \"evil\"]\n\tclean = touch PWNED\n[core]\n\thooksPath = /tmp\n")
+    vcs.write(exam, root, "exam.tex", b"\\begin{question}{q1}\n", by="ann")
+    check("vcs: a planted .gitattributes or .git config in the exam does nothing",
+          repo.read(repo.log()[0][0]["id"], "exam.tex") == b"\\begin{question}{q1}\n"
+          and not any(os.path.exists(os.path.join(x, "PWNED")) for x in (exam, root, os.getcwd())))
+    # a copy made outside the app (same uid) gets its own history; a renamed exam keeps its own
+    copy = os.path.join(root, "Exam 1 copy")
+    shutil.copytree(exam, copy)
+    rc = vcs.Repo(copy, root).open()
+    check("vcs: an exam copied outside the app gets a new uid and its own history",
+          rc.uid != repo.uid and vcs.read_uid(copy) == rc.uid and rc.log()[1] == 1 and "made outside the app" in rc.log()[0][0]["what"])
+    renamed = os.path.join(root, "Exam one")
+    n_before = repo.log()[1]
+    os.rename(exam, renamed)
+    rr = vcs.Repo(renamed, root).open()
+    check("vcs: a renamed exam keeps its history", rr.uid == repo.uid and rr.log()[1] == n_before and rr.meta["folder"] == os.path.abspath(renamed))
+    exam = renamed
+    cp2 = os.path.join(root, "Exam two")
+    shutil.copytree(exam, cp2)
+    r2 = vcs.start_copy(cp2, root, "ann", "Exam one")
+    check("vcs: a copy made in the app starts its own history saying where it came from",
+          r2.uid != repo.uid and r2.log()[0][0]["what"] == 'Copied from "Exam one"' and r2.log()[0][0]["kind"] == "copy")
+    # the old per-file history (.history/) is converted
+    old = new_exam("Old exam", {"exam.tex": b"now\n", "paper.json": b"{}\n"})
+    h = os.path.join(old, ".history")
+    os.makedirs(os.path.join(h, "exam.tex")); os.makedirs(os.path.join(h, "paper.json")); os.makedirs(os.path.join(h, "gone.tex"))
+    def oldv(fn, vid, data, at, by, what, **kw):
+        with open(os.path.join(h, fn, vid + "." + fn.rsplit(".", 1)[1]), "wb") as f:
+            f.write(data)
+        with open(os.path.join(h, fn, vid + ".json"), "w") as f:
+            json.dump({"id": vid, "file": fn, "at": at, "kept_at": at, "by": by, "what": what, "size": len(data), "digest": vcs.digest(data), **kw}, f)
+    oldv("exam.tex", "20261101T100000Z", b"one\n", 1761991200, "ann", "Created")
+    oldv("exam.tex", "20261102T100000Z", b"two\n", 1762077600, "ann", "Paper builder: x", built=True)
+    oldv("paper.json", "20261102T100001Z", b'{"a":1}\n', 1762077601, "ann", "Paper builder: x")
+    oldv("gone.tex", "20261103T100000Z", b"gone\n", 1762164000, "bob", "Saved", deleted=True, deleted_at=1762164100)
+    with open(os.path.join(h, "exam.tex", "current.json"), "w") as f:
+        json.dump({"at": 1762250400, "by": "bob", "what": "Saved in the editor", "digest": vcs.digest(b"now\n")}, f)
+    ro = vcs.Repo(old, root).open()
+    es, total = ro.log()
+    whats = [e["what"] for e in reversed(es)]
+    check("vcs: the old .history is converted in time order, files saved together become one version, and the folder goes",
+          whats == ["Created", "Paper builder: x", "Saved", "File deleted: gone.tex", "Saved in the editor", vcs.OUTSIDE]
+          and sorted(f["file"] for f in list(reversed(es))[1]["files"]) == ["exam.tex", "paper.json"]
+          and not os.path.exists(h) and all(e["kind"] in ("converted", "outside") for e in es)
+          and list(reversed(es))[1]["built"] and ro.read(es[0]["id"], "paper.json") == b"{}\n")
+    # trash
+    home = vcs.amcweb_dir(exam, root)
+    info = vcs.trash_exam(exam, root, by="ann")
+    check("vcs: deleting moves the exam to the trash with its history", not os.path.exists(exam)
+          and os.path.isdir(os.path.join(home, "trash", info["id"], "exam")) and os.path.isdir(repo.git_dir))
+    new_exam("Exam one", {"exam.tex": b"another\n"})
+    items = vcs.list_trash(home)
+    name = vcs.restore_trash(home, items[0]["id"], root, by="ann")
+    back = os.path.join(root, name)
+    rb = vcs.Repo(back, root).open()
+    check("vcs: a restored exam takes a free name and keeps its history", name == "Exam one (restored)" and rb.uid == repo.uid
+          and rb.log()[1] >= n_before and vcs.list_trash(home) == [])
+    info = vcs.trash_exam(back, root, by="ann")
+    check("vcs: the trash shows days left", vcs.list_trash(home)[0]["days_left"] == vcs.TRASH_DAYS)
+    vcs.purge_trash(home, now=time.time() + vcs.TRASH_DAYS * 86400 + 5)
+    check("vcs: after the trash days the exam and its history are removed", vcs.list_trash(home) == [] and not os.path.exists(repo.git_dir))
+    acts = [a["action"] for a in vcs.read_audit(home)]
+    check("vcs: the audit log records deletes, restores, copies, conversions and removals",
+          {"exam deleted (moved to the trash)", "exam restored from the trash", "exam copied", "old history converted"} <= set(acts)
+          and any(a.startswith("exam removed from the trash") for a in acts))
+    t2 = new_exam("Teacher exam", owner="teacher2")
+    check("vcs: each teacher has their own server folder; odd folders are refused",
+          vcs.amcweb_dir(t2, root) == os.path.join(root, "_amcweb", "teacher2"))
     try:
-        hist.write_source(gone, "exam.tex", b"y\n"); check("history: a save into a deleted exam is refused", False)
-    except OSError:
-        check("history: a save into a deleted exam is refused, and the folder stays gone", not os.path.exists(gone))
+        vcs.amcweb_dir(os.path.join(root, "_amcweb", "x"), root); check("vcs: the server folder isn't an owner", False)
+    except vcs.HistoryError:
+        check("vcs: the server folder isn't an owner", True)
+    # a damaged repository is put aside and the history starts again from the files
+    rt = vcs.Repo(t2, root).open()
+    with open(os.path.join(rt.git_dir, "refs", "heads", "main"), "w") as f:
+        f.write("1" * 40 + "\n")
+    os.unlink(rt.meta_path)
+    rt2 = vcs.Repo(t2, root).open()
+    check("vcs: a damaged history is kept aside and started again from the files",
+          rt2.log()[0][0]["what"].startswith("History restarted") and any(".damaged-" in x for x in os.listdir(rt.dir)))
+    # git broken: the save still happens, and the history catches up afterwards
+    gx = new_exam("Git broken", {"exam.tex": b"one\n"})
+    rg = vcs.Repo(gx, root).open()
+    real_git = vcs.GIT
+    vcs.GIT = "/nonexistent/git"
+    try:
+        vcs.write(gx, root, "exam.tex", b"two\n", by="ann", what="Saved while git was broken")
+        saved = read(gx, "exam.tex") == b"two\n"
+    except Exception as e:
+        saved = False
+    finally:
+        vcs.GIT = real_git
+    vcs.write(gx, root, "exam.tex", b"three\n", by="ann", what="Saved later")
+    whats = [e["what"] for e in vcs.Repo(gx, root).open().log()[0]]
+    check("vcs: when git fails the file is still saved, and the next save keeps it as changed outside the app",
+          saved and whats[:2] == ["Saved later", vcs.OUTSIDE] and read(gx, "exam.tex") == b"three\n")
+    # a file name the file system couldn't decode doesn't stop saves
+    ux = new_exam("Odd name", {"exam.tex": b"one\n"})
+    with open(os.path.join(ux, b"caf\xe9.csv".decode("utf-8", "surrogateescape")), "wb") as f:
+        f.write(b"x")
+    try:
+        vcs.write(ux, root, "exam.tex", b"two\n", by="ann", what="Saved beside an odd name")
+        odd_ok = read(ux, "exam.tex") == b"two\n" and vcs.Repo(ux, root).open().log()[0][0]["what"] == "Saved beside an odd name"
+    except Exception as e:
+        odd_ok = False
+    check("vcs: a file whose name isn't UTF-8 is left out, and saving goes on", odd_ok)
+    # packed refs (git gc) aren't damage
+    px = new_exam("Packed", {"exam.tex": b"one\n"})
+    vcs.write(px, root, "exam.tex", b"two\n", by="ann", what="Second")
+    rp = vcs.Repo(px, root).open()
+    vcs._git(rp.git_dir, "pack-refs", "--all")
+    os.unlink(rp.meta_path)
+    rp2 = vcs.Repo(px, root).open()
+    check("vcs: a history whose refs git packed is read, not restarted", rp2.log()[1] == 2 and not any(".damaged-" in x for x in os.listdir(rp.dir) if x.startswith(rp.uid)))
+    # git not answering isn't damage either: the request fails, the history stays
+    real_git = vcs.GIT
+    vcs.GIT = "/nonexistent/git"
+    try:
+        os.unlink(rp.meta_path)
+        try:
+            vcs.Repo(px, root).open(); gone = "opened"
+        except vcs.GitUnavailable:
+            gone = "unavailable"
+    finally:
+        vcs.GIT = real_git
+    check("vcs: when git can't run the history is left alone", gone == "unavailable" and vcs.Repo(px, root).open().log()[1] == 2)
+    # restoring into a name taken meanwhile never nests the exam
+    tx = new_exam("Taken", {"exam.tex": b"t\n"})
+    vcs.trash_exam(tx, root, by="ann")
+    new_exam("Taken", {"exam.tex": b"other\n"})
+    real_free = vcs._free_name
+    vcs._free_name = lambda pd, n: n  # as if the name was taken between the check and the move
+    try:
+        try:
+            vcs.restore_trash(home, vcs.list_trash(home)[0]["id"], root, by="ann"); nested = "restored"
+        except OSError:
+            nested = "refused"
+    finally:
+        vcs._free_name = real_free
+    check("vcs: a restore can't land inside an exam that took the name meanwhile",
+          nested == "refused" and read(os.path.join(root, "Taken"), "exam.tex") == b"other\n" and not os.path.exists(os.path.join(root, "Taken", "exam")))
+    later = time.time() + vcs.TRASH_DAYS * 86400 + 5
+    check("vcs: the doctor's look at the trash removes nothing", len(vcs.list_trash(home, now=later, purge=False)) == 1
+          and len(vcs.list_trash(home)) == 1 and vcs.list_trash(home, now=later) == [])
+    # diffs and changes in words
+    td = vcs.text_diff("one two three\nsame\n", "one 2 three\nsame\nnew\n")
+    check("vcs: line diff with word changes", td["added"] == 2 and td["removed"] == 1 and td["rows"][0] == ["d", "one two three", [[0, "one "], [1, "two"], [0, " three"]]]
+          and td["rows"][1][2] == [[0, "one "], [1, "2"], [0, " three"]] and td["rows"][-1] == ["a", "new", None])
+    long = "\n".join(f"line {i}" for i in range(40))
+    td = vcs.text_diff(long, long.replace("line 20", "line twenty"))
+    check("vcs: unchanged lines are folded around a change", ["g", 17] in td["rows"] and ["g", 16] in td["rows"])
+    check("vcs: images are compared as files", vcs.file_diff("logo.png", b"\x89PNG", b"\x89PNG2")["binary"])
+    qa = "\\begin{question}{q1}What? \\begin{choices}\\correctchoice{4}\\wrongchoice{5}\\end{choices}\\end{question}\n\\begin{question}{q2}Old\\begin{choices}\\correctchoice{a}\\end{choices}\\end{question}\n"
+    qb = qa.replace("\\correctchoice{4}\\wrongchoice{5}", "\\wrongchoice{4}\\correctchoice{5}").replace("{q2}Old", "{q2}New") + "\\begin{question}{q3}Third\\begin{choices}\\correctchoice{x}\\end{choices}\\end{question}\n"
+    lines = chg.describe({"exam.tex": qa.encode()}, {"exam.tex": qb.encode()})[0]["lines"]
+    check("changes: questions in words", "Question added: q3" in lines and "q1: answer A made wrong; answer B made correct" in lines and "q2: text edited" in lines)
+    da = {"paper": [{"id": "r1", "cells": [{"id": "c1", "block": {"type": "title"}}]}], "answer_sheet": [], "fields": {"exam_name": "A"}}
+    db_ = {"paper": [{"id": "r1", "cells": [{"id": "c1", "block": {"type": "title"}}, {"id": "c2", "block": {"type": "logo", "file": "x.png"}}]},
+                     {"id": "r2", "cells": [{"id": "c1", "block": {"type": "rule"}}]}], "answer_sheet": [], "fields": {"exam_name": "B"}}
+    lines = chg.describe({"paper.json": json.dumps(da).encode()}, {"paper.json": json.dumps(db_).encode()})[0]["lines"]
+    check("changes: the design in words", "Question paper: row 2 added (Line)" in lines and "Question paper, row 1: Logo added" in lines and "Details: Exam changed" in lines)
+    lines = chg.describe({"paper.json": json.dumps(db_).encode()}, {"paper.json": json.dumps({"paper": [], "answer_sheet": []}).encode()})[0]["lines"]
+    check("changes: a blanked design says what went (issue #15)", "Question paper: row 1 removed (Title lines, Logo)" in lines and "Question paper: row 2 removed (Line)" in lines)
+    check("changes: added, removed and other files", [(x["file"], x["status"]) for x in chg.describe({"a.csv": None, "b.png": b"1", "c.sty": b"x\n"}, {"a.csv": b"1\n", "b.png": None, "c.sty": b"y\n"})]
+          == [("a.csv", "added"), ("b.png", "removed"), ("c.sty", "changed")])
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
+
 
 # the question editor (ui_scale.read_latex spans and ui_questions edits)
 import ui_questions as qe
