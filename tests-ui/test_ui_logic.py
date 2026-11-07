@@ -507,6 +507,54 @@ try:
     whats = [e["what"] for e in vcs.Repo(gx, root).open().log()[0]]
     check("vcs: when git fails the file is still saved, and the next save keeps it as changed outside the app",
           saved and whats[:2] == ["Saved later", vcs.OUTSIDE] and read(gx, "exam.tex") == b"three\n")
+    # a file name the file system couldn't decode doesn't stop saves
+    ux = new_exam("Odd name", {"exam.tex": b"one\n"})
+    with open(os.path.join(ux, b"caf\xe9.csv".decode("utf-8", "surrogateescape")), "wb") as f:
+        f.write(b"x")
+    try:
+        vcs.write(ux, root, "exam.tex", b"two\n", by="ann", what="Saved beside an odd name")
+        odd_ok = read(ux, "exam.tex") == b"two\n" and vcs.Repo(ux, root).open().log()[0][0]["what"] == "Saved beside an odd name"
+    except Exception as e:
+        odd_ok = False
+    check("vcs: a file whose name isn't UTF-8 is left out, and saving goes on", odd_ok)
+    # packed refs (git gc) aren't damage
+    px = new_exam("Packed", {"exam.tex": b"one\n"})
+    vcs.write(px, root, "exam.tex", b"two\n", by="ann", what="Second")
+    rp = vcs.Repo(px, root).open()
+    vcs._git(rp.git_dir, "pack-refs", "--all")
+    os.unlink(rp.meta_path)
+    rp2 = vcs.Repo(px, root).open()
+    check("vcs: a history whose refs git packed is read, not restarted", rp2.log()[1] == 2 and not any(".damaged-" in x for x in os.listdir(rp.dir) if x.startswith(rp.uid)))
+    # git not answering isn't damage either: the request fails, the history stays
+    real_git = vcs.GIT
+    vcs.GIT = "/nonexistent/git"
+    try:
+        os.unlink(rp.meta_path)
+        try:
+            vcs.Repo(px, root).open(); gone = "opened"
+        except vcs.GitUnavailable:
+            gone = "unavailable"
+    finally:
+        vcs.GIT = real_git
+    check("vcs: when git can't run the history is left alone", gone == "unavailable" and vcs.Repo(px, root).open().log()[1] == 2)
+    # restoring into a name taken meanwhile never nests the exam
+    tx = new_exam("Taken", {"exam.tex": b"t\n"})
+    vcs.trash_exam(tx, root, by="ann")
+    new_exam("Taken", {"exam.tex": b"other\n"})
+    real_free = vcs._free_name
+    vcs._free_name = lambda pd, n: n  # as if the name was taken between the check and the move
+    try:
+        try:
+            vcs.restore_trash(home, vcs.list_trash(home)[0]["id"], root, by="ann"); nested = "restored"
+        except OSError:
+            nested = "refused"
+    finally:
+        vcs._free_name = real_free
+    check("vcs: a restore can't land inside an exam that took the name meanwhile",
+          nested == "refused" and read(os.path.join(root, "Taken"), "exam.tex") == b"other\n" and not os.path.exists(os.path.join(root, "Taken", "exam")))
+    later = time.time() + vcs.TRASH_DAYS * 86400 + 5
+    check("vcs: the doctor's look at the trash removes nothing", len(vcs.list_trash(home, now=later, purge=False)) == 1
+          and len(vcs.list_trash(home)) == 1 and vcs.list_trash(home, now=later) == [])
     # diffs and changes in words
     td = vcs.text_diff("one two three\nsame\n", "one 2 three\nsame\nnew\n")
     check("vcs: line diff with word changes", td["added"] == 2 and td["removed"] == 1 and td["rows"][0] == ["d", "one two three", [[0, "one "], [1, "two"], [0, " three"]]]
@@ -549,6 +597,16 @@ pt3 = itm.pools_insert(itm.pools_remove(pt, "alg-016"), "sectionII", "alg-016", 
 check("items: moving an item into another section", [(p["group"], p["name"]) for p in itm.read_pools(pt3)][-2:] == [("sectionII", "alg-016"), ("sectionII", "geo-001")])
 check("items: renaming a section renames its pool lines and region", "%%AMCUI:POOL part2%%" in itm.pools_rename_group(pt, "sectionII", "part2")
       and itm.pool_map(itm.pools_rename_group(pt, "sectionII", "part2"))["geo-001"] == "part2")
+check("items: two \\elements on one line, or a comment after one, survive a removal",
+      "amcuiItem{b}" in itm.pools_remove("\\element{A}{\\amcuiItem{a}} \\element{A}{\\amcuiItem{b}}\n", "a")
+      and "% note" in itm.pools_remove("\\element{A}{\\amcuiItem{c}} % note\n", "c")
+      and itm.pools_remove("\\element{A}{\\amcuiItem{a}}\n\\element{A}{\\amcuiItem{b}}\n", "a") == "\\element{A}{\\amcuiItem{b}}\n")
+check("items: figures are found as LaTeX finds them, through \\graphicspath and with an extension added",
+      itm.graphics_paths("\\graphicspath{{img/}{figs/}} % \\graphicspath{{no/}}") == ["img/", "figs/"]
+      and itm._find_figure("fig1", ["img/"], {"img/fig1.png"}.__contains__) == "img/fig1.png"
+      and itm._find_figure("fig.v2", [], {"fig.v2.png"}.__contains__) == "fig.v2.png"
+      and itm._find_figure("../x", ["img/"], lambda c: True) is None)
+check("items: removing a block tidies the blank lines there only", itm._apply("a\n\n\nb\n\n\n\nREMOVE\n\n\nc\n\n\n\nd", [(9, 15, "")]) == "a\n\n\nb\n\nc\n\n\n\nd")
 check("items: lines in comments are ignored", itm.read_pools("% \\element{a}{\\amcuiItem{x}}\n\\element{b}{\\amcuiItem{y}}\n") and [p["name"] for p in itm.read_pools("% \\element{a}{\\amcuiItem{x}}\n\\element{b}{\\amcuiItem{y}}\n")] == ["y"])
 check("items: item names from question ids, unique (whatever the case)", itm.sanitize("alg_017:b") == "alg-017-b" and itm.free_name("Q1", {"q1"}) == "Q1-2" and itm.sanitize("::") == "q")
 check("items: item files are recognised by path only", itm.item_of("items/alg-017/item.tex") == "alg-017" and not itm.item_of("items/../x/item.tex") and not itm.item_of("items/a/b.tex"))
@@ -640,6 +698,22 @@ for _bad, _why in ((_doc.replace("%%%% item b %%%%", "%%%% item b %%%"), "change
         ltx.split_section(_bad); check(f"latex: a section document with a separator {_why} is refused", False)
     except ValueError as e:
         check(f"latex: a section document with a separator {_why} is refused", _why in str(e))
+check("latex: \\verb* and an unclosed \\verb hide nothing past their line", ltx.problems("\\verb*|a| }\n\\end{x}") != [] and ltx.problems("\\verb|a\n}\n\\end{x}") != []
+      and ltx.problems("\\verb*|{| \\lstinline[language=C]|{| \\mintinline{c}|{| \\mintinline{c}{ { }") == [])
+check("latex: a \\verb or % inside verbatim can't swallow its \\end", ltx.problems("\\begin{verbatim}\n\\verb|x\n% {\n\\end{verbatim}\n") == [])
+check("latex: a warning's parentheses don't close the item's file in the log",
+      ltx.first_error("(./main.tex (./items/b.tex\nOverfull \\hbox (74pt too wide) in paragraph at lines 1--2\n! Undefined control sequence.\nl.2 \\foo\n")["file"] == "items/b.tex")
+_long = "(./items/" + "a" * 67 + "/it"
+check("latex: a path the log wrapped at 79 characters is read whole",
+      ltx.first_error("(./main.tex\n" + _long + "\nem.tex\n! Undefined control sequence.\nl.3 x\n")["file"] == "items/" + "a" * 67 + "/item.tex")
+check("latex: the file:line: form of -file-line-error is read first",
+      ltx.first_error("(./main.tex\n./items/q/item.tex:7: Undefined control sequence.\nl.7 \\foo\n") == {"file": "items/q/item.tex", "line": 7, "message": "Undefined control sequence.", "context": "\\foo"})
+check("latex: a commented \\begin{document} doesn't end the preamble", ltx.preamble("% \\begin{document}\n\\x\n\\begin{document}") == "% \\begin{document}\n\\x\n")
+try:
+    ltx.section_document([("n1", "t\n%%%% item x %%%%\nmore")]); check("latex: an item holding a separator line can't be a section document", False)
+except ValueError as e:
+    check("latex: an item holding a separator line can't be a section document", "n1" in str(e))
+check("latex: a CRLF section document is read", ltx.split_section("%%%% item a %%%%\r\nx\r\n") == [("a", "x\n", 1)])
 check("latex: the macros a preamble defines (not commented ones)", ltx.macros("\\newcommand{\\N}{\\mathbb N}\\def\\Z{x}\\DeclareMathOperator{\\lcm}{lcm} % \\newcommand{\\hidden}") == ["N", "Z", "lcm"])
 import ui_questions as _qe
 _inl = "\\element{g}{\n  \\begin{question}{a}A\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n}\n\\element{g}{\n\\begin{question}{b}B\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n}\n"
