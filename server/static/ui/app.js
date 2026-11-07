@@ -586,6 +586,7 @@ async function loadQuestions({ refresh = false } = {}) {
 }
 function loadStepData() {
   const step = S.route.step;
+  if (step === 'papers' && typeof loadPaperSections === 'function') loadPaperSections();
   if (step === 'mark') { loadMarks(); if (typeof loadQStats === 'function') loadQStats(); }
   if (step === 'match-students') loadStudents();
   if (step === 'export-marks') { loadMarks(); loadExport(); }
@@ -825,7 +826,7 @@ function renderPreview() {
     const cur = docs.includes(S.previewDoc) ? S.previewDoc : docs[0];
     title = DOC_LABELS[cur];
     url = fsUrl(`DOC-${cur}.pdf`);
-    body = `<iframe class="pdf-frame" src="${url}&v=${S.previewStamp}#view=FitH" title="${esc(title)}"></iframe>`;
+    body = `<iframe class="pdf-frame" src="${url}&v=${S.previewStamp}#${cur === 'sujet' && S.previewPage ? `page=${S.previewPage}&` : ''}view=FitH" title="${esc(title)}"></iframe>`;
     bodyClass = 'preview-body frame';
     if (docs.length > 1) tabs = `<div class="preview-tabs" role="tablist">${docs.map((d) => `<button role="tab" aria-selected="${d === cur}" data-act="show-doc" data-doc="${d}">${DOC_LABELS[d]}</button>`).join('')}</div>`;
   } else {
@@ -1075,8 +1076,8 @@ function wizardGallery() {
         <span class="tpl-title">${esc(t.title || t.id)}</span>
         <span class="subtle">${t.format === 'plain' ? 'Plain text' : 'LaTeX'}${t.pages ? ` · ${t.pages} page${t.pages > 1 ? 's' : ''}` : ''}</span></button>`).join('') || '<p class="subtle">No template matches.</p>'}</div></div></section>
     <section class="card tpl-preview">${cur ? `<div class="card-header"><h2>${esc(cur.title || cur.id)}</h2></div>
-      <div class="card-body"><p class="muted" style="margin:0 0 10px">${esc(cur.text || '')}</p>
-        ${cur.preview ? `<iframe class="tpl-pdf" src="/ui/gallery/${enc(cur.gid)}/${enc(cur.id)}/paper#view=FitH" title="${esc(cur.title || cur.id)}"></iframe><p class="field-hint">One copy of the question paper, as this template builds it.</p>` : '<p class="subtle">No preview for this template.</p>'}</div>` : '<div class="card-body"><p class="subtle">Choose a template.</p></div>'}
+      <div class="card-body"><p class="muted" style="margin:0 0 10px">${esc(cur.text || '')}${cur.mine ? ` <button class="link-btn" data-act="template-delete" data-id="${esc(cur.id)}" style="color:var(--danger)">Delete this template</button>` : ''}</p>
+        ${cur.preview ? `<iframe class="tpl-pdf" src="/ui/gallery/${enc(cur.gid)}/${enc(cur.id)}/paper#view=FitH" title="${esc(cur.title || cur.id)}"></iframe><p class="field-hint">${cur.mine ? 'The question paper as it was last built in the exam it came from.' : 'One copy of the question paper, as this template builds it.'}</p>` : '<p class="subtle">No preview for this template.</p>'}</div>` : '<div class="card-body"><p class="subtle">Choose a template.</p></div>'}
       <div class="card-foot"><button class="btn" data-act="wiz-go" data-step="1">${ic('arrow-left')} Back</button><button class="btn btn-primary" data-act="wiz-next" ${cur ? '' : 'disabled'}>Next: options ${ic('arrow-right')}</button></div></section>
   </div>`;
 }
@@ -1810,6 +1811,7 @@ function viewSettings() {
     <section class="card"><div class="card-header"><h2>Copy or remove</h2></div><div class="list">
       <div class="list-row"><span class="list-icon">${ic('copy')}</span><div class="list-row-main"><div class="list-row-title">Duplicate</div><div class="subtle">A full copy of this exam, including any scans and marks.</div></div><button class="btn btn-sm" data-act="clone-exam" data-name="${esc(S.project)}">Duplicate</button></div>
       <div class="list-row"><span class="list-icon">${ic('book-stack')}</span><div class="list-row-main"><div class="list-row-title">Save as a question bank</div><div class="subtle">A new bank with a group for each section, holding copies of the questions.</div></div><button class="btn btn-sm" data-act="bank-save-exam">Save as a bank…</button></div>
+      <div class="list-row"><span class="list-icon">${ic('page')}</span><div class="list-row-main"><div class="list-row-title">Save as a template</div><div class="subtle">Start your next exams from this one: its questions, sections, paper and settings, without scans or marks (New exam › My templates).</div></div><button class="btn btn-sm" data-act="template-save">Save as a template…</button></div>
       <div class="list-row"><span class="list-icon">${ic('download')}</span><div class="list-row-main"><div class="list-row-title">Download</div><div class="subtle">Everything in this exam as a zip file.</div></div><a class="btn btn-sm" href="/fs/${enc(S.project)}">Download</a></div>
       <div class="list-row"><span class="list-icon bad">${ic('trash')}</span><div class="list-row-main"><div class="list-row-title">Delete</div><div class="subtle">Moves the exam, with its scans, marks and history, to the Trash for 30 days.</div></div><button class="btn btn-sm btn-danger" data-act="delete-exam" data-name="${esc(S.project)}">Delete</button></div>
     </div></section>
@@ -2068,10 +2070,11 @@ function renderQList() {
     if (!f.item && files.length > 1) { html += `<div class="q-file">${esc(f.file)}</div>`; started = false; }
     if (f.problem) html += `<p class="subtle q-note">${esc(f.item ? `${f.file}: ${f.problem}` : f.problem)}</p>`;
     f.questions.forEach((q) => {
-      if (!started || q.group !== group) { group = q.group; html += `<div class="q-group">${group ? `Section · ${esc(group)}` : (!started ? 'Questions' : 'Not in a section')}</div>`; started = true; }
+      if (!started || q.group !== group) { group = q.group; html += `<div class="q-group" ${group && f.item ? `data-dropgroup="${esc(group)}"` : ''}>${group ? `Section · ${esc(group)}` : (!started ? 'Questions' : 'Not in a section')}</div>`; started = true; }
       const sel = !!(S.qform && S.qform.file === f.file && S.qform.id === q.id);
       const set = f.item && f.questions.length > 1;
-      html += `<button class="q-item ${sel ? 'is-selected' : ''} ${q.problem ? 'is-problem' : ''} ${set ? 'in-set' : ''}" data-act="q-pick" data-file="${esc(f.file)}" data-id="${esc(q.id)}" aria-pressed="${sel}" ${set ? `title="In the set ${esc(f.item)}: its questions stay together"` : ''}>
+      html += `<button class="q-item ${sel ? 'is-selected' : ''} ${q.problem ? 'is-problem' : ''} ${set ? 'in-set' : ''}" data-act="q-pick" data-file="${esc(f.file)}" data-id="${esc(q.id)}" aria-pressed="${sel}" ${set ? `title="In the set ${esc(f.item)}: its questions stay together"` : ''}
+        draggable="${L ? 'false' : 'true'}" data-drag="q" data-item="${esc(f.item || '')}" data-group="${esc(q.group || '')}">
         <span class="q-item-id">${esc(q.id)}</span><span class="q-item-kind">${q.kind}${typeof copyBadge === 'function' ? copyBadge(f.item) : ''}</span>
         <span class="q-item-text">${q.problem ? `${ic('warning-triangle')} ${esc(q.problem)}` : esc(trunc(q.text || '(no text yet)', 70))}</span></button>`;
     });
@@ -2111,6 +2114,8 @@ function renderQForm() {
     ${ro ? '' : `<button class="btn btn-ghost btn-icon btn-sm" data-act="q-move" data-d="-1" ${canUp ? '' : 'disabled'} title="Move up" aria-label="Move up">${ic('nav-arrow-up')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="q-move" data-d="1" ${canDown ? '' : 'disabled'} title="Move down" aria-label="Move down">${ic('nav-arrow-down')}</button>`}
     ${S.qmode === 'latex' || inBank() ? '' : `<button class="btn btn-ghost btn-sm" data-act="q-latex" data-file="${esc(f.file)}" data-line="${q.line}" title="Open the whole file in the LaTeX tab">${ic('code')} Edit in LaTeX</button>`}
     ${!inBank() && itemName && !L ? `<button class="btn btn-ghost btn-sm" data-act="bank-save-item" data-item="${esc(itemName)}" title="Copy this question into one of your question banks">${ic('book-stack')} Save to a bank…</button>` : ''}
+    ${!inBank() && itemName && !L ? `<button class="btn btn-ghost btn-sm" data-act="q-duplicate" title="A copy of this question (a new name), right after it">${ic('copy')} Duplicate</button>` : ''}
+    ${!inBank() ? `<button class="btn btn-ghost btn-sm" data-act="q-show-page" title="Open the question paper in the preview at this question's page">${ic('eye')} In the paper</button>` : ''}
     ${L ? '' : `<button class="btn btn-ghost btn-sm" data-act="q-delete">${ic('trash')} Delete</button>`}</div>`;
   if (S.qmode === 'latex') { renderQLatex(host, q, f, head + (inBank() ? bankMetaRow(qfile(f.file)) : itemOrigin(qfile(f.file)))); return; }
   if (!q.editable) {
@@ -2473,11 +2478,14 @@ async function editRuleForm() {
   const q = qsel();
   if (!q) return;
   const presets = (q.kind === 'multiple' ? PRESETS_M : PRESETS_S).filter(([v]) => v).map(([v, l]) => [q.kind === 'multiple' && /^mz=/.test(v) ? 'haut=0,' + v : v, l]);
-  const current = !q.rule ? 'default' : presets.some(([v]) => v === q.rule) ? 'preset:' + q.rule : 'custom';
+  // the scoring macros the exam's preamble defines (\def\exact{b=3,m=-1}), offered by name
+  const macros = ((S.qdata && S.qdata.scoring_macros) || []).filter((m) => !presets.some(([v]) => v === m.name));
+  const current = !q.rule ? 'default' : presets.some(([v]) => v === q.rule) || macros.some((m) => m.name === q.rule) ? 'preset:' + q.rule : 'custom';
   const radio = (value, title2, hint = '') => `<label class="check"><input type="radio" name="choice" value="${esc(value)}" ${current === value ? 'checked' : ''}><span>${title2}${hint ? `<br><span class="subtle">${hint}</span>` : ''}</span></label>`;
   const data = await formDialog({
     title: `Scoring of ${esc(q.id)}`, ok: 'Save', icon: 'percentage-circle',
-    body: `<div class="q-choices">${radio('default', 'The default scoring', 'As set in Marking scheme')}${presets.map(([v, l]) => radio('preset:' + v, esc(l), `<code>${esc(v)}</code>`)).join('')}${radio('custom', 'Own AMC rule')}
+    body: `<div class="q-choices">${radio('default', 'The default scoring', 'As set in Marking scheme')}${presets.map(([v, l]) => radio('preset:' + v, esc(l), `<code>${esc(v)}</code>`)).join('')}
+      ${macros.length ? `<p class="subtle" style="margin:6px 0 0">From the exam's preamble:</p>${macros.map((m) => radio('preset:' + m.name, `<code>${esc(m.name)}</code>`, `<code>${esc(m.value)}</code>`)).join('')}` : ''}${radio('custom', 'Own AMC rule')}
       <input class="input mono" name="custom" style="margin:-2px 0 6px 24px;width:calc(100% - 24px)" value="${esc(current === 'custom' ? q.rule : '')}" placeholder="b=2,m=-1" autocomplete="off"></div>`,
     validate: (v) => (!v.choice ? 'Choose how the question is scored.' : v.choice === 'custom' && !/^[A-Za-z0-9=.,+\-*/() \\]{1,200}$/.test((v.custom || '').trim()) ? 'Write an AMC rule, for example b=2,m=-1.' : ''),
   });
@@ -2553,7 +2561,7 @@ function renderDSections(d, L) {
     const per = s.count ? `${s.count} of ${s.pool} per copy` : `all ${s.pool}`;
     const chips = [s.shuffle ? 'shuffled' : 'in order', s.columns > 1 ? `${s.columns} columns` : '', s.newpage ? 'new page' : '', s.markers ? '' : 'plain \\insertgroup'].filter(Boolean);
     const marks = s.marks && s.marks.right ? ` · +${esc(s.marks.right)}${s.marks.wrong && s.marks.wrong !== '0' ? ` / ${esc(s.marks.wrong)}` : ''}` : '';
-    html += `<div class="d-sec ${isOpen ? 'is-open' : ''}" data-name="${esc(s.name)}">
+    html += `<div class="d-sec ${isOpen ? 'is-open' : ''}" data-name="${esc(s.name)}" draggable="${L || isOpen ? 'false' : 'true'}" data-drag="sec">
       <div class="d-row"><span class="d-name">${esc(s.name)}</span><span class="spacer"></span>
         ${L ? '' : `<button class="btn btn-ghost btn-icon btn-sm" data-act="d-sec-move" data-name="${esc(s.name)}" data-d="-1" ${i ? '' : 'disabled'} title="Move up" aria-label="Move section up">${ic('nav-arrow-up')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="d-sec-move" data-name="${esc(s.name)}" data-d="1" ${i < d.sections.length - 1 ? '' : 'disabled'} title="Move down" aria-label="Move section down">${ic('nav-arrow-down')}</button>`}
         <button class="btn btn-sm" data-act="${isOpen ? 'd-sec-done' : 'd-sec-edit'}" data-name="${esc(s.name)}">${isOpen ? 'Done' : (L ? 'Details' : 'Edit')}</button></div>
@@ -2772,6 +2780,7 @@ function viewPapers() {
     ${header('papers', 'Papers', 'Build the final papers, then check the layout before printing.',
     L ? '' : `<button class="btn ${built ? '' : 'btn-primary'}" data-act="build-papers">${ic('refresh')} ${built ? 'Rebuild papers' : 'Build papers'}</button>`)}
     ${guideBox('papers')}
+    ${typeof copiesDiffer === 'function' ? copiesDiffer() : ''}
     ${L ? lockBanner('The papers can\'t be rebuilt now. You can still open and download them.') : ''}
     ${!L && built && !st.layout_ok ? `<section class="card card-accent" style="margin-bottom:16px">
       <div class="card-header">${ic('page-search')}<h2>Check the layout</h2><span class="chip chip-warning">Needs your check</span></div>
@@ -4285,7 +4294,7 @@ const ACTIONS = {
   'delete-file': () => deleteCurrentFile(),
   'dialog-result': (el) => closeDialog(el.dataset.v),
   qtab: (el) => switchQTab(el.dataset.v),
-  'q-pick': (el) => selectQuestion(el.dataset.file, el.dataset.id),
+  'q-pick': (el) => { selectQuestion(el.dataset.file, el.dataset.id); if (typeof previewFollow === 'function') previewFollow(el.dataset.id); },
   'q-add': () => addQuestion(),
   'q-mode': (el) => setQMode(el.dataset.v),
   'ql-save': () => qlSave(),
@@ -4348,7 +4357,8 @@ document.addEventListener('click', (e) => {
   if (!el) return;
   const act = el.dataset.act;
   if (act === 'dialog-backdrop') { if (e.target === el && !el.querySelector('.sticky')) closeDialog(false); return; }
-  const fn = ACTIONS[act] || (typeof BUILDER_ACTIONS !== 'undefined' ? BUILDER_ACTIONS[act] : null) || (typeof BANK_ACTIONS !== 'undefined' ? BANK_ACTIONS[act] : null);
+  const fn = ACTIONS[act] || (typeof BUILDER_ACTIONS !== 'undefined' ? BUILDER_ACTIONS[act] : null) || (typeof BANK_ACTIONS !== 'undefined' ? BANK_ACTIONS[act] : null)
+    || (typeof EXTRA_ACTIONS !== 'undefined' ? EXTRA_ACTIONS[act] : null);
   if (fn) { e.preventDefault(); fn(el); }
 });
 

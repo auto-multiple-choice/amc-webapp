@@ -638,13 +638,13 @@ updated as each phase lands. ✅ built, ⬜ to build, ✖ not doing (why).
 - ✅ `./amc doctor` (and `amc doctor` on Windows): `git fsck` on every history, histories whose exam or bank is gone (listed, kept), the trash, the bank index read again (`--rebuild-index` to throw it away first); changes nothing
 - ✅ Archive import and exam copy drop dot-folders (a planted `.git` anywhere) and the app's scratch folders; the old `.history/` stays, as it is converted into the history
 
-**Left from `questions-banks-templates-plan.md`**
-- ⬜ Drag-and-drop ordering of questions and sections (buttons today)
-- ⬜ Jump to the selected question's page in the preview
-- ⬜ "Copies differ" in the Papers step when a section draws at random
-- ⬜ The scoring dialog offers the scoring macros of the exam's preamble
-- ⬜ Duplicate a question
-- ⬜ Save an exam as a template (for the teacher's own new exams)
+**Left from `questions-banks-templates-plan.md`** (P4b, built on `feature/editor-extras-p4b`)
+- ✅ Drag-and-drop ordering of questions (in an exam's list, into another section by its heading), of sections in Paper design, and of a bank's questions (between groups too); the buttons stay, for the keyboard
+- ✅ Jump to the selected question's page in the preview ("In the paper": the page of its boxes on the first copy; the preview follows the question picked while it shows the paper)
+- ✅ "Copies differ" in the Papers step when a section draws some of its questions at random
+- ✅ The scoring dialog offers the scoring macros of the exam's preamble (by name, with their rule)
+- ✅ Duplicate a question (kept in an item file: a copy with new names right after it, one version, no bank link)
+- ✅ Save an exam as a template for the teacher's own new exams (`MC-Projects/<user>/_templates/`: sources and settings without scans, marks or history, the last build as its preview; New exam › My templates; delete from there)
 - ✖ Shared school banks — decided 7 Nov: banks belong to one instructor
 - ✖ The notation page and table of values as forms — superseded by the Paper builder's text blocks
 - ✖ A second logo upload in the wizard — the Paper builder's logo block does it

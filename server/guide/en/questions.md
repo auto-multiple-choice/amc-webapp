@@ -84,6 +84,14 @@ An exam made in the app keeps each question in its own file, `items/<name>/item.
 
 In the form, **Add**, the arrows and **Delete** add, move and delete items; moving past the first or last question of a section moves it into the next one. **Edit in LaTeX** opens the question's own file. An older exam, or one made from one of AMC's templates, keeps its questions in its main file: **Move questions into item files** (under the list of questions) moves them, figures included, in one step that History can undo. Question banks will take questions from these files.
 
+## Quicker editing
+
+- **Drag and drop**: drag a question in the list onto another to put it before that one, or onto a section's heading to put it at the end of that section. Sections in Paper design and a bank's questions (between groups too) move the same way. The arrow buttons still work, with the keyboard too.
+- **Duplicate** (above a question kept in an item file): a copy with a new name, right after it, ready to change.
+- **In the paper**: opens the built question paper in the preview at the page where the question's boxes are on the first copy. While the preview shows the question paper, it follows the question you pick.
+- **The scoring dialog** offers the scoring rules your preamble defines as macros (`\def\exactS{b=3,m=-1}`), by name.
+- **Save as a template** (Exam settings) keeps the exam's questions, sections, paper and settings, without scans, marks or history; **New exam › My templates** starts from it. Delete a template from there.
+
 ## Question banks
 
 Your **question banks** (top right, next to the Guide) keep questions to use again, in **groups** (Algebra, Geometry…), the way an exam keeps them in sections. Only you see your banks.

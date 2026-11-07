@@ -1499,6 +1499,28 @@ def on_mark(data=None):
     core.emit_msg("ui-changed", "marks")
 
 
+# ---- the page of a question in the question paper
+
+@bp.route("/ui/api/question-page")
+def api_question_page():
+    """The page of the built question paper (DOC-sujet.pdf) where the first
+    copy has the question's boxes, or None when the papers aren't built."""
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    qid = request.args.get("id") or ""
+    if not qid or not _has_db(pdir, "layout"):
+        return jsonify(project=name, page=None)
+    db = core.Amcdb(pdir)
+    db.use_module("layout")
+    rows = _rows(db, """SELECT p.subjectpage AS page FROM layout.layout_box AS b
+                        JOIN layout.layout_question AS q ON q.question = b.question
+                        JOIN layout.layout_page AS p ON p.student = b.student AND p.page = b.page
+                        WHERE q.name = ? AND b.role = 1 ORDER BY b.student, b.page LIMIT 1""", (qid,))
+    return jsonify(project=name, id=qid, page=rows[0]["page"] if rows else None)
+
+
 # ---- question statistics (ui_stats.py)
 
 def question_stats(pdir):
@@ -2923,7 +2945,26 @@ def api_editor():
         out["files"] = [_editor_file(pdir, fn) for fn in _source_files(pdir)]
         out["modular"] = modular(pdir)
         out["can_split"] = any(q["group"] for f in out["files"] if not f["item"] for q in f["questions"])
+        out["scoring_macros"] = scoring_macros(pdir)
     return jsonify(out)
+
+
+SCORING_RULE_RE = re.compile(r"[A-Za-z][A-Za-z0-9]*\s*=\s*[-+0-9.A-Za-z*/() ]+(\s*,\s*[A-Za-z][A-Za-z0-9]*\s*=\s*[-+0-9.A-Za-z*/() ]+)*")
+
+
+def scoring_macros(pdir):
+    """The macros of the exam's preamble whose value is a scoring rule
+    (\\def\\exact{b=3,m=-1}), for the scoring dialog: [{name, value}]."""
+    try:
+        pre = ltx.preamble(_main_text(pdir)) or ""
+    except (OSError, UnicodeDecodeError):
+        return []
+    out = []
+    for name in ltx.macros(pre)[:200]:
+        value = paper_structure.expand_macros(pre, "\\" + name).strip()
+        if value != "\\" + name and SCORING_RULE_RE.fullmatch(value):
+            out.append({"name": "\\" + name, "value": value})
+    return out
 
 
 @bp.route("/ui/api/editor", methods=["POST"])
@@ -3033,7 +3074,7 @@ def split_into_items(pdir, write, delete):
 def _items_payload(pdir, name):
     return {"project": name, "format": "latex", "main": core.main_source_file(),
             "files": [_editor_file(pdir, fn) for fn in _source_files(pdir)], "lock": bool(exam_lock(pdir)),
-            "modular": modular(pdir), "can_split": False}
+            "modular": modular(pdir), "can_split": False, "scoring_macros": scoring_macros(pdir)}
 
 
 @bp.route("/ui/api/items", methods=["POST"])
@@ -3087,6 +3128,32 @@ def api_items():
                             based_on=vcs.digest(pools.encode("utf-8")))
             out = _items_payload(pdir, name)
             out.update(ok=True, what=what, added={"file": items.item_file(iname), "id": qid})
+        elif op == "duplicate":
+            iname = str(data.get("item") or "")
+            if iname not in names:
+                return jsonify(error=f"The item \"{iname}\" isn't in this exam any more.")
+            files = banks.item_files(os.path.join(pdir, items.ITEMS_DIR, iname))
+            text = files[items.ITEM_FILE].decode("utf-8", "replace")
+            taken = {q["id"] for q in _all_questions(pdir, _source_files(pdir))}
+            mapping = banks.free_ids(text, taken)  # every name is taken: each question of the copy gets a new one
+            new_text = banks.rename_ids(text, mapping)
+            first = (banks.question_ids(new_text) or [iname])[0]
+            new = items.free_name(first, names)
+            m = banks.item_meta(pdir, iname)
+            group = pmap.get(iname) or next(iter(pmap.values()), None)
+            what = f"{iname}: duplicated as {new}"
+            with history_change(pdir, what):
+                save_source(pdir, items.item_file(new), new_text.encode("utf-8"), what)
+                save_source(pdir, f"{items.ITEMS_DIR}/{new}/{items.META_FILE}", banks.meta_json(  # a new question: no link to a bank
+                    title=(m.get("title") or "") and f"{m.get('title')} (copy)", tags=m.get("tags") or [],
+                    difficulty=m.get("difficulty") or "").encode("utf-8"), what)
+                for f, d in banks.figures_of(files).items():
+                    save_source(pdir, f"{items.ITEMS_DIR}/{new}/{f}", d, what)
+                if group:
+                    save_source(pdir, items.POOLS_FILE, items.pools_insert(pools, group, new, after=iname).encode("utf-8"), what,
+                                based_on=vcs.digest(pools.encode("utf-8")))
+            out = _items_payload(pdir, name)
+            out.update(ok=True, what=what, added={"file": items.item_file(new), "id": first})
         elif op in ("delete", "move"):
             iname = str(data.get("item") or "")
             if iname not in names:
@@ -4006,7 +4073,116 @@ def gallery_templates():
     for t in out:
         if t["gid"] == STARTER_GROUP and t["id"] == "blank" and variant:
             t["variants"] = {"separate": "blank-separate"}
+    return out + my_templates()
+
+
+# ---------------------------------------------------------------- the teacher's own templates
+#
+# "Save as a template" (Exam settings) keeps an exam's sources, without its
+# scans, marks or history, in MC-Projects/<user>/_templates/<name>/ (the
+# exam list skips "_" folders); the new-exam wizard lists them under "My
+# templates" and makes an exam from one as from AMC's templates.
+
+MY_TEMPLATES = "_templates"
+MY_GROUP = "mine"
+TEMPLATE_INFO = "template.json"
+TEMPLATE_RECORD = ("builder", "starter")   # what the record of the exam it came from says about its paper
+
+
+def _my_templates_dir():
+    return os.path.join(core.projects_dir(), MY_TEMPLATES)
+
+
+def _my_template(tid):
+    """The folder of the teacher's template TID, or None."""
+    if not isinstance(tid, str) or not banks.NAME_RE.match(tid) or tid.strip() != tid:
+        return None
+    d = os.path.join(_my_templates_dir(), tid)
+    return d if os.path.isdir(d) and not os.path.islink(d) and os.path.isfile(os.path.join(d, "options.xml")) else None
+
+
+def my_templates():
+    root = _my_templates_dir()
+    out = []
+    for n in sorted(os.listdir(root)) if os.path.isdir(root) else []:
+        d = _my_template(n)
+        if not d:
+            continue
+        info = vcs._read_json(os.path.join(d, TEMPLATE_INFO)) or {}
+        out.append({"gid": MY_GROUP, "id": n, "title": info.get("title") or n, "mine": True, "starter": False,
+                    "text": info.get("description") or (f"Saved from the exam \"{info.get('from')}\"" if info.get("from") else ""),
+                    "format": info.get("format") or "latex", "preview": os.path.isfile(os.path.join(d, "preview.pdf")), "pages": None})
     return out
+
+
+def _template_files(pdir):
+    """The files of an exam a template keeps: its sources (what history
+    keeps, items included), options.xml, and style files and fonts."""
+    out = []
+    for f in sorted(os.listdir(pdir)):
+        p = os.path.join(pdir, f)
+        if os.path.isfile(p) and not os.path.islink(p) and (vcs.tracked(f) or f == "options.xml" or f.rsplit(".", 1)[-1].lower() in BUILD_SUPPORT):
+            out.append(f)
+    for n in _item_names(pdir):
+        for f in sorted(os.listdir(os.path.join(pdir, items.ITEMS_DIR, n))):
+            rel = f"{items.ITEMS_DIR}/{n}/{f}"
+            if vcs.tracked(rel) and os.path.isfile(os.path.join(pdir, rel)):
+                out.append(rel)
+    return out
+
+
+@bp.route("/ui/api/my-templates", methods=["POST"])
+def api_my_templates():
+    """save {name, description}: the open exam as one of the teacher's
+    templates; delete {name}."""
+    core.headers_info()
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+    op = data.get("op")
+    if op == "delete":
+        d = _my_template(str(data.get("name") or ""))
+        if not d:
+            return jsonify(error="This template doesn't exist any more.")
+        shutil.rmtree(d)
+        return jsonify(ok=True)
+    if op != "save":
+        return jsonify(error="Unknown action."), 400
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    pdir = core.project_dir()
+    tname = re.sub(r"\s+", " ", str(data.get("name") or "")).strip()
+    if not banks.NAME_RE.match(tname):
+        return jsonify(error="A template's name uses letters, digits, spaces and . , - _ ( ) ' + (80 at most), starting with a letter or digit.")
+    root = _my_templates_dir()
+    if os.path.isdir(root) and tname.lower() in {x.lower() for x in os.listdir(root)}:
+        return jsonify(error=f"You already have a template named \"{tname}\".")
+    dest = os.path.join(root, tname)
+    tmp = os.path.join(root, f".saving-{uuid.uuid4().hex[:8]}")  # a name the list never shows, until it is complete
+    try:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.makedirs(tmp)
+        for rel in _template_files(pdir):
+            os.makedirs(os.path.dirname(os.path.join(tmp, rel)), exist_ok=True)
+            shutil.copyfile(os.path.join(pdir, rel), os.path.join(tmp, rel))
+        sujet = os.path.join(pdir, "DOC-sujet.pdf")
+        if os.path.isfile(sujet) and os.path.getsize(sujet) < 20 * 1024 * 1024:  # the last build, as its preview
+            shutil.copyfile(sujet, os.path.join(tmp, "preview.pdf"))
+            subprocess.run(["pdftoppm", "-png", "-r", "40", "-f", "1", "-l", "1", "-singlefile", sujet, os.path.join(tmp, "thumb")],
+                           capture_output=True, timeout=60)
+        rec = read_record(pdir)
+        info = {"title": tname, "description": str(data.get("description") or "").strip()[:300], "from": name,
+                "created": int(time.time()), "by": _who(), "format": _main_source()[0],
+                "record": {k: rec[k] for k in TEMPLATE_RECORD if rec.get(k) is not None}}
+        with open(os.path.join(tmp, TEMPLATE_INFO), "w", encoding="utf-8") as f:
+            json.dump(info, f, indent=1, ensure_ascii=False)
+        os.replace(tmp, dest)
+    except (OSError, subprocess.SubprocessError) as e:
+        shutil.rmtree(tmp, ignore_errors=True)
+        core.app.logger.error(f"Save as a template: {e}")
+        return jsonify(error="The template couldn't be saved. The server log has the details.")
+    add_activity(pdir, f"Saved as the template \"{tname}\"")
+    return jsonify(ok=True, name=tname, files=len(_template_files(pdir)))
 
 
 @bp.route("/ui/api/gallery")
@@ -4016,12 +4192,21 @@ def api_gallery():
     languages = {"en": "English", "fr": "French", "other": "Other"}  # AMC titles both "Documentation"
     groups += [dict(g, title=languages.get(g["id"]) or re.sub(r"^\[[A-Z]+\]\s*", "", g.get("title") or g["id"]))
                for g in core.template_groups]
-    return jsonify(groups=groups, templates=gallery_templates())
+    templates = gallery_templates()
+    if any(t.get("mine") for t in templates):
+        groups.insert(1, {"id": MY_GROUP, "title": "My templates", "text": "Saved from your exams"})
+    return jsonify(groups=groups, templates=templates)
 
 
 @bp.route("/ui/gallery/<gid>/<tid>/<any(thumb, paper):kind>")
 def gallery_file(gid, tid, kind):
     core.headers_info()
+    if gid == MY_GROUP:  # the teacher's own template: the build it was saved with
+        d = _my_template(tid)
+        path = os.path.join(d, "thumb.png" if kind == "thumb" else "preview.pdf") if d else None
+        if not path or not os.path.isfile(path):
+            abort(404)
+        return send_file(path, max_age=60)
     known = {(STARTER_GROUP, "blank-separate")} | {(t["gid"], t["id"]) for t in gallery_templates()}
     if (gid, tid) not in known:
         abort(404)
@@ -4138,6 +4323,15 @@ def on_create_exam(data):
         if built:
             copies = built[0]  # the versions of a builder paper are its copies
         title = gallery.read_description(os.path.join(STARTERS_DIR, tid)).get("title", tid)
+    elif gid == MY_GROUP:
+        src = _my_template(tid)
+        if not src:
+            core.dialog_msg(warn="This template doesn't exist any more.")
+            return
+        shutil.copytree(src, rep, dirs_exist_ok=True, ignore=shutil.ignore_patterns(TEMPLATE_INFO, "preview.pdf", "thumb.png"))
+        info = vcs._read_json(os.path.join(src, TEMPLATE_INFO)) or {}
+        title = info.get("title") or tid
+        mine = info.get("record") if isinstance(info.get("record"), dict) else {}
     else:
         if not any(t["gid"] == gid and t["id"] == tid for t in core.templates):
             core.dialog_msg(warn="Unknown template.")
@@ -4169,6 +4363,8 @@ def on_create_exam(data):
         core.change_option("moteur_latex_b", "xelatex")  # the starter's preamble follows the engine
     meta = {k: str(data.get(k) or "").strip()[:120] for k in META_FIELDS}
     _update_record(rep, lambda rec: rec.update({"meta": meta, "starter": tid if gid == STARTER_GROUP else None}))
+    if gid == MY_GROUP and mine:  # the paper builder's state, as in the exam the template came from
+        _update_record(rep, lambda rec: rec.update({k: v for k, v in mine.items() if k in TEMPLATE_RECORD}))
     if built:
         _update_record(rep, lambda rec: rec.update({"builder": {"layout_digest": built[1], "detached": False}}))
         if built[2]:

@@ -11,8 +11,8 @@ Rewrite the list:               python3 tests-ui/check_icons.py --write
 import re
 import sys
 
-JS = "server/static/ui/app.js, builder.js, banks.js and stats.js"
-JS_FILES = ("server/static/ui/app.js", "server/static/ui/builder.js", "server/static/ui/banks.js", "server/static/ui/stats.js")
+JS = "server/static/ui/app.js, builder.js, banks.js, stats.js and extras.js"
+JS_FILES = ("server/static/ui/app.js", "server/static/ui/builder.js", "server/static/ui/banks.js", "server/static/ui/stats.js", "server/static/ui/extras.js")
 LIST = "server/templates/ui_icons.html"
 ICONOIR = "src-icons/iconoir.css"
 
