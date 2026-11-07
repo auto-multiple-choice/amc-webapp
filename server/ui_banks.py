@@ -268,15 +268,19 @@ def free_ids(text, taken):
     out = {}
     for qid in question_ids(text):
         if qid in taken:
-            n, new = 2, f"{qid}-2"
-            while new in taken or not ID_RE.match(new):
-                n += 1
-                new = f"{qid[:58]}-{n}"
-            out[qid] = new
-            taken.add(new)
+            out[qid] = _free_id(qid, taken)
+            taken.add(out[qid])
         else:
             taken.add(qid)
     return out
+
+
+def _free_id(qid, taken):
+    n, new = 2, f"{qid}-2"
+    while new in taken or not ID_RE.match(new):
+        n += 1
+        new = f"{qid[:58]}-{n}"
+    return new
 
 
 def pick(names, n, seed=None):
@@ -427,3 +431,125 @@ def needed_packages(preamble, exam_text):
             lines.append(f"\\usepackage{m.group(1) or ''}{{{','.join(missing)}}}")
             have |= set(missing)
     return lines
+
+
+def clashes(texts, preamble, exam_text):
+    """Macros TEXTS use that the bank's PREAMBLE and the exam (EXAM_TEXT)
+    both define, differently: [{"macro", "bank", "exam"}]. The exam's
+    definition is kept; the teacher is told, never overwritten silently."""
+    used = {m for t in texts for m in _USED.findall(t or "")}
+    mine, theirs = definitions(preamble), definitions(ltx.preamble(exam_text) or exam_text)
+    norm = lambda line: re.sub(r"\\(?:re|provide)?newcommand\*?|\\providecommand\*?|\s+", "", line.split("%")[0])
+    return [{"macro": "\\" + n, "bank": mine[n], "exam": theirs[n]} for n in sorted(used)
+            if n in mine and n in theirs and norm(mine[n]) != norm(theirs[n])]
+
+
+# ---------------------------------------------------------------- copies (section 7.4)
+#
+# An exam's copy of a bank item is the bank's text with the changes made on
+# the way in: questions renamed where the exam already used the name, and
+# the group's scoring given to questions. The record (origin in the exam's
+# item.json) keeps those changes, so the way back undoes them and the
+# status compares like with like:
+#   origin = {bank, bank_uid, item, item_uid, revision (the bank's version),
+#             fingerprint (of the bank's item at that version), ids {bank
+#             name: exam name}, scoring (the rule given), scored {bank name:
+#             rule it had before, "" for none}, replace, at}
+
+STATUS_WORDS = {"same": "Up to date", "bank": "Bank updated", "here": "Edited here", "both": "Both changed",
+                "kept": "Bank's newer version set aside", "gone": "Not in the bank any more"}
+
+
+def origin_of(meta):
+    """An item's origin record (where its copy came from), typed: ids and
+    scored as {str: str}, text fields as str or None. {} when the item
+    isn't a bank copy. item.json is a file the teacher may edit by hand."""
+    o = (meta or {}).get("origin")
+    if not isinstance(o, dict):
+        return {}
+    out = dict(o)
+    for k in ("ids", "scored"):
+        v = o.get(k)
+        out[k] = {str(a): ("" if b is None else str(b)) for a, b in v.items()} if isinstance(v, dict) else {}
+    for k in ("bank", "bank_uid", "item", "item_uid", "revision", "fingerprint", "seen_fp", "scoring"):
+        if k in out and not isinstance(out[k], str):
+            out[k] = None
+    out["replace"] = bool(o.get("replace"))
+    return out
+
+
+def _own_rule(q):
+    return ((q.get("scoring") or {}).get("rule") or "").strip()
+
+
+def way_in(text, ids=None, scoring="", replace=False):
+    """A bank item's TEXT as an exam's copy: SCORING given to its questions
+    that have none (to every one when REPLACE), then questions renamed (IDS:
+    bank name -> exam name). Returns (text, scored): the bank names of the
+    questions whose scoring was set, with the rule they had before."""
+    scored = {}
+    scoring = (scoring or "").strip()
+    if scoring:
+        for qid in question_ids(text):
+            q = next(x for x in scale.read_latex(text) if x["id"] == qid)
+            own = _own_rule(q)
+            if own == scoring or (own and not replace):
+                continue
+            scored[qid] = own
+            text = scale.set_scoring(text, q, scoring)
+    return rename_ids(text, ids or {}), scored
+
+
+def way_back(text, origin):
+    """An exam's copy TEXT as the bank's item: question names back, and the
+    scoring given on the way in taken back where it is still that rule."""
+    origin = origin or {}
+    ids = origin.get("ids") or {}
+    text = rename_ids(text, {v: k for k, v in ids.items()})
+    rule = (origin.get("scoring") or "").strip()
+    for qid, before in (origin.get("scored") or {}).items():
+        q = next((x for x in scale.read_latex(text) if x["id"] == qid), None)
+        if q and _own_rule(q) == rule:
+            text = scale.set_scoring(text, q, before or "")
+    return text
+
+
+def extend_ids(text, ids, taken):
+    """IDS (bank name -> exam name) with names for TEXT's questions that
+    have none yet and whose name is TAKEN in the exam."""
+    ids = {k: v for k, v in (ids or {}).items() if k in question_ids(text)}
+    taken = set(taken) | set(ids.values())
+    for qid in question_ids(text):
+        if qid in ids:
+            continue
+        if qid in taken:
+            ids[qid] = _free_id(qid, taken)
+            taken.add(ids[qid])
+        else:
+            taken.add(qid)
+    return ids
+
+
+def status(exam_text, exam_figures, origin, bank_text, bank_figures):
+    """"same", "bank" (the bank has a newer revision), "here" (the exam's
+    copy was changed), "both", or "gone" (the bank's item isn't there)."""
+    if bank_text is None:
+        return "gone"
+    here = fingerprint(way_back(exam_text, origin), exam_figures) != origin.get("fingerprint")
+    bank_fp = fingerprint(bank_text, bank_figures)
+    there = bank_fp != origin.get("fingerprint")
+    if not there:
+        return "here" if here else "same"
+    if bank_fp == origin.get("seen_fp"):  # "Keep this exam's" was chosen for this bank version
+        return "here" if here else "kept"
+    return "both" if here else "bank"
+
+
+def merge_texts(mine, base, theirs):
+    """Three-way merge (git merge-file, outside any repository): (text,
+    conflicts). Conflicting places are marked <<<<<<< this exam / ======= /
+    >>>>>>> the bank."""
+    return vcs.merge_text(mine, base, theirs, labels=("this exam", "as copied", "the bank"))
+
+
+CONFLICT_RE = re.compile(r"^(<{7}|={7}|>{7})([ \t\r]|$)", re.M)

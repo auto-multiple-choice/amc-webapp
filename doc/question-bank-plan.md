@@ -606,18 +606,24 @@ updated as each phase lands. ✅ built, ⬜ to build, ✖ not doing (why).
 - ✅ A section edited as one LaTeX document (`%%%% item name %%%%` separators), with "what will happen" before saving
 - ✅ Snippets for AMC environments; completion of question names and the exam's macros
 
-**P2 — Question banks** (#5; P2a built on `feature/banks-p2a`)
+**P2 — Question banks** (#5; P2a built on `feature/banks-p2a`, P2b on `feature/banks-p2b`; P2c: search, usage, archive, zip)
 - ✅ Banks per instructor, in groups, with history (git) and a trash
 - ✅ Bank page: groups, items, difficulty and tags, the item form, LaTeX view and History (search and filters: P2b)
 - ✅ Bank → exam: a whole group as a new section or into one; selected questions; a random pick made once and shown first; sets moved whole
 - ✅ Exam → bank: a whole section as a group, selected questions, or the whole exam as a new bank; "Update the bank's copy" or "Save as new"
-- ⬜ Copies with a revision record: status Up to date / Bank updated / Edited here / Both changed; comparison; update either side; printed exams take answer-key fixes only
-- ⬜ A section made from a group offers questions added to the group later
+- ✅ Copies with a revision record: status Up to date / Bank updated / Edited here / Both changed / Not in the bank any more; comparison; take the bank's, update the bank's copy, keep this exam's, combine both (by hand where both changed the same lines); printed exams take answer-key and scoring fixes only (P2b)
+- ✅ Changes on the way in recorded and undone on the way back: names changed, the group's scoring given (to questions without their own, or to all) (P2b)
+- ✅ Items already in the exam shown as such in "From a bank" and not added twice (P2b)
+- ✅ A section made from a group offers questions added to the group later, and says when one was removed, until printed (P2b)
+- ✅ A macro defined differently in the exam and the bank flagged with both definitions, never overwritten (P2b)
 - ✅ Macros and packages an item needs, offered to the exam that lacks them
-- ⬜ Usage recorded when papers are printed
+- ⬜ Usage recorded when papers are printed (P2c)
 - ✅ Import of RJ-style LaTeX files (`\element{sectionI}{…}` blocks with figures)
-- ⬜ Search index (SQLite FTS5, outside teachers' folders)
-- ⬜ Bank zip export and import (checked like exam archives)
+- ⬜ Search index (SQLite FTS5, outside teachers' folders), with filters in the bank page and "From a bank": text, difficulty, kind, tags, not used since (P2c)
+- ⬜ Archiving an item hides it from "From a bank" (P2c)
+- ⬜ An item's page lists the exams that use it (P2c)
+- ⬜ Bank zip export and import, with its history (git bundle), checked like exam archives (P2c)
+- ✖ `requires` stored in each bank item.json — the macros and packages an item needs are worked out from the bank's preamble each time it is copied, so they can't go stale
 
 **P3 — Analysis and blueprints** (#6)
 - ⬜ Item statistics after marking: share of right answers, discrimination, which wrong answers attract; kept per bank item across exams

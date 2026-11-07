@@ -8,7 +8,8 @@
  */
 /* global S, $, esc, ic, enc, getJSON, postJSON, toast, banner, openDialog, closeDialog, confirmDialog, formDialog, notice,
    navigate, render, renderMain, renderTop, renderQuestionsForm, renderQForm, renderQList, loadEditor, qfile, qsel, flushQ, qlFlush,
-   openHistory, inBank, qApi, trunc, plural, fmtWhen, postForm, loadDesign, renderDesign, flushD, dialogResolve:writable */
+   openHistory, inBank, qApi, trunc, plural, fmtWhen, postForm, loadDesign, renderDesign, flushD, dialogResolve:writable,
+   questionsHead, diffRows, latexEditor */
 
 const DIFF_LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 
@@ -136,7 +137,10 @@ function bankMetaRow(f) {
 function itemOrigin(f) {
   const o = f && f.meta && f.meta.origin;
   if (!o || !o.bank) return '';
-  return `<div class="b-meta"><span class="subtle b-origin">${ic('book-stack')} A copy from the bank <a href="/bank/${enc(o.bank)}" data-nav>${esc(o.bank)}</a> (${esc(o.item)})</span></div>`;
+  const c = copyOf(f.item);
+  const name = c ? c.bank : o.bank;
+  return `<div class="b-meta b-copy"><span class="subtle b-origin">${ic('book-stack')} A copy from the bank ${c && !c.bank_found ? esc(name) : `<a href="/bank/${enc(name)}" data-nav>${esc(name)}</a>`} (${esc(c ? c.bank_item : o.item)})</span>
+    ${c ? `<span class="b-status ${COPY_CLASS[c.status]}">${esc(c.words)}</span>${c.status !== 'same' ? `<button class="btn btn-sm btn-ghost" data-act="copy-compare" data-item="${esc(f.item)}">${ic('git-compare')} Compare…</button>` : ''}` : ''}</div>`;
 }
 let bmetaTimer = null;
 function bankInput(t) {
@@ -152,6 +156,7 @@ function bankChange(t) {
   if (t.name === 'bp-mode') { S.bp.mode = t.value; S.bp.chosen = null; renderPicker(); return true; }
   if (t.id === 'bp-section') { S.bp.section = t.value; return true; }
   if (t.id === 'bp-count') { S.bp.count = +t.value || 1; S.bp.chosen = null; return true; }
+  if (t.id === 'bp-scoring-all') { S.bp.scoringAll = t.checked; return true; }
   if (t.classList && t.classList.contains('bp-tick')) { const n = t.dataset.item; S.bp.ticked = t.checked ? [...S.bp.ticked, n] : S.bp.ticked.filter((x) => x !== n); return true; }
   if (t.id === 'bs-bank' || t.id === 'bs-group') { S.bs[t.id === 'bs-bank' ? 'bank' : 'group'] = t.value; if (t.id === 'bs-bank') bsLoadBank(); else renderSaveDialog(); return true; }
   if (t.name === 'bs-linked') { S.bs.linked = t.value; return true; }
@@ -299,7 +304,8 @@ async function openPicker(section = null) {
   try { r = await getJSON('/ui/api/banks'); } catch { toast('Your banks couldn\'t be read.', 'warning-triangle'); return; }
   if (!r.banks || !r.banks.length) { notice('No question bank yet', 'Make a bank on the Question banks page (top right), or save this exam\'s questions into one.', 'book-stack'); return; }
   const sel = typeof qsel === 'function' ? qsel() : null;
-  S.bp = { banks: r.banks, bank: null, data: null, group: null, ticked: [], mode: 'new', section: section || (sel && sel.group) || null, count: 3, chosen: null, sections: await examSections() };
+  if (!S.bcopies) await loadCopies();
+  S.bp = { banks: r.banks, bank: null, data: null, group: null, ticked: [], mode: 'new', section: section || (sel && sel.group) || null, count: 3, chosen: null, scoringAll: false, sections: await examSections() };
   if (section) S.bp.mode = 'into';
   await bpPickBank(r.banks[0].name);
 }
@@ -324,8 +330,9 @@ function renderPicker() {
   const list = !d ? '<p class="subtle">Loading…</p>' : d.error ? `<p>${esc(d.error)}</p>` : !g ? '<p class="subtle">This bank has no group yet.</p>'
     : `<div class="bp-list">${g.items.map((n) => { const f = files[n]; const q = f && f.questions[0]; const m = (f && f.meta) || {};
       const chosen = bp.chosen && bp.chosen.includes(n);
-      return `<label class="bp-row ${chosen ? 'is-chosen' : ''}"><input type="checkbox" class="bp-tick" data-item="${esc(n)}" ${bp.ticked.includes(n) ? 'checked' : ''} ${bp.mode === 'ticked' ? '' : 'disabled'}>
-        <span class="mono">${esc(q ? q.id : n)}</span>${f && f.questions.length > 1 ? `<span class="chip">set of ${f.questions.length}</span>` : ''}
+      const here = !!(S.bcopies && m.uid && S.bcopies.copies.some((c) => c.bank_uid === d.bank.uid && c.item_uid === m.uid));
+      return `<label class="bp-row ${chosen ? 'is-chosen' : ''} ${here ? 'is-in' : ''}"><input type="checkbox" class="bp-tick" data-item="${esc(n)}" ${bp.ticked.includes(n) && !here ? 'checked' : ''} ${bp.mode === 'ticked' && !here ? '' : 'disabled'}>
+        <span class="mono">${esc(q ? q.id : n)}</span>${f && f.questions.length > 1 ? `<span class="chip">set of ${f.questions.length}</span>` : ''}${here ? '<span class="chip" title="Not added twice">in this exam</span>' : ''}
         <span class="bp-text">${esc(trunc(m.title || (q && q.text) || '', 90))}</span><span class="subtle">${m.difficulty ? DIFF_LABEL[m.difficulty] : ''}${(m.tags || []).length ? ` · ${m.tags.map(esc).join(', ')}` : ''}</span></label>`; }).join('') || '<p class="subtle">No question in this group.</p>'}</div>`;
   const radio = (v, label) => `<label class="check"><input type="radio" name="bp-mode" value="${v}" ${bp.mode === v ? 'checked' : ''}><span>${label}</span></label>`;
   const sectionsLeft = bp.sections.length;
@@ -337,8 +344,9 @@ function renderPicker() {
         ${radio('new', 'The whole group, as a new section')}
         ${sectionsLeft ? radio('into', `The whole group, into the section ${bp.mode === 'into' ? secSel : ''}`) : ''}
         ${sectionsLeft ? radio('ticked', `The questions ticked below, into the section ${bp.mode === 'ticked' ? secSel : ''}`) : ''}
-        ${sectionsLeft ? radio('random', `<input class="input input-sm" type="number" id="bp-count" min="1" max="999" value="${bp.count}" style="width:70px" ${bp.mode === 'random' ? '' : 'disabled'}> picked at random from the group (shown first), into the section ${bp.mode === 'random' ? secSel : ''}`) : ''}
+        ${sectionsLeft ? radio('random', `<input class="input input-sm" type="number" id="bp-count" min="1" max="999" value="${bp.count}" style="width:70px" ${bp.mode === 'random' ? '' : 'disabled'}> picked at random from the group's questions not in this exam (shown first), into the section ${bp.mode === 'random' ? secSel : ''}`) : ''}
       </div>
+      ${g && g.scoring ? `<div class="bp-modes"><p class="subtle" style="margin:4px 0 2px">The group's scoring <code>${esc(g.scoring)}</code> goes to the questions without their own.</p><label class="check"><input type="checkbox" id="bp-scoring-all" ${bp.scoringAll ? 'checked' : ''}><span>Give it to every question, also those with their own scoring</span></label></div>` : ''}
       ${bp.chosen ? banner('info', 'info-circle', `Picked: ${esc(bp.chosen.join(', '))}`, 'These are added (the pick is made once). Pick again for another.') : ''}
       ${list}<div id="bp-msg"></div></div>
     <div class="dialog-foot"><button class="btn" data-act="dialog-cancel">Cancel</button>
@@ -355,13 +363,15 @@ async function bpPick() {
 }
 async function bpAdd() {
   const bp = S.bp; if (!bp) return;
-  const body = { bank: bp.bank, group: bp.group, mode: bp.mode === 'new' ? 'new' : 'into', section: bp.section || bp.sections[0] };
+  const body = { bank: bp.bank, group: bp.group, mode: bp.mode === 'new' ? 'new' : 'into', section: bp.section || bp.sections[0], scoring_all: bp.scoringAll };
   if (bp.mode === 'ticked') { if (!bp.ticked.length) { toast('Tick at least one question.', 'warning-triangle'); return; } body.items = bp.ticked; }
   if (bp.mode === 'random') body.items = bp.chosen;
   const r = await postJSON('/ui/api/bank-pull', body);
   if (!r.ok) { const m = $('#bp-msg'); if (m) m.innerHTML = banner('danger', 'warning-triangle', esc(r.error || 'Not added.'), ''); return; }
   closeDialog(); S.bp = null;
-  toast(r.what);
+  toast(r.what + (r.skipped && r.skipped.length ? ` (${r.skipped.join(', ')} already in the exam, not added twice)` : ''));
+  if (r.clashes && r.clashes.length) showClashes(r.clashes, 'exam');
+  S.bcopies = null;
   if (S.qtab === 'design' && typeof loadDesign === 'function') loadDesign();
   else { S.qdata = r; const a = r.added && r.added[0]; const f = a && qfile(a); if (f) S.qform = { file: a, id: f.questions[0].id, pending: [], saving: false }; renderQuestionsForm(); }
 }
@@ -372,7 +382,7 @@ async function openSaveDialog(what) {
   if (typeof flushQ === 'function') await flushQ();
   let r;
   try { r = await getJSON('/ui/api/banks'); } catch { toast('Your banks couldn\'t be read.', 'warning-triangle'); return; }
-  S.bs = { what, banks: r.banks || [], bank: (r.banks || [])[0] ? r.banks[0].name : '', data: null, group: '', linked: 'update', newBank: '' };
+  S.bs = { what, banks: r.banks || [], bank: (r.banks || [])[0] ? r.banks[0].name : '', data: null, group: '', linked: what.linked || 'update', newBank: '' };
   if (what.whole) { renderSaveDialog(); return; }
   await bsLoadBank();
 }
@@ -419,7 +429,178 @@ async function bsSave() {
   if (!r.ok) { const m = $('#bs-msg'); if (m) m.innerHTML = banner('danger', 'warning-triangle', esc(r.error || 'Not saved.'), ''); return; }
   closeDialog(); S.bs = null;
   toast(`${r.what}.`);
-  if (S.qtab === 'form' && typeof loadEditor === 'function' && S.route.kind === 'exam') loadEditor();
+  if (r.clashes && r.clashes.length) showClashes(r.clashes, 'bank');
+  if (S.qtab === 'form' && typeof loadEditor === 'function' && S.route.kind === 'exam') loadEditor(); else loadCopies();
+}
+
+/* ---------- In an exam: copies of bank questions (section 7.4) ----------
+   Each copy shows a status from fingerprints: Up to date, Bank updated, Edited here, Both changed.
+   Nothing changes unless the teacher asks: take the bank's version, keep this exam's, update the
+   bank's copy, or combine both (by hand where they changed the same place). Sections made from a
+   whole group offer the questions the group gained since. Server: ui_bankcopies.py. */
+
+const COPY_CLASS = { same: 'st-same', bank: 'st-bank', here: 'st-here', both: 'st-both', kept: 'st-here', gone: 'st-gone' };
+
+async function loadCopies() {
+  const project = S.project;
+  if (!project || S.route.kind !== 'exam') return;
+  let r;
+  try { r = await getJSON('/ui/api/bank-copies'); } catch (e) { console.error(e); return; }
+  if (S.project !== project || r.project !== project) return;
+  const before = JSON.stringify(S.bcopies || null);
+  S.bcopies = r;
+  if (JSON.stringify(r) === before) return;
+  const h = $('#q-head'); if (h && S.route.step === 'questions') h.innerHTML = questionsHead();
+  if ($('#q-list') && !inBank()) renderQList();
+  if ($('#q-form') && !inBank() && S.qform) { const f = qfile(S.qform.file); const box = $('#q-form .b-copy'); if (box && f) box.outerHTML = itemOrigin(f); }
+}
+const copyOf = (item) => (S.bcopies && item ? S.bcopies.copies.find((c) => c.item === item) : null);
+
+/* A small mark in the question list for a copy that isn't up to date. */
+function copyBadge(item) {
+  const c = copyOf(item);
+  if (!c || c.status === 'same') return '';
+  return ` <span class="b-status ${COPY_CLASS[c.status]}" title="A copy from the bank ${esc(c.bank)}: ${esc(c.words)}">${esc(c.words)}</span>`;
+}
+
+/* Above the questions: copies that changed, and groups that gained questions. */
+function bankStrip() {
+  const d = S.bcopies;
+  if (!d || d.project !== S.project) return '';
+  const n = d.counts || {};
+  const parts = [['bank', 'newer in the bank'], ['here', 'edited here'], ['both', 'changed in both'], ['kept', 'with a newer bank version set aside'], ['gone', 'no longer in their bank']]
+    .filter(([k]) => n[k]).map(([k, w]) => `${n[k]} ${w}`);
+  let html = '';
+  if (parts.length) {
+    html += banner('info', 'book-stack', `Questions from your banks: ${esc(parts.join(' · '))}`, d.lock ? 'The exam is printed: only answer key and scoring fixes can be taken from a bank.' : 'Nothing changes until you choose.',
+      `<button class="btn btn-sm" data-act="copies-open">${ic('git-compare')} Review…</button>`);
+  }
+  for (const f of d.follow || []) {
+    const msg = [f.new.length ? `${plural(f.new.length, 'new question', 'new questions')} (${esc(f.new.map((x) => x.item).join(', '))})` : '',
+      f.gone.length ? `${plural(f.gone.length, 'question', 'questions')} of the section no longer in the group (${esc(f.gone.join(', '))}, kept here)` : ''].filter(Boolean).join('; ');
+    html += banner('info', 'book-stack', `The group ${esc(f.title)} of the bank ${esc(f.bank)}, which the section ${esc(f.section)} was made from: ${msg}`, '',
+      `${f.new.length ? `<button class="btn btn-sm" data-act="follow-add" data-section="${esc(f.section)}">${ic('plus')} Add ${f.new.length === 1 ? 'it' : 'them'} to the section</button>` : ''}<button class="btn btn-sm btn-ghost" data-act="follow-dismiss" data-section="${esc(f.section)}">${f.new.length ? 'Not these' : 'OK'}</button>`);
+  }
+  return html ? `<div class="b-strip">${html}</div>` : '';
+}
+
+async function followAdd(section) {
+  const f = ((S.bcopies && S.bcopies.follow) || []).find((x) => x.section === section);
+  if (!f) return;
+  const r = await postJSON('/ui/api/bank-pull', { bank: f.bank, group: f.group, items: f.new.map((x) => x.item), mode: 'into', section });
+  if (!r.ok) { notice('Not added', r.error || 'Unknown error'); return; }
+  toast(r.what);
+  if (r.clashes && r.clashes.length) showClashes(r.clashes, 'exam');
+  afterCopyChange(r);
+}
+async function followDismiss(section) {
+  const r = await postJSON('/ui/api/bank-follow', { section });
+  if (!r.ok) { toast(r.error || 'Not saved.', 'warning-triangle'); return; }
+  S.bcopies = r.copies;
+  const h = $('#q-head'); if (h) h.innerHTML = questionsHead();
+}
+function afterCopyChange(r) {
+  if (S.qtab === 'design' && typeof loadDesign === 'function') { loadDesign(); return; }
+  if (r && r.files) { const keep = S.qform; S.qdata = r; S.qform = keep && qfile(keep.file) ? keep : S.qform; if (!qsel()) S.qform = null; renderQuestionsForm(); }
+  if (r && r.copies) { S.bcopies = r.copies; const h = $('#q-head'); if (h) h.innerHTML = questionsHead(); renderQList(); } else loadCopies();
+}
+
+/* The list of copies that changed. */
+function openCopies() {
+  const d = S.bcopies; if (!d) return;
+  const list = d.copies.filter((c) => c.status !== 'same');
+  openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('book-stack')}</span><div><h2 id="dlg-title">Questions from your banks</h2><p class="subtle" style="margin:2px 0 0">Copies whose bank question or exam copy changed since they were copied.</p></div></div>
+    <div class="dialog-body">${list.length ? `<div class="bp-list">${list.map((c) => `<div class="bp-row"><span class="mono">${esc(c.item)}</span><span class="b-status ${COPY_CLASS[c.status]}">${esc(c.words)}</span>
+      <span class="bp-text subtle">bank ${esc(c.bank)} · ${esc(c.bank_item)}</span><button class="btn btn-sm" data-act="copy-compare" data-item="${esc(c.item)}">${ic('git-compare')} Compare…</button></div>`).join('')}</div>` : '<p class="subtle">Every copy is up to date.</p>'}</div>
+    <div class="dialog-foot"><button class="btn" data-act="dialog-cancel">Close</button></div>`);
+  const dlg = $('#layer .dialog'); if (dlg) dlg.classList.add('dialog-wide');
+}
+
+/* One copy against its bank question. */
+async function openCompare(item) {
+  if (typeof flushQ === 'function') await flushQ();
+  let r;
+  try { r = await getJSON(`/ui/api/bank-copy?item=${enc(item)}`); } catch { toast('The comparison couldn\'t be read.', 'warning-triangle'); return; }
+  if (r.error) { notice('No comparison', r.error); return; }
+  S.bcmp = r;
+  renderCompare();
+}
+function renderCompare() {
+  const r = S.bcmp; if (!r) return;
+  const diff = (title, d, empty) => `<div class="b-diff"><div class="hist-summary-title">${title}</div>${!d ? '' : d.too_big ? '<p class="subtle">Too big to show.</p>' : d.rows.length ? `<div class="diff">${diffRows(d.rows)}</div>` : `<p class="subtle">${empty}</p>`}</div>`;
+  const figs = r.figures && r.figures.length ? `<p class="subtle">Figures that differ: ${esc(r.figures.join(', '))}</p>` : '';
+  let body = ''; let acts = '';
+  const take = `<button class="btn ${r.status === 'bank' ? 'btn-primary' : ''}" data-act="copy-op" data-op="take" ${r.take_refused ? 'disabled' : ''}>${ic('data-transfer-down')} Take the bank's version</button>`;
+  const keep = `<button class="btn" data-act="copy-op" data-op="keep" title="Keep this exam's question as it is; the bank's newer version won't be offered again">Keep this exam's</button>`;
+  const push = `<button class="btn ${r.status === 'here' ? 'btn-primary' : ''}" data-act="copy-op" data-op="push" title="The bank's question becomes this exam's version (a new version in the bank's history)">${ic('data-transfer-up')} Update the bank's copy</button>`;
+  const asNew = `<button class="btn" data-act="copy-save-new" data-item="${esc(r.item)}">${ic('book-stack')} Save as a new question in a bank…</button>`;
+  if (r.status === 'gone') {
+    body = '<p>The bank\'s question was deleted, or its bank isn\'t among your banks any more. This exam keeps its copy.</p>';
+    acts = asNew;
+  } else if (r.status === 'same') {
+    body = '<p>This exam\'s copy is the bank\'s current version.</p>';
+  } else if (r.status === 'bank') {
+    body = r.since_bank ? diff('What changed in the bank since the copy', r.since_bank, 'Nothing in the text (a figure changed).') : diff('What taking the bank\'s version changes here', r.take, 'Nothing in the text (a figure changed).');
+    acts = keep + take;
+  } else if (r.status === 'here') {
+    body = r.since_here ? diff('What changed in this exam since the copy', r.since_here, 'Nothing in the text (a figure changed).') : diff('What updating the bank\'s copy changes there', r.push, 'Nothing in the text (a figure changed).');
+    acts = asNew + push;
+  } else if (r.status === 'kept') {
+    body = '<p class="subtle">You chose to keep this exam\'s version when the bank changed. It can still be taken.</p>'
+      + (r.since_bank ? diff('What changed in the bank since the copy', r.since_bank, 'Nothing in the text (a figure changed).') : diff('What taking the bank\'s version changes here', r.take, 'Nothing in the text (a figure changed).'));
+    acts = asNew + take;
+  } else {
+    body = (r.since_here ? diff('Changed in this exam since the copy', r.since_here, 'Nothing in the text.') + diff('Changed in the bank since the copy', r.since_bank, 'Nothing in the text.')
+      : diff('What taking the bank\'s version changes here', r.take, 'Nothing in the text.'))
+      + (r.can_merge ? '<p class="subtle">Combine both: the changes of each side are kept; where both changed the same place you choose by hand.</p>' : '');
+    acts = keep + push + take + (r.can_merge ? `<button class="btn btn-primary" data-act="copy-op" data-op="merge">${ic('git-merge')} Combine both</button>` : '');
+  }
+  openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('git-compare')}</span><div><h2 id="dlg-title">${esc(r.item)} and the bank's ${esc(r.bank_item || '')}</h2>
+      <p class="subtle" style="margin:2px 0 0"><span class="b-status ${COPY_CLASS[r.status]}">${esc(r.words)}</span> · bank ${esc(r.bank)}</p></div></div>
+    <div class="dialog-body">${r.take_refused ? banner('warning', 'lock', esc(r.take_refused), '') : ''}${body}${figs}<div id="bcmp-msg"></div></div>
+    <div class="dialog-foot"><button class="btn" data-act="dialog-cancel">Close</button>${acts}</div>`);
+  const dlg = $('#layer .dialog'); if (dlg) dlg.classList.add('dialog-wide');
+}
+async function copyOp(op, text) {
+  const r0 = S.bcmp; if (!r0) return;
+  if (op === 'push' && !(await confirmDialog({ title: `Update the bank's ${esc(r0.bank_item)}?`, ok: 'Update', icon: 'data-transfer-up',
+    body: `<p>The bank ${esc(r0.bank)} gets this exam's version of the question (a new version in its History). Other exams with a copy will see "Bank updated".</p>` }))) { renderCompare(); return; }
+  const body = { item: r0.item, op, digest: r0.digest, bank_fp: r0.bank_fp };
+  if (typeof text === 'string') body.text = text;
+  const r = await postJSON('/ui/api/bank-copy', body);
+  if (r.conflicts) { openMergeEditor(r.text, r.conflicts); return; }
+  if (!r.ok) {
+    if (S.bmerge) { const m = $('#bmerge-msg'); if (m) { m.innerHTML = banner('danger', 'warning-triangle', esc(r.error || 'Not saved.'), ''); return; } }
+    if (r.conflict) { // one side changed meanwhile: the comparison is read again, then the message
+      try { const n = await getJSON(`/ui/api/bank-copy?item=${enc(r0.item)}`); if (!n.error) { S.bcmp = n; renderCompare(); } } catch { /* the message below says to look again */ }
+    }
+    if (!$('#bcmp-msg')) renderCompare();
+    const m = $('#bcmp-msg'); if (m) m.innerHTML = banner('danger', 'warning-triangle', esc(r.error || 'Not done.'), '');
+    return;
+  }
+  if (S.bmerge) { S.bmerge.ed.destroy(); S.bmerge = null; }
+  closeDialog(); S.bcmp = null;
+  toast(r.what);
+  afterCopyChange(r);
+}
+/* Both changed the same place: the combined text with the places marked, to finish by hand. */
+function openMergeEditor(text, n) {
+  openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('git-merge')}</span><div><h2 id="dlg-title">Combine both: ${plural(n, 'place', 'places')} to choose</h2>
+      <p class="subtle" style="margin:2px 0 0">Between <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; this exam</code> and <code>=======</code> is this exam's text, then the bank's until <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; the bank</code>. Keep what you want and remove the marks.</p></div></div>
+    <div class="dialog-body"><div class="sl-host" id="bmerge-host" style="height:min(55vh,460px)"></div><div id="bmerge-msg"></div></div>
+    <div class="dialog-foot"><button class="btn" data-act="copy-merge-cancel">Cancel</button><button class="btn btn-primary" data-act="copy-merge-save">${ic('floppy-disk')} Save the combined question</button></div>`);
+  const d = $('#layer .dialog'); if (d) d.classList.add('dialog-wide');
+  S.bmerge = { ed: latexEditor('bmerge-host', { onSave: () => copyOp('merge', S.bmerge.ed.getValue()) }) };
+  S.bmerge.ed.setValue(text, -1);
+}
+function mergeCancel() { if (S.bmerge) { S.bmerge.ed.destroy(); S.bmerge = null; } closeDialog(); S.bcmp = null; }
+
+/* Macros defined differently in the exam and the bank: the receiving side kept its own. */
+function showClashes(list, kept) {
+  openDialog(`<div class="dialog-head"><span class="dialog-icon brand">${ic('warning-triangle')}</span><div><h2 id="dlg-title">${plural(list.length, 'macro is', 'macros are')} defined differently</h2></div></div>
+    <div class="dialog-body"><p>${kept === 'exam' ? 'The exam keeps its own definition; the bank\'s was not added.' : 'The bank keeps its own definition; the exam\'s was not added.'} Check that the questions still read as meant.</p>
+      ${list.map((c) => `<div class="b-clash"><b class="mono">${esc(c.macro)}</b><div>exam: <code>${esc(c.exam)}</code></div><div>bank: <code>${esc(c.bank)}</code></div></div>`).join('')}</div>
+    <div class="dialog-foot"><button class="btn btn-primary" data-act="dialog-ok">OK</button></div>`);
 }
 
 /* ---------- Actions ---------- */
@@ -446,4 +627,12 @@ const BANK_ACTIONS = {
   'bank-save-section': (el) => openSaveDialog({ section: el.dataset.section }),
   'bank-save-exam': () => openSaveDialog({ whole: true }),
   'bs-save': () => bsSave(),
+  'copies-open': () => openCopies(),
+  'copy-compare': (el) => openCompare(el.dataset.item),
+  'copy-op': (el) => copyOp(el.dataset.op),
+  'copy-save-new': (el) => { closeDialog(); S.bcmp = null; openSaveDialog({ items: [el.dataset.item], linked: 'new' }); },
+  'copy-merge-save': () => { if (S.bmerge) copyOp('merge', S.bmerge.ed.getValue()); },
+  'copy-merge-cancel': () => mergeCancel(),
+  'follow-add': (el) => followAdd(el.dataset.section),
+  'follow-dismiss': (el) => followDismiss(el.dataset.section),
 };

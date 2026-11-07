@@ -116,6 +116,12 @@ With `AMC_E2E_KEEP=1`, the test exam is kept afterwards, to look at it.
 node tests-ui/e2e-banks.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 ```
 
+`e2e-copies.mjs`: copies of bank questions in an exam. A group with a default scoring added from the picker (which says so); three copies up to date, a question the exam has refused a second time; an edit in the bank shown as "Bank updated" above the questions and in the list, compared, and taken (the scoring given on the way in kept, one version); an edit in the form shown as "Edited here", and "Update the bank's copy" (the bank gets the text without that scoring, a version in its History); edits on both sides combined, then the same line changed on both sides finished by hand (a save with the marks left refused); "Keep this exam's"; a section offering a question its group gained ("Add it"), then "Not these", and a question deleted from the bank; a macro the exam defines differently flagged with both definitions; the paper builds; once printed, a bank version changing the text refused and an answer key fix taken, and the group's new questions no longer offered.
+
+```
+node tests-ui/e2e-copies.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
+```
+
 ### LaTeX for pro users
 
 `e2e-latex.mjs`: the Form | LaTeX switch on an item (completion on, a save with an unclosed brace refused with its line, "Check this question" compiling it with a picture, the save, a failing check pointing at its line, leaving the question saving what was typed, the choice remembered after a reload); a section edited as one document (reordered, an item added after "what will happen", a changed separator refused); a build error traced to the item's file, line and question, and "Open it"; and a question written inline in an AMC template exam, renamed through its LaTeX. In shared mode the check runs in the sandbox; a check that `\input`s another teacher's file fails without showing it.
