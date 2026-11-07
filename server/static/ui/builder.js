@@ -142,7 +142,8 @@ function blockSummary(b) {
     case 'id_grid': return `${b.label}: ${d.student.id_digits} digits, ${b.orientation === 'v' ? 'vertical' : 'horizontal'}`;
     case 'class_grid': return `${b.label}: ${d.student.class_digits} digits`;
     case 'signatures': return b.lines.join(', ');
-    case 'numeric_answers': case 'choice_answers': case 'all_answers': return `${b.columns} column${b.columns === 1 ? '' : 's'}${b.heading ? ': ' + b.heading : ''}`;
+    case 'numeric_answers': return `${b.columns} grid${b.columns === 1 ? '' : 's'} per line, number on top${b.heading ? ': ' + b.heading : ''}`;
+    case 'choice_answers': case 'all_answers': return `${b.columns} column${b.columns === 1 ? '' : 's'}${b.heading ? ': ' + b.heading : ''}`;
     default: return '';
   }
 }
@@ -234,7 +235,7 @@ function renderBlockForm(b, where, L) {
     case 'signatures':
       return `<div class="field-label">Lines</div>${b.lines.map((l, i) => `<div class="b-item row" style="gap:6px"><input class="input" data-pbb="lines.${i}" value="${esc(l)}" ${dis}>${L ? '' : `<button class="btn btn-ghost btn-sm" data-act="pb-list-remove" data-list="lines" data-i="${i}">${ic('trash')}</button>`}</div>`).join('')}${L || b.lines.length >= 4 ? '' : `<button class="btn btn-sm" data-act="pb-list-add" data-list="lines" data-kind="text">${ic('plus')} A line</button>`}`;
     case 'numeric_answers': case 'choice_answers': case 'all_answers':
-      return `<div class="form-grid"><label class="field"><span class="field-label">Columns</span><input class="input input-num" type="number" min="1" max="8" data-pbb="columns" data-type="int" value="${b.columns}" ${dis}></label><label class="field"><span class="field-label">Heading</span><input class="input" data-pbb="heading" value="${esc(b.heading)}" ${dis}></label></div><p class="field-hint" style="margin:0">${{ numeric_answers: 'The digit boxes of the numeric questions.', choice_answers: 'The boxes of every question that isn\'t numeric.', all_answers: 'The boxes of every question.' }[b.type]}</p>`;
+      return `<div class="form-grid"><label class="field"><span class="field-label">${b.type === 'numeric_answers' ? 'Grids per line' : 'Columns'}</span><input class="input input-num" type="number" min="1" max="8" data-pbb="columns" data-type="int" value="${b.columns}" ${dis}></label><label class="field"><span class="field-label">Heading</span><input class="input" data-pbb="heading" value="${esc(b.heading)}" ${dis}></label></div><p class="field-hint" style="margin:0">${{ numeric_answers: 'The digit grids of the numeric questions, side by side, each with its question number on top. A grid wider than its share of the line takes the room it needs, and the next ones go to the following line.', choice_answers: 'The boxes of every question that isn\'t numeric.', all_answers: 'The boxes of every question.' }[b.type]}</p>`;
     default: return '';
   }
 }

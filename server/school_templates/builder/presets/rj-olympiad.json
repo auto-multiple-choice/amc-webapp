@@ -51,7 +51,7 @@
   {"id": "s4", "after": "3mm", "cells": [
    {"id": "c1", "width": 2, "block": {"type": "class_grid", "label": "Class", "orientation": "v"}},
    {"id": "c2", "width": 3, "block": {"type": "id_grid", "label": "Reg. No.", "orientation": "v"}},
-   {"id": "c3", "width": "auto", "block": {"type": "numeric_answers", "columns": 6, "heading": "Mark your numerical answers here"}}]},
+   {"id": "c3", "width": "auto", "block": {"type": "numeric_answers", "columns": 4, "heading": "Mark your numerical answers here"}}]},
   {"id": "s5", "cells": [{"id": "c1", "width": 12, "block": {"type": "choice_answers", "columns": 3, "heading": "Mark your choice for the objective questions"}}]}
  ]
 }

@@ -83,7 +83,7 @@ BLOCKS = {
     "id_grid": ("ID grid", "sheet", False, {"label": "Reg. No.", "orientation": "v"}),
     "class_grid": ("Class grid", "sheet", False, {"label": "Class", "orientation": "v"}),
     "signatures": ("Signatures", "sheet", False, {"lines": ["Student's signature", "Invigilator's signature"]}),
-    "numeric_answers": ("Numeric answers", "sheet", True, {"columns": 6, "heading": "Mark your numerical answers here"}),
+    "numeric_answers": ("Numeric answers", "sheet", True, {"columns": 4, "heading": "Mark your numerical answers here"}),
     "choice_answers": ("Choice answers", "sheet", True, {"columns": 3, "heading": "Mark your choice for the objective questions"}),
     "all_answers": ("All answers", "sheet", True, {"columns": 2, "heading": ""}),
 }
@@ -635,10 +635,13 @@ def _block_tex(design, b, where, summary, namefield):
         lines = [r"%s: \dotfill" % esc(x) for x in b["lines"] if x]
         return (r"\vspace*{6mm}" + "\n" + (r"\\[6mm]" + "\n").join(lines)) if lines else ""
     if t in ANSWER_BLOCKS:
-        inner = {"numeric_answers": r"\AMCformFilter{\AMCifcategory{numeric}}",
-                 "choice_answers": r"\AMCformFilter{!\AMCifcategory{numeric}}",
-                 "all_answers": r"\AMCform"}[t]
+        if t == "numeric_answers":
+            # each question's number above its grid, the grids side by side (no columns to overflow)
+            head = (r"\dbox{\bfseries %s}\par" % esc(b["heading"]) + "\n") if b["heading"] else ""
+            return head + r"\amcuiNumericForm{%d}" % b["columns"]
         head = (r"\dbox{\bfseries %s}\\[2ex]" % esc(b["heading"]) + "\n") if b["heading"] else ""
+        inner = {"choice_answers": r"\AMCformFilter{!\AMCifcategory{numeric}}",
+                 "all_answers": r"\AMCform"}[t]
         if b["columns"] > 1:
             env = "multicols*" if where == "boxed" else "multicols"
             inner = (r"\setlength{\columnsep}{2ex}\setlength{\columnseprule}{1pt}" + "\n"
@@ -817,6 +820,7 @@ def layout(design, versions, summary=()):
         "% ------ The version's code, from AMC's copy number ------",
         r"\makeatletter",
         r"\newcommand{\amcuiCode}{\ifcase\AMCid@etud ?%s\fi}" % "".join(r"\or " + (c if c else r"\relax") for c in codes),
+        r"\newcommand{\amcuiNumLabel}[1]{%s}" % (r"\textsf{Q-\ifnum#1<10 0\fi#1}" if page["question_style"] == "rj" else r"{\small\AMC@loc@qf{#1}}"),
         r"\makeatother",
         "",
         "% ------ Small pieces ------",
@@ -835,6 +839,17 @@ def layout(design, versions, summary=()):
         r"\newcommand{\amcuiPoint}[1]{\par\noindent\amcuiBullet\ #1\par\vspace{1ex}}",
         r"\newcommand{\amcuiCenterRule}[1]{\vspace{0.1\baselineskip}\centerline{\rule{0.35\linewidth}{.4pt}\dbox{#1}\rule{0.35\linewidth}{.4pt}}\vspace{0.25\baselineskip}}",
         r"\newcommand{\amcuiRoughWork}[2]{\amcuiCount=0 \loop\ifnum\amcuiCount<#1 \clearpage\amcuiCenterRule{#2}\advance\amcuiCount by 1 \repeat}",
+        "% Numeric answers: one box per question, its number above its grid, the boxes side by",
+        "% side, #1 to a line (wider grids take more room and the next ones wrap). AMC opens and",
+        "% closes each question with \\AMCformQuestion and \\AMCformAfterQuestion; each grid is",
+        "% typeset once, in a box that is placed once.",
+        r"\newlength{\amcuiNumW}\newlength{\amcuiNumT}\newlength{\amcuiNumGap}\setlength{\amcuiNumGap}{3mm}\newsavebox{\amcuiNumBox}",
+        r"\newcommand{\amcuiNumericForm}[1]{\par{\setlength{\amcuiNumW}{\dimexpr(\linewidth-\amcuiNumGap*(#1-1))/#1\relax}%",
+        r"  \def\AMCformBeforeQuestion{\leavevmode}%",
+        r"  \def\AMCformQuestion##1{\setbox\amcuiNumBox\hbox\bgroup\begin{tabular}[t]{@{}c@{}}\amcuiNumLabel{##1}\\[.6ex]}%",
+        r"  \def\AMCformAfterQuestion{\end{tabular}\egroup\setlength{\amcuiNumT}{\ifdim\wd\amcuiNumBox>\amcuiNumW\wd\amcuiNumBox\else\amcuiNumW\fi}\makebox[\amcuiNumT]{\box\amcuiNumBox}\hspace{\amcuiNumGap}}%",
+        r"  \lineskiplimit=0pt\lineskip=2.5ex\relax\nointerlineskip\vspace{2ex}%",
+        r"  \AMCformFilter{\AMCifcategory{numeric}}\par}}",
         "",
     ]
     name_cell = _namefield_cell(design)

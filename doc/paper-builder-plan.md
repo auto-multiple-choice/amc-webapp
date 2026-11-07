@@ -156,7 +156,7 @@ paper, with these blocks:
 | **Class grid** | the same for the class | yes |
 | **Signatures** | student's and invigilator's signature lines | no |
 | **Instructions** | LaTeX, e.g. how to darken a numeric answer | no |
-| **Numeric answers** | a column of digit boxes per numeric question, in N columns | yes |
+| **Numeric answers** | the digit grid of each numeric question with its number on top, side by side, N to a line (a wider grid takes more room and the next ones wrap) | yes |
 | **Choice answers** | the boxes of the other questions, in N columns | yes |
 | **All answers** | every question's boxes (`\AMCform`), in N columns | yes |
 | **Text (LaTeX)** | anything | no |
@@ -451,6 +451,16 @@ Question banks (phase 9) come after B4, or before B1 (section 14, point 3).
   besides. A section added after others follows their choice, and the
   choice is put back after a move or a removal, unless the sections
   differ (then each keeps its own).
+- **Numeric answers on the sheet** (reported on 7 November: in narrow
+  columns a question number overlapped the previous grid). The block no
+  longer uses `multicols`: `\amcuiNumericForm{n}` redefines AMC's form
+  hooks inside a group, so that `\AMCformQuestion` opens a box holding
+  a one-column tabular with the number (`\amcuiNumLabel`, in the
+  paper's question style) and `\AMCformAfterQuestion` closes it. The
+  box is placed once (it holds AMC's box positions), at a width of a
+  line's n-th share or its own width when wider, so grids sit side by
+  side and wrap instead of overflowing. The setting is "grids per line"
+  (4 in the RJ layout).
 - **Writing boxes.** A box for one handwritten letter or digit (the
   registration number, the class, the level, the grey prefix) is
   `\amcuiCharBox`: an `\fcolorbox` with `\fboxsep` at 0pt around a

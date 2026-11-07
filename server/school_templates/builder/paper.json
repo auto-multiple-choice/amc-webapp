@@ -431,7 +431,7 @@
      "pad": "2mm",
      "block": {
       "type": "numeric_answers",
-      "columns": 6,
+      "columns": 4,
       "heading": "Mark your numerical answers here"
      },
      "align": "center"
