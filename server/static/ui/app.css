@@ -507,3 +507,15 @@ input[type="color"] { width: 44px; height: 34px; padding: 2px; border: 1px solid
 .bp-row:first-child { border-top: 0; }
 .bp-row.is-chosen { background: var(--accent-soft); }
 .bp-text { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Copies of bank questions (banks.js, section 7.4) */
+.b-status { display: inline-block; font-size: 11px; font-weight: 600; line-height: 1.5; padding: 0 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); background: var(--surface); white-space: nowrap; vertical-align: 1px; }
+.b-status.st-same { color: var(--success); border-color: var(--success-border); background: var(--success-soft); }
+.b-status.st-bank { color: var(--brand); border-color: var(--accent-border); background: var(--accent-soft); }
+.b-status.st-here { color: var(--text-2); }
+.b-status.st-both, .b-status.st-gone { color: var(--warning); border-color: var(--warning-border); background: var(--warning-soft); }
+.b-copy { align-items: center; }
+.b-strip { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+.bp-row.is-in { opacity: .6; }
+.b-diff { margin: 0 0 12px; }
+.b-diff .diff { max-height: 32vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; margin-top: 6px; }
+.b-clash { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; margin-top: 8px; font-size: 13px; overflow-wrap: anywhere; }

@@ -704,6 +704,42 @@ try:
     check("banks: the packages of the bank's preamble the exam doesn't load are found, comments ignored",
           bk.needed_packages("\\usepackage{amsmath,amssymb}\n% \\usepackage{tikz}\n\\usepackage[x]{pifont}", "\\usepackage{amsmath}")
           == ["\\usepackage{amssymb}", "\\usepackage[x]{pifont}"] and bk.packages_of("\\usepackage[utf8]{inputenc} % \\usepackage{a}") == {"inputenc"})
+    # copies (section 7.4): the way in, the way back, status, merge
+    _bt = ("\\begin{question}{q1}One\\begin{choices}\\correctchoice{1}\\wrongchoice{2}\\end{choices}\\end{question}\n\n"
+           "\\begin{question}{q2}\\scoring{b=2}Two\\begin{choices}\\correctchoice{1}\\wrongchoice{2}\\end{choices}\\end{question}\n")
+    _et, _sc = bk.way_in(_bt, {"q1": "q1-2"}, "b=3,m=-1")
+    _o = {"ids": {"q1": "q1-2"}, "scoring": "b=3,m=-1", "scored": _sc, "fingerprint": bk.fingerprint(_bt, {})}
+    _qs = {q["id"]: q for q in sc.read_latex(_et)}
+    check("copies: the way in renames and gives the group's scoring to questions without their own",
+          set(_qs) == {"q1-2", "q2"} and _qs["q1-2"]["scoring"]["rule"] == "b=3,m=-1" and _qs["q2"]["scoring"]["rule"] == "b=2" and _sc == {"q1": ""})
+    _et2, _sc2 = bk.way_in(_bt, {}, "b=3,m=-1", replace=True)
+    check("copies: ...to every question when asked, remembering their own rule",
+          _sc2 == {"q1": "", "q2": "b=2"} and all(q["scoring"]["rule"] == "b=3,m=-1" for q in sc.read_latex(_et2)))
+    check("copies: the way back undoes both exactly", bk.way_back(_et, _o) == _bt
+          and bk.way_back(_et2, {"scoring": "b=3,m=-1", "scored": _sc2}) == _bt)
+    check("copies: a fresh copy is up to date", bk.status(_et, {}, _o, _bt, {}) == "same")
+    _ee = _et.replace("One", "One, edited here")
+    _be = _bt.replace("Two", "Two, edited in the bank")
+    check("copies: an edit in the exam, in the bank, in both, a figure, a deleted bank item",
+          bk.status(_ee, {}, _o, _bt, {}) == "here" and bk.status(_et, {}, _o, _be, {}) == "bank"
+          and bk.status(_ee, {}, _o, _be, {}) == "both" and bk.status(_et, {}, _o, _bt, {"f.png": b"1"}) == "bank"
+          and bk.status(_et, {}, _o, None, {}) == "gone")
+    _q1 = next(q for q in sc.read_latex(_et) if q["id"] == "q1-2")
+    check("copies: a scoring changed in the exam is an edit there, kept on the way back",
+          bk.status(sc.set_scoring(_et, _q1, "b=5"), {}, _o, _bt, {}) == "here"
+          and "b=5" in bk.way_back(sc.set_scoring(_et, _q1, "b=5"), _o))
+    check("copies: names the bank's newer version adds get free names in the exam",
+          bk.extend_ids(_bt.replace("{q2}", "{q3}"), {"q1": "q1-2", "gone": "x"}, {"q3", "q1-2"}) == {"q1": "q1-2", "q3": "q3-2"})
+    _base, _ = bk.way_in(_bt, {"q1": "q1-2"}, "b=3,m=-1")
+    _th, _ = bk.way_in(_be, {"q1": "q1-2"}, "b=3,m=-1")
+    _mg, _nc = bk.merge_texts(_ee, _base, _th)
+    check("copies: changes in different places are combined", _nc == 0 and "One, edited here" in _mg and "Two, edited in the bank" in _mg)
+    _mg2, _nc2 = bk.merge_texts(_et.replace("One", "Mine"), _base, _base.replace("One", "Theirs"))
+    check("copies: ...the same place is marked for choosing by hand", _nc2 == 1 and bk.CONFLICT_RE.search(_mg2) and "<<<<<<< this exam" in _mg2)
+    check("copies: a macro defined differently in the exam and the bank is flagged, not a same one",
+          bk.clashes(["$\\N$ and $\\Z$"], "\\newcommand{\\N}{\\mathbb{N}}\n\\newcommand{\\Z}{\\mathbb{Z}}",
+                     "\\providecommand{\\N}{\\mathbb{N}}\n\\newcommand{\\Z}{\\mathbf{Z}}\n\\begin{document}")
+          == [{"macro": "\\Z", "bank": "\\newcommand{\\Z}{\\mathbb{Z}}", "exam": "\\newcommand{\\Z}{\\mathbf{Z}}"}])
     # a bank's own history and trash
     open(os.path.join(_bd, "bank.json"), "w").write(bk.to_json(_r))
     _rb = vcs.Repo(_bd, _root, "bank").open()

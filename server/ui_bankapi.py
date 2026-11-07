@@ -15,6 +15,9 @@ side uses ui.py's helpers. Registered by ui.py on its blueprint.
   POST /ui/api/bank/<b>/import           RJ-style LaTeX files (\\element blocks) with figures
   POST /ui/api/bank-pull                 bank -> the open exam
   POST /ui/api/bank-save                 the open exam -> a bank
+
+Copies and their status, updates either way and a section's follow-up of
+its group are in ui_bankcopies.py.
 """
 import os
 import re
@@ -24,6 +27,7 @@ import uuid
 
 from flask import jsonify, request
 
+import ui_bankcopies as copies
 import ui_banks as banks
 import ui_items as items
 import ui_latex as ltx
@@ -43,6 +47,7 @@ def init(bp, ui_module):
     ui = ui_module
     for rule, view, methods in ROUTES:
         bp.add_url_rule(rule, view.__name__, view, methods=methods)
+    copies.init(bp, ui_module, __import__(__name__))
 
 
 # ---------------------------------------------------------------- helpers
@@ -535,13 +540,24 @@ def _exam_groups(pdir):
         | {q["group"] for q in ui._all_questions(pdir, ui._source_files(pdir)) if q.get("group")}
 
 
+def _exam_copies_of(pdir, bank_uid):
+    """The uids of the bank's items the exam has a copy of."""
+    out = set()
+    for en in ui._item_names(pdir):
+        o = banks.item_meta(pdir, en).get("origin") or {}
+        if o.get("bank_uid") == bank_uid and o.get("item_uid"):
+            out.add(o["item_uid"])
+    return out
+
+
 def api_bank_pull():
     """Into the open exam: a whole group (as a new section, or into one),
     selected items of a group, or COUNT of them picked at random (preview
     first: the pick is shown, then added as shown). Each is a copy with a
-    record of where it came from; question names are changed where the
-    exam already uses them; the group's scoring goes to questions that
-    have none. One version."""
+    record of where it came from (ui_banks.way_in); question names are
+    changed where the exam already uses them; the group's scoring goes to
+    questions that have none (to all with SCORING_ALL). Items the exam
+    already has a copy of are not added twice. One version."""
     name = ui._open_project()
     if not name:
         return _err("This exam doesn't exist any more.")
@@ -562,9 +578,10 @@ def api_bank_pull():
     if not names:
         return _err("Choose at least one question.")
     whole = not isinstance(chosen, list) and not data.get("count")
+    have = _exam_copies_of(pdir, b["uid"])
     if data.get("count"):
-        try:
-            names = banks.pick(names, int(data["count"]), data.get("seed"))
+        try:  # drawn from the questions the exam doesn't have yet
+            names = banks.pick([n for n in names if banks.item_meta(bdir, n).get("uid") not in have], int(data["count"]), data.get("seed"))
         except (TypeError, ValueError):
             return _err("How many questions to pick: a whole number.")
     if data.get("preview"):
@@ -594,26 +611,28 @@ def api_bank_pull():
     head = _repo(bdir).head()
     exam_ids = {q["id"] for q in ui._all_questions(pdir, ui._source_files(pdir))}
     exam_items = set(ui._item_names(pdir))
+    skipped = [n for n in names if banks.item_meta(bdir, n).get("uid") in have]
+    names = [n for n in names if n not in skipped]
+    if not names:
+        return _err("This exam already has " + ("this question" if len(skipped) == 1 else "these questions") + " from the bank.")
+    replace = bool(data.get("scoring_all")) and bool(g["scoring"])
     pools = ui._pools_text(pdir)
-    writes, report = {}, []
+    writes, report, uids = {}, [], []
     for n in names:
         files = banks.item_files(os.path.join(bdir, items.ITEMS_DIR, n))
         text = files[items.ITEM_FILE].decode("utf-8", "replace")
         mapping = banks.free_ids(text, exam_ids)
         exam_ids.update(mapping.values())
         exam_ids.update(q for q in banks.question_ids(text) if q not in mapping)
-        new_text = banks.rename_ids(text, mapping)
-        if g["scoring"]:
-            for qid in banks.question_ids(new_text):
-                q = next(x for x in scale.read_latex(new_text) if x["id"] == qid)
-                if not q["scoring"]:
-                    new_text = scale.set_scoring(new_text, q, g["scoring"])
+        new_text, scored = banks.way_in(text, mapping, g["scoring"], replace)
         en = items.free_name(n, exam_items)
         exam_items.add(en)
         m = banks.item_meta(bdir, n)
+        uids.append(m.get("uid"))
         origin = {"bank": os.path.basename(bdir), "bank_uid": b["uid"], "item": n, "item_uid": m.get("uid"),
                   "revision": head, "fingerprint": banks.fingerprint(text, banks.figures_of(files)),
-                  "ids": {k: v for k, v in mapping.items()}, "at": int(time.time())}
+                  "ids": {k: v for k, v in mapping.items()}, "scoring": g["scoring"] if scored else "", "scored": scored,
+                  "replace": replace, "at": int(time.time())}
         writes[items.item_file(en)] = new_text.encode("utf-8")
         writes[f"{items.ITEMS_DIR}/{en}/{items.META_FILE}"] = banks.meta_json(
             title=m.get("title") or "", tags=m.get("tags") or [], difficulty=m.get("difficulty") or "", origin=origin).encode("utf-8")
@@ -627,8 +646,9 @@ def api_bank_pull():
         bank_pre = ""
     exam_defined = ltx.macros(new_main + "".join(t for f, t in ui._top_sources(pdir).items() if f != main_fn))
     exam_all = new_main + "".join(t for f, t in ui._top_sources(pdir).items() if f != main_fn)
-    add_lines = banks.needed_packages(bank_pre, exam_all) + banks.needed(
-        [d.decode("utf-8", "replace") for p, d in writes.items() if p.endswith("/" + items.ITEM_FILE)], bank_pre, exam_defined)
+    texts = [d.decode("utf-8", "replace") for p, d in writes.items() if p.endswith("/" + items.ITEM_FILE)]
+    add_lines = banks.needed_packages(bank_pre, exam_all) + banks.needed(texts, bank_pre, exam_defined)
+    clashes = banks.clashes(texts, bank_pre, exam_all)
     try:
         new_main = banks.add_definitions(new_main, add_lines)
     except banks.BankError as e:
@@ -646,12 +666,16 @@ def api_bank_pull():
     except (vcs.Conflict, OSError, ValueError) as e:
         return _err(f"Not added: {e}")
     if whole:
-        ui._update_record(pdir, lambda r: r.setdefault("sections_from", {}).__setitem__(sec, {"bank_uid": b["uid"], "bank": os.path.basename(bdir), "group": g["name"]}))
+        seen = [banks.item_meta(bdir, n).get("uid") for n in g["items"]]
+        ui._update_record(pdir, lambda r: r.setdefault("sections_from", {}).__setitem__(
+            sec, {"bank_uid": b["uid"], "bank": os.path.basename(bdir), "group": g["name"], "seen": sorted(u for u in seen if u)}))
+    else:
+        copies.note_seen(pdir, sec, b["uid"], g["name"], uids)
     ui.add_activity(pdir, what)
     ui.refresh_layout(pdir)
     ui.core.emit_msg("ui-changed", "questions")
     out = ui._items_payload(pdir, name)
-    out.update(ok=True, what=what, section=sec, added=[items.item_file(n) for n in report])
+    out.update(ok=True, what=what, section=sec, added=[items.item_file(n) for n in report], skipped=skipped, clashes=clashes)
     return jsonify(out)
 
 
@@ -733,7 +757,7 @@ def api_bank_save():
                 target = by_uid.get(origin.get("item_uid")) if origin.get("bank_uid") == b["uid"] else None
                 if target and linked_mode == "update":
                     back = {v: k for k, v in (origin.get("ids") or {}).items()}
-                    btext = banks.rename_ids(text, back)
+                    btext = banks.way_back(text, origin)
                     own = set(banks.question_ids(_read_text(os.path.join(bdir, items.item_file(target)))))
                     clash = sorted((set(banks.question_ids(btext)) - own) & bank_ids)
                     if clash:
@@ -763,12 +787,13 @@ def api_bank_save():
                 cs.write(items.item_file(bn), btext.encode("utf-8"))
                 for f, d in banks.figures_of(files).items():
                     cs.write(f"{items.ITEMS_DIR}/{bn}/{f}", d)
-                saved.append((en, bn, ids, btext, banks.figures_of(files)))
+                saved.append((en, bn, ids, btext, banks.figures_of(files), origin if target and linked_mode == "update" else {}))
             # macros of the exam's preamble the saved questions use go to the bank's preamble
             pre_path = os.path.join(bdir, banks.PREAMBLE)
             bank_pre = _read_text(pre_path) if os.path.isfile(pre_path) else banks.PREAMBLE_TEXT
             exam_pre = (ltx.preamble(ui._main_text(pdir)) or "") + "".join(t for t in ui._top_sources(pdir).values())
             add = banks.needed([x[3] for x in saved], exam_pre, ltx.macros(bank_pre))
+            clashes = banks.clashes([x[3] for x in saved], exam_pre, bank_pre)
             if add:
                 cs.write(banks.PREAMBLE, (bank_pre.rstrip("\n") + "\n" + "\n".join(add) + "\n").encode("utf-8"))
             cs.write(banks.BANK_FILE, banks.to_json(b).encode("utf-8"))
@@ -778,13 +803,15 @@ def api_bank_save():
         b = banks.read(bdir)
         what = f"{len(saved)} question{'s' if len(saved) != 1 else ''} saved to the bank {os.path.basename(bdir)}"
         with ui.history_change(pdir, what):
-            for en, bn, ids, btext, figs in saved:
+            for en, bn, ids, btext, figs, old in saved:
                 em = banks.item_meta(pdir, en)
-                exam_ids = {v: k for k, v in ids.items()} if ids else {}
                 origin = {"bank": os.path.basename(bdir), "bank_uid": b["uid"], "item": bn, "item_uid": banks.item_meta(bdir, bn).get("uid"),
                           "revision": head, "fingerprint": banks.fingerprint(btext, figs),
                           "ids": {bid: eid for eid, bid in ids.items()} if ids else {}, "at": int(time.time())}
-                del exam_ids
+                if old.get("scored"):  # the way in's scoring, where the way back undid it
+                    origin.update(scoring=old.get("scoring") or "", replace=bool(old.get("replace")),
+                                  scored={k: v for k, v in old["scored"].items()
+                                          if any(q["id"] == k and banks._own_rule(q) == (v or "") for q in scale.read_latex(btext))})
                 ui.save_source(pdir, f"{items.ITEMS_DIR}/{en}/{items.META_FILE}", banks.meta_json(
                     uid=em.get("uid"), title=em.get("title") or "", tags=em.get("tags") or [], difficulty=em.get("difficulty") or "",
                     origin=origin, created=em.get("created")).encode("utf-8"), what)
@@ -794,7 +821,7 @@ def api_bank_save():
         ui.core.app.logger.error(f"Save to bank: {e}")
         return _err("This can't be done just now. The server log has the details.")
     ui.add_activity(pdir, what)
-    return jsonify(ok=True, what=what, bank=os.path.basename(bdir))
+    return jsonify(ok=True, what=what, bank=os.path.basename(bdir), clashes=clashes)
 
 
 ROUTES = [

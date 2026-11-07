@@ -421,7 +421,7 @@ function onRoute() {
   S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false;
   S.previewMode = keepGuide ? 'guide' : null;
   S.review = null; S.previewImage = null; S.previewList = null;
-  if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) { dropEditor(); S.history = null; S.qdata = null; S.qform = null; S.design = null; S.dform = null; S.builder = null; S.bform = null; }
+  if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) { dropEditor(); S.history = null; S.qdata = null; S.qform = null; S.design = null; S.dform = null; S.builder = null; S.bform = null; S.bcopies = null; }
   if (r.kind === 'banks' || r.kind === 'bank') {
     S.project = null; S.status = null; S.files = null; S.qdata = null; S.qform = null; S.ql = null;
     document.title = `${r.kind === 'bank' ? r.name : 'Question banks'} · ${BRAND}`;
@@ -1146,6 +1146,7 @@ function questionsHead() {
     ${tabs}
     ${guideBox('questions')}
     ${S.buildErr && !L ? buildErrBanner() : ''}
+    ${(form || design) && typeof bankStrip === 'function' ? bankStrip() : ''}
     ${L ? lockBanner(form ? 'Tick the correct answers and change scoring here or in <b>Marking scheme</b>: those changes are still allowed, because nothing moves on the printed papers.' : 'Correct the answer key and change scoring in <b>Marking scheme</b>: those changes are still allowed, because nothing moves on the printed papers.') : ''}`;
 }
 
@@ -1938,6 +1939,7 @@ async function loadEditor() {
   }
   renderQuestionsForm();
   const h = $('#q-head'); if (h) h.innerHTML = questionsHead();
+  if (!inBank() && typeof loadCopies === 'function') loadCopies();
 }
 function renderQuestionsForm() { renderQList(); renderQForm(); }
 
@@ -1961,7 +1963,7 @@ function renderQList() {
       const sel = !!(S.qform && S.qform.file === f.file && S.qform.id === q.id);
       const set = f.item && f.questions.length > 1;
       html += `<button class="q-item ${sel ? 'is-selected' : ''} ${q.problem ? 'is-problem' : ''} ${set ? 'in-set' : ''}" data-act="q-pick" data-file="${esc(f.file)}" data-id="${esc(q.id)}" aria-pressed="${sel}" ${set ? `title="In the set ${esc(f.item)}: its questions stay together"` : ''}>
-        <span class="q-item-id">${esc(q.id)}</span><span class="q-item-kind">${q.kind}</span>
+        <span class="q-item-id">${esc(q.id)}</span><span class="q-item-kind">${q.kind}${typeof copyBadge === 'function' ? copyBadge(f.item) : ''}</span>
         <span class="q-item-text">${q.problem ? `${ic('warning-triangle')} ${esc(q.problem)}` : esc(trunc(q.text || '(no text yet)', 70))}</span></button>`;
     });
     if (!f.questions.length) html += '<p class="subtle q-note">No question yet.</p>';
@@ -2411,6 +2413,7 @@ async function loadDesign() {
   if (!S.dform) S.dform = { pending: [], saving: false, open: null };
   renderDesign();
   const h = $('#q-head'); if (h) h.innerHTML = questionsHead();
+  if (typeof loadCopies === 'function') loadCopies();
 }
 const dsec = (name) => S.design && (S.design.sections || []).find((s) => s.name === name);
 const plainLatex = (t) => String(t || '').replace(/\\[a-zA-Z]+\*?(\[[^\]]*\])?/g, ' ').replace(/[{}$~]/g, '').replace(/\s+/g, ' ').trim();

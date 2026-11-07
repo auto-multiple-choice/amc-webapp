@@ -256,6 +256,24 @@ def _git(git_dir, *args, data=None, ok=(0,)):
     return p
 
 
+def merge_text(mine, base, theirs, labels=("mine", "base", "theirs")):
+    """Three-way merge of three texts, outside any repository: (merged
+    text, number of conflicting places, marked as git marks them)."""
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="amcui-merge-") as tmp:
+        paths = []
+        for name, text in zip(("mine", "base", "theirs"), (mine, base, theirs)):
+            paths.append(os.path.join(tmp, name))
+            with open(paths[-1], "w", encoding="utf-8", newline="") as f:
+                f.write(text or "")
+        env = dict(_env(), GIT_CEILING_DIRECTORIES=os.path.dirname(tmp))
+        p = subprocess.run([GIT, *_CONFIG, "merge-file", "-p", "-L", labels[0], "-L", labels[1], "-L", labels[2], *paths],
+                           capture_output=True, env=env, cwd=tmp, timeout=60)
+    if p.returncode < 0 or p.returncode > 127:
+        raise HistoryError("git merge-file failed: " + p.stderr.decode("utf-8", "replace").strip()[:300])
+    return p.stdout.decode("utf-8", "replace"), p.returncode
+
+
 def _clean(v):
     return re.sub(r"[\x00-\x1f\x7f]", "", str(v))
 

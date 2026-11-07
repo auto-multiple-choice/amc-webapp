@@ -88,9 +88,18 @@ In the form, **Add**, the arrows and **Delete** add, move and delete items; movi
 
 Your **question banks** (top right, next to the Guide) keep questions to use again, in **groups** (Algebra, Geometry…), the way an exam keeps them in sections. Only you see your banks.
 
-- **From a bank…** (above the list of questions, or on a section in Paper design) adds questions to this exam: a whole group as a new section (its title becomes the heading, its instructions and default scoring come along), a whole group into a section, the questions you tick, or a number of them picked at random from the group (shown first, then added as shown). The exam gets **copies**: changing them doesn't change the bank. A question whose name the exam already uses gets a new name in the copy. Macros and packages the questions need come into the exam's preamble.
+- **From a bank…** (above the list of questions, or on a section in Paper design) adds questions to this exam: a whole group as a new section (its title becomes the heading, its instructions and default scoring come along), a whole group into a section, the questions you tick, or a number of them picked at random from the group's questions this exam doesn't have yet (shown first, then added as shown). The exam gets **copies**: changing them doesn't change the bank. A question whose name the exam already uses gets a new name in the copy, and a question the exam already has isn't added twice. The group's default scoring goes to the questions without their own (or to every question, if you tick it). Macros and packages the questions need come into the exam's preamble; a macro the exam already defines differently is shown with both definitions, and the exam keeps its own.
 - **Save to a bank…** copies questions the other way: one question (above it in the form), a whole section (in Paper design, as a group), or the whole exam as a new bank with a group per section (Exam settings). A question that came from that bank can update the bank's copy or be saved as a new one.
 - Both only work on questions kept in item files; an older exam first needs **Move questions into item files**.
+
+Each copy shows whether it still matches its bank question: **Up to date**, **Bank updated** (the bank's question changed since), **Edited here** (this exam's copy changed), **Both changed**, or **Not in the bank any more**. Copies that changed are listed above the questions (**Review…**) and marked in the list; **Compare…** (on the question, or in that list) shows what changed and offers:
+
+- **Take the bank's version**: the copy becomes the bank's question again, with the same new names and scoring it got when it was added.
+- **Update the bank's copy**: the bank's question becomes this exam's version (a new version in the bank's History). Other exams with a copy then see "Bank updated".
+- **Keep this exam's**: the bank's newer version isn't offered again; the copy shows "Edited here".
+- **Combine both**: when both changed, the changes of each side are kept. Where both changed the same lines, the text opens with the two versions marked to choose by hand.
+
+Nothing changes until you choose. Once the exam is printed, only answer key and scoring fixes can be taken from a bank. A section made from a whole group says when the group gains questions (**Add them to the section** or **Not these**), or when one of its questions was removed from the group, until the exam is printed.
 
 On a bank's page the questions are edited with the same form, LaTeX view and History as in an exam; each one also has a difficulty and tags. **Import LaTeX…** reads files whose questions are `\element{group}{…}` blocks (like the RJ question files), with their figures. A deleted bank goes to the Trash for 30 days.
 
