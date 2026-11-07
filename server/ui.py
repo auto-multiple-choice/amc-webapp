@@ -27,6 +27,7 @@ import uuid
 
 import ui_gallery as gallery
 import ui_structure as paper_structure
+import ui_builder as paper_builder
 import ui_questions as questions_edit
 import ui_scale as scale
 import ui_source as source_history
@@ -1986,6 +1987,7 @@ def on_history_restore(data):
     add_activity(pdir, f"{fn}: the version of {label} restored" + ("" if existed else " (the file had been deleted)"))
     if not existed:
         core.emit_msg("project-files-list")
+    refresh_layout(pdir)  # a builder exam: the layout follows a restored paper.json or exam.tex
     core.emit_msg("ui-history-restored", {"file": fn, "id": vid})
     core.emit_msg("ui-changed", "questions")
 
@@ -2199,9 +2201,221 @@ def api_structure_edit():
             core.app.logger.error(f"{fn}: the renamed groups couldn't be written")
     if copies:
         core.change_option("nombre_copies", int(copies[-1]))  # the app's copies follow the versions
+    refresh_layout(pdir)
     add_activity(pdir, what)
     core.emit_msg("ui-changed", "questions")
     return jsonify(ok=True, digest=dg, what=what, structure=_structure(pdir))
+
+
+# ---------------------------------------------------------------- paper builder (ui_builder.py)
+
+def _builder_design(pdir):
+    """paper.json of the exam as bytes-digest and parsed JSON: (None, None)
+    when the exam has none, (digest, None) when it can't be parsed."""
+    path = os.path.join(pdir, paper_builder.DESIGN_FILE)
+    if not os.path.isfile(path):
+        return None, None
+    with open(path, "rb") as f:
+        raw = f.read()
+    try:
+        return source_history.digest(raw), json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return source_history.digest(raw), None
+
+
+def _builder_inputs(pdir):
+    """The main source's text, its number of versions and the instructions'
+    lines per section, for the layout file."""
+    fmt, path = _main_source()
+    if fmt != "latex" or not path or not os.path.isfile(path):
+        return None, 1, []
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except (OSError, UnicodeDecodeError):
+        return None, 1, []
+    oc = paper_structure.onecopy(text)
+    summary = paper_builder.summary_for(text, _all_questions(pdir, _source_files(pdir)))
+    return text, (oc[0] if oc else 1), summary
+
+
+def _layout_state(pdir, rec):
+    """Whether paper-layout.tex is there and whether someone edited it by
+    hand since the builder wrote it (its digest is kept in the record)."""
+    info = rec.get("builder") or {}
+    path = os.path.join(pdir, paper_builder.LAYOUT_FILE)
+    if not os.path.isfile(path):
+        return {"exists": False, "edited": False}
+    with open(path, "rb") as f:
+        dg = source_history.digest(f.read())
+    return {"exists": True, "edited": bool(info.get("layout_digest")) and info["layout_digest"] != dg}
+
+
+def write_layout(pdir, design, what="Paper builder: layout rewritten", force=False):
+    """paper-layout.tex from the design, through the history, unless the
+    teacher keeps hand edits to it (record builder.detached) or has
+    edited it and hasn't decided yet (unless FORCE). Returns the digest
+    written, or None when nothing was written."""
+    rec = read_record(pdir)
+    info = rec.get("builder") or {}
+    state = _layout_state(pdir, rec)
+    if info.get("detached") or (state["edited"] and not force):
+        return None
+    text, versions, summary = _builder_inputs(pdir)
+    if text is None:
+        return None
+    tex = paper_builder.layout(design, versions, summary).encode("utf-8")
+    path = os.path.join(pdir, paper_builder.LAYOUT_FILE)
+    if os.path.isfile(path):
+        with open(path, "rb") as f:
+            if f.read() == tex:
+                dg = source_history.digest(tex)
+                if info.get("layout_digest") != dg or info.get("detached"):  # the file is the design's again
+                    _update_record(pdir, lambda r: r.setdefault("builder", {}).update({"layout_digest": dg, "detached": False}))
+                return dg
+    if write_refusal_bytes(path, tex):
+        return None  # printed: the layout stays as it was built
+    dg = save_source(pdir, paper_builder.LAYOUT_FILE, tex, what)
+    _update_record(pdir, lambda r: r.setdefault("builder", {}).update({"layout_digest": dg, "detached": False}))
+    return dg
+
+
+def refresh_layout(pdir):
+    """After a change elsewhere (sections, versions, a restored file): the
+    layout file follows paper.json when the exam has one."""
+    _, raw = _builder_design(pdir)
+    if raw is None:
+        return
+    try:
+        write_layout(pdir, paper_builder.normalize(raw), "Paper builder: layout updated from the sections")
+    except questions_edit.EditError:
+        pass
+
+
+def before_build():
+    """Called by the server before a document is built: the layout file is
+    brought up to date, and a design that can't be printed stops the
+    build with a message. Returns a truthy value to refuse the build."""
+    pdir = core.project_dir()
+    _, raw = _builder_design(pdir)
+    if raw is None:
+        return None
+    try:
+        design = paper_builder.normalize(raw)
+    except questions_edit.EditError as e:
+        core.dialog_msg(warn=f"The paper can't be built: {e} (Questions › Paper builder)")
+        return "refused"
+    _, versions, _ = _builder_inputs(pdir)
+    errors = [p for p in paper_builder.check(design, versions) if p["level"] == "error"]
+    if errors:
+        core.dialog_msg(warn=f"The paper can't be built yet: {errors[0]['text']} (Questions › Paper builder)")
+        return "refused"
+    rec = read_record(pdir)
+    if _layout_state(pdir, rec)["edited"] and not (rec.get("builder") or {}).get("detached"):
+        core.dialog_msg(warn=f"{paper_builder.LAYOUT_FILE} was edited by hand, so the paper is built from it as it is, not from "
+                             "the design. In Questions › Paper builder, choose to keep the edits or to rewrite the file.")
+    write_layout(pdir, design, "Paper builder: layout updated for the build")
+    return None
+
+
+def _builder_payload(pdir):
+    dg, raw = _builder_design(pdir)
+    if dg is None:
+        return {"builder": False}
+    rec = read_record(pdir)
+    info = rec.get("builder") or {}
+    out = {"builder": True, "digest": dg, "design": None, "invalid": None, "presets": paper_builder.presets(),
+           "detached": bool(info.get("detached")), "layout": _layout_state(pdir, rec),
+           "blocks": {t: {"title": b[0], "where": b[1], "flow": b[2], "defaults": b[3]} for t, b in paper_builder.BLOCKS.items()},
+           "fields": paper_builder.FIELD_LABELS, "registering": sorted(paper_builder.REGISTERING)}
+    if raw is None:
+        out["invalid"] = "paper.json can't be read as JSON. Restore an earlier version from History."
+        return out
+    try:
+        design = paper_builder.normalize(raw)
+    except questions_edit.EditError as e:
+        out["invalid"] = f"paper.json can't be used: {e} Restore an earlier version from History."
+        return out
+    text, versions, summary = _builder_inputs(pdir)
+    images = sorted(f for f in os.listdir(pdir) if f.lower().endswith((".png", ".jpg", ".jpeg", ".pdf")) and not f.startswith(("DOC-", "amc-compiled")))
+    out.update(design=design, versions=versions, onecopy=bool(text and paper_structure.onecopy(text)),
+               problems=paper_builder.check(design, versions, images), images=images,
+               summary=[paper_structure._plain(re.sub(r"^\\amcuiPoint\{(.*)\}$", r"\1", l, flags=re.S)) for l in summary],
+               codes=paper_builder.sample_codes(design, versions), max_versions=paper_builder.max_versions(design["codes"]))
+    return out
+
+
+@bp.route("/ui/api/builder")
+def api_builder():
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    fmt, _ = _main_source()
+    out = {"project": name, "format": fmt, "lock": bool(exam_lock(pdir))}
+    out.update(_builder_payload(pdir) if fmt == "latex" else {"builder": False})
+    return jsonify(out)
+
+
+@bp.route("/ui/api/builder", methods=["POST"])
+def api_builder_save():
+    """The whole design from the builder, checked, written to paper.json
+    through the history (with the digest it was read at), then the layout
+    file rewritten from it."""
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+    pdir = core.project_dir()
+    if exam_lock(pdir):
+        return jsonify(error=LOCKED, locked=True)
+    try:
+        design = paper_builder.normalize(data.get("design"))
+    except questions_edit.EditError as e:
+        return jsonify(error=str(e))
+    if gallery.needs_unicode_engine(paper_builder.to_json(design)) and core.get_option("moteur_latex_b") != "xelatex":
+        core.change_option("moteur_latex_b", "xelatex")  # a detail in another script: the starter's preamble follows the engine
+    what = re.sub(r"[^\w ,.:;()'\-’]", "", str(data.get("what") or "changed"))[:80]
+    based_on = str(data.get("based_on") or "") or None
+    try:
+        dg = save_source(pdir, paper_builder.DESIGN_FILE, paper_builder.to_json(design).encode("utf-8"),
+                         f"Paper builder: {what}", based_on=based_on)
+    except source_history.Conflict:
+        return jsonify(error="The design was changed since it was read. Reload to see the changes.", conflict=True)
+    write_layout(pdir, design, f"Paper builder: {what}")
+    add_activity(pdir, f"Paper builder: {what}")
+    core.emit_msg("ui-changed", "questions")
+    return jsonify(ok=True, **_builder_payload(pdir))
+
+
+@bp.route("/ui/api/builder/layout", methods=["POST"])
+def api_builder_layout():
+    """A hand-edited layout file: "keep" leaves it to the teacher (the
+    builder stops writing it), "rewrite" writes it from the design again."""
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    pdir = core.project_dir()
+    if exam_lock(pdir):
+        return jsonify(error=LOCKED, locked=True)
+    body = request.get_json(silent=True)
+    action = body.get("action") if isinstance(body, dict) else None
+    if action == "keep":
+        _update_record(pdir, lambda r: r.setdefault("builder", {}).update({"detached": True}))
+        add_activity(pdir, "Paper builder: the layout file is edited by hand from now on")
+    elif action == "rewrite":
+        _update_record(pdir, lambda r: r.setdefault("builder", {}).update({"detached": False}))
+        _, raw = _builder_design(pdir)
+        try:
+            write_layout(pdir, paper_builder.normalize(raw), "Paper builder: layout rewritten from the design", force=True)
+        except questions_edit.EditError as e:
+            return jsonify(error=str(e))
+        add_activity(pdir, "Paper builder: layout rewritten from the design")
+    else:
+        return jsonify(error="Unknown action.")
+    core.emit_msg("ui-changed", "questions")
+    return jsonify(ok=True, **_builder_payload(pdir))
 
 
 # ---------------------------------------------------------------- dashboard and new-exam wizard
@@ -2210,7 +2424,7 @@ GALLERY_DIR = os.environ.get("AMC_UI_GALLERY", "/amc-web/gallery")
 STARTERS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "school_templates")
 STARTER_GROUP = gallery.STARTER_GROUP
 # Starters shown in the gallery; "blank" has a separate-answer-sheet variant.
-STARTERS = ("blank", "blank-txt")
+STARTERS = ("blank", "builder", "blank-txt")
 STARTER_VARIANTS = {("blank", "separate"): "blank-separate"}
 META_FIELDS = ("class", "subject", "date")
 
@@ -2443,6 +2657,8 @@ def gallery_templates():
         info = gallery.read_description(os.path.join(STARTERS_DIR, tid))
         if info:
             t = dict(info, gid=STARTER_GROUP, id=tid, starter=True, format="plain" if tid.endswith("-txt") else "latex")
+            if tid == "builder":
+                t["builder"] = {"presets": paper_builder.presets()}
             out.append(t)
     for t in core.templates:
         out.append(dict(t, starter=False, format="plain" if "txt" in t["id"].lower() else "latex"))
@@ -2479,9 +2695,56 @@ def gallery_file(gid, tid, kind):
     return send_file(path, max_age=86400)
 
 
-def _install_starter(tid, rep, style, code_digits):
+def _install_builder(rep, style, design, logo):
+    """The paper builder starter: paper.json from the chosen preset with
+    the wizard's details, the versions in the main source, and the layout
+    file written from them."""
+    design = design or {}
+    d = paper_builder.preset(design.get("preset")) or paper_builder.preset("rj-olympiad")
+    d["kind"] = "separate" if style == "separate" else "paper"
+    codes = design.get("codes") if isinstance(design.get("codes"), dict) else {}
+    d["codes"].update({k: codes[k] for k in ("style", "same_length", "zero_pad") if k in codes})
+    paper_builder.apply_fields(d, design.get("fields") if isinstance(design.get("fields"), dict) else {})
+    paper_builder.apply_student(d, design.get("student") if isinstance(design.get("student"), dict) else {})
+    if logo:
+        for r in d["paper"]:
+            for c in r["cells"]:
+                if c["block"]["type"] == "logo" and not c["block"]["file"]:
+                    c["block"]["file"] = logo
+                    break
+            else:
+                continue
+            break
+    d = paper_builder.normalize(d)
+    try:
+        versions = max(1, min(int(design.get("versions") or 4), paper_builder.max_versions(d["codes"])))
+    except (TypeError, ValueError):
+        versions = 4
+    with open(os.path.join(rep, paper_builder.DESIGN_FILE), "w", encoding="utf-8") as f:
+        f.write(paper_builder.to_json(d))
+    main = os.path.join(rep, "exam.tex")
+    with open(main, encoding="utf-8") as f:
+        text = f.read()
+    text, _ = paper_structure.set_copies(text, versions)
+    with open(main, "w", encoding="utf-8") as f:
+        f.write(text)
+    questions = []
+    for fn in sorted(os.listdir(rep)):
+        if fn.endswith(".tex") and fn != paper_builder.LAYOUT_FILE:
+            with open(os.path.join(rep, fn), encoding="utf-8") as f:
+                questions += scale.read_latex(f.read(), fn)
+    tex = paper_builder.layout(d, versions, paper_builder.summary_for(text, questions))
+    with open(os.path.join(rep, paper_builder.LAYOUT_FILE), "w", encoding="utf-8") as f:
+        f.write(tex)
+    return (versions, source_history.digest(tex.encode("utf-8")),
+            any(c["block"]["type"] == "id_grid" for r in d["answer_sheet"] for c in r["cells"]),
+            gallery.needs_unicode_engine(paper_builder.to_json(d)))
+
+
+def _install_starter(tid, rep, style, code_digits, design=None):
     src = os.path.join(STARTERS_DIR, STARTER_VARIANTS.get((tid, style), tid))
     shutil.copytree(src, rep, dirs_exist_ok=True)
+    shutil.rmtree(os.path.join(rep, "presets"), ignore_errors=True)
     school = branding()
     logo = ""
     if school.get("logo_path") and school.get("logo_path").lower().endswith((".png", ".jpg", ".jpeg")):
@@ -2500,6 +2763,7 @@ def _install_starter(tid, rep, style, code_digits):
         os.unlink(os.path.join(rep, "description.xml"))
     except OSError:
         pass
+    return _install_builder(rep, style, design, logo) if tid == "builder" else None
 
 
 def on_create_exam(data):
@@ -2523,11 +2787,20 @@ def on_create_exam(data):
             return 0
     copies, code_digits = number(data.get("copies"), 9999), number(data.get("code"), 12)
     style = "separate" if data.get("style") == "separate" else "paper"
+    design = data.get("design") if isinstance(data.get("design"), dict) else None
+    built = None
     if gid == STARTER_GROUP:
         if tid not in STARTERS:
             core.dialog_msg(warn="Unknown template.")
             return
-        _install_starter(tid, rep, style, code_digits)
+        try:
+            built = _install_starter(tid, rep, style, code_digits, design)
+        except questions_edit.EditError as e:
+            shutil.rmtree(rep, ignore_errors=True)
+            core.dialog_msg(warn=f"This paper can't be made: {e}")
+            return
+        if built:
+            copies = built[0]  # the versions of a builder paper are its copies
         title = gallery.read_description(os.path.join(STARTERS_DIR, tid)).get("title", tid)
     else:
         if not any(t["gid"] == gid and t["id"] == tid for t in core.templates):
@@ -2545,10 +2818,15 @@ def on_create_exam(data):
     core.remove_uuid(name)
     if copies:
         core.change_option("nombre_copies", copies)
-    if gid == STARTER_GROUP and not tid.endswith("-txt") and gallery.needs_unicode_engine(branding().get("name", "")):
+    if gid == STARTER_GROUP and not tid.endswith("-txt") and (gallery.needs_unicode_engine(branding().get("name", ""))
+                                                               or (built and built[3])):
         core.change_option("moteur_latex_b", "xelatex")  # the starter's preamble follows the engine
     meta = {k: str(data.get(k) or "").strip()[:120] for k in META_FIELDS}
     _update_record(rep, lambda rec: rec.update({"meta": meta, "starter": tid if gid == STARTER_GROUP else None}))
+    if built:
+        _update_record(rep, lambda rec: rec.update({"builder": {"layout_digest": built[1], "detached": False}}))
+        if built[2]:
+            core.change_option("assoc_code", "student")  # the ID grid matches sheets to the class list
     add_activity(rep, f"Exam created from the template \"{title}\"")
     if core.main_source_file():
         source_history.note_current(rep, core.main_source_file(), by=_who(), what=f"Created from the template \"{title}\"")

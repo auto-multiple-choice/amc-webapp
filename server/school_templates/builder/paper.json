@@ -1,0 +1,465 @@
+{
+ "format": 1,
+ "kind": "separate",
+ "codes": {
+  "style": "letters",
+  "same_length": false,
+  "zero_pad": false
+ },
+ "fields": {
+  "exam_name": "Mathematics Olympiad 2026",
+  "organiser": "Mathematics Association, Your school",
+  "level": "I",
+  "date": "9 February 2026",
+  "time": "09:30 to 11:30",
+  "max_marks": "100"
+ },
+ "student": {
+  "id_prefix": "MO26",
+  "id_digits": 3,
+  "class_digits": 2,
+  "box_width": "7mm",
+  "box_height": "7mm",
+  "klass": true,
+  "level": true
+ },
+ "page": {
+  "margins": "normal",
+  "border": "dashed",
+  "shuffle_answers": false,
+  "question_style": "rj",
+  "footer": {
+   "pattern": "Level {level} // Code {code} // Page {page}",
+   "align": "center",
+   "border": "dashed",
+   "mono": true
+  },
+  "sheet_footer": null,
+  "fill_pages": 10
+ },
+ "instructions": {
+  "heading": "Read the following instructions carefully before attempting the question paper.",
+  "bullet": "arrow",
+  "rule": true,
+  "items": [
+   {
+    "latex": "Do not open this booklet until the invigilators say so."
+   },
+   {
+    "latex": "Answer on the \\textbf{O}ptical \\textbf{M}ark \\textbf{R}ecognition sheet (\\textbf{OMR}) by darkening the appropriate squares (marked A, B, C, D or $0$--$9$) with a blue or black ball pen."
+   },
+   {
+    "latex": "Write your registration number, your name and the question paper code (the letter printed at the top of this paper) in the space provided on the OMR sheet."
+   },
+   {
+    "summary": true
+   },
+   {
+    "latex": "You won't be allowed to leave the examination hall during the exam."
+   }
+  ]
+ },
+ "paper": [
+  {
+   "id": "r1",
+   "align": "middle",
+   "same_height": false,
+   "gap": "2mm",
+   "after": "3mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": "fit",
+     "border": "none",
+     "pad": "2mm",
+     "block": {
+      "type": "logo",
+      "file": "",
+      "height": "18mm"
+     },
+     "align": "center"
+    },
+    {
+     "id": "c2",
+     "width": "auto",
+     "border": "none",
+     "pad": "2mm",
+     "block": {
+      "type": "title",
+      "lines": [
+       {
+        "size": "LARGE",
+        "style": "boldsc",
+        "field": "exam_name"
+       },
+       {
+        "size": "large",
+        "style": "plain",
+        "field": "organiser"
+       }
+      ]
+     },
+     "align": "center"
+    },
+    {
+     "id": "c3",
+     "width": "fit",
+     "border": "none",
+     "pad": "2mm",
+     "block": {
+      "type": "logo",
+      "file": "",
+      "height": "18mm"
+     },
+     "align": "center"
+    }
+   ]
+  },
+  {
+   "id": "r2",
+   "align": "top",
+   "same_height": true,
+   "gap": "2mm",
+   "after": "4mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": 8,
+     "border": "default",
+     "pad": "2mm",
+     "block": {
+      "type": "student",
+      "name": true,
+      "id": true,
+      "klass": false,
+      "level": true,
+      "name_label": "Name",
+      "id_label": "Reg. No.",
+      "class_label": "Class",
+      "level_label": "Level"
+     },
+     "align": "left"
+    },
+    {
+     "id": "c2",
+     "width": "fit",
+     "border": "default",
+     "pad": "2mm",
+     "block": {
+      "type": "code",
+      "label": "Code",
+      "size": "Huge"
+     },
+     "align": "center"
+    },
+    {
+     "id": "c3",
+     "width": "auto",
+     "border": "default",
+     "pad": "2mm",
+     "block": {
+      "type": "info",
+      "lines": [
+       "date",
+       "max_marks",
+       "time"
+      ]
+     },
+     "align": "left"
+    }
+   ]
+  },
+  {
+   "id": "r3",
+   "align": "top",
+   "same_height": false,
+   "gap": "2mm",
+   "after": "3mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": 12,
+     "border": "none",
+     "pad": "2mm",
+     "block": {
+      "type": "instructions",
+      "heading": true
+     },
+     "align": "left"
+    }
+   ]
+  },
+  {
+   "id": "r4",
+   "align": "top",
+   "same_height": false,
+   "gap": "2mm",
+   "after": "3mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": 12,
+     "border": "none",
+     "pad": "2mm",
+     "block": {
+      "type": "text",
+      "latex": "\\clearpage\n\\centerline{\\bfseries\\Large Notation}\n\\begin{itemize}\n  \\item For a set $A$, $x\\in A$ means ``$x$ is an element of $A$''; $|A|$ is the number of elements of $A$.\n  \\item $A \\setminus B$ is the set of elements of $A$ that are not in $B$.\n  \\item $\\mathbb{N}=\\{1,2,3,\\ldots\\}$ is the set of natural numbers, $\\mathbb{Z}$ the set of integers and $\\mathbb{R}$ the set of real numbers.\n  \\item For $a,b\\in\\mathbb{R}$: $[a,b]=\\{x\\in\\mathbb{R}\\mid a\\le x\\le b\\}$ and $(a,b)=\\{x\\in\\mathbb{R}\\mid a<x<b\\}$; $a\\mid b$ means ``$a$ divides $b$''.\n  \\item $n!=n\\cdot(n-1)\\cdots 2\\cdot 1$, and $\\lfloor x\\rfloor$ is the largest integer not greater than $x$.\n  \\item $[ABC]$ is the area of triangle $ABC$.\n\\end{itemize}\n\\vspace{2ex}\\hrule\\vspace{2ex}"
+     },
+     "align": "left"
+    }
+   ]
+  },
+  {
+   "id": "r5",
+   "align": "top",
+   "same_height": false,
+   "gap": "2mm",
+   "after": "3mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": 12,
+     "border": "none",
+     "pad": "2mm",
+     "block": {
+      "type": "text",
+      "latex": "\\centerline{\\bfseries\\Large Table of values}\n\\begin{center}\\renewcommand{\\arraystretch}{1.4}\n  \\begin{tabular}{|l|c|}\\hline\n    Constant & Value \\\\\\hline\n    $e$ & 2.718 \\\\\\hline\n    $\\pi$ & 3.142 \\\\\\hline\n    $\\ln 2$ & 0.693 \\\\\\hline\n    $\\ln 3$ & 1.099 \\\\\\hline\n  \\end{tabular}\n\\end{center}"
+     },
+     "align": "left"
+    }
+   ]
+  },
+  {
+   "id": "r6",
+   "align": "top",
+   "same_height": false,
+   "gap": "2mm",
+   "after": "3mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": 12,
+     "border": "none",
+     "pad": "2mm",
+     "block": {
+      "type": "questions"
+     },
+     "align": "left"
+    }
+   ]
+  },
+  {
+   "id": "r7",
+   "align": "top",
+   "same_height": false,
+   "gap": "2mm",
+   "after": "3mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": 12,
+     "border": "none",
+     "pad": "2mm",
+     "block": {
+      "type": "end",
+      "text": "End of Question Paper"
+     },
+     "align": "center"
+    }
+   ]
+  },
+  {
+   "id": "r8",
+   "align": "top",
+   "same_height": false,
+   "gap": "2mm",
+   "after": "3mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": 12,
+     "border": "none",
+     "pad": "2mm",
+     "block": {
+      "type": "rough",
+      "pages": 2,
+      "text": "Space for Rough Work"
+     },
+     "align": "left"
+    }
+   ]
+  }
+ ],
+ "answer_sheet": [
+  {
+   "id": "s1",
+   "align": "middle",
+   "same_height": false,
+   "gap": "2mm",
+   "after": "2mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": "auto",
+     "border": "none",
+     "pad": "2mm",
+     "block": {
+      "type": "title",
+      "lines": [
+       {
+        "size": "LARGE",
+        "style": "bold",
+        "text": "Optical Mark Recognition (OMR) Sheet"
+       },
+       {
+        "size": "large",
+        "style": "plain",
+        "field": "exam_name"
+       }
+      ]
+     },
+     "align": "center"
+    },
+    {
+     "id": "c2",
+     "width": "fit",
+     "border": "default",
+     "pad": "2mm",
+     "block": {
+      "type": "code",
+      "label": "",
+      "size": "giant"
+     },
+     "align": "center"
+    }
+   ]
+  },
+  {
+   "id": "s2",
+   "align": "top",
+   "same_height": true,
+   "gap": "2mm",
+   "after": "3mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": 9,
+     "border": "default",
+     "pad": "2mm",
+     "block": {
+      "type": "student",
+      "name": true,
+      "id": true,
+      "klass": true,
+      "level": false,
+      "name_label": "Name",
+      "id_label": "Reg. No.",
+      "class_label": "Class",
+      "level_label": "Level"
+     },
+     "align": "left"
+    },
+    {
+     "id": "c2",
+     "width": "auto",
+     "border": "default",
+     "pad": "2mm",
+     "block": {
+      "type": "signatures",
+      "lines": [
+       "Student's signature",
+       "Invigilator's signature"
+      ]
+     },
+     "align": "left"
+    }
+   ]
+  },
+  {
+   "id": "s3",
+   "align": "top",
+   "same_height": false,
+   "gap": "2mm",
+   "after": "2mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": 12,
+     "border": "default",
+     "pad": "2mm",
+     "block": {
+      "type": "text",
+      "latex": "$\\bullet$ Darken your class and the digits of your registration number in the grids below.\\\\\n$\\bullet$ For a numerical answer, darken one digit in each column: if your answer is 073, darken 0 in the first column (hundreds), 7 in the second (tens) and 3 in the third (ones)."
+     },
+     "align": "left"
+    }
+   ]
+  },
+  {
+   "id": "s4",
+   "align": "top",
+   "same_height": false,
+   "gap": "2mm",
+   "after": "3mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": 2,
+     "border": "default",
+     "pad": "2mm",
+     "block": {
+      "type": "class_grid",
+      "label": "Class",
+      "orientation": "v"
+     },
+     "align": "center"
+    },
+    {
+     "id": "c2",
+     "width": 3,
+     "border": "default",
+     "pad": "2mm",
+     "block": {
+      "type": "id_grid",
+      "label": "Reg. No.",
+      "orientation": "v"
+     },
+     "align": "center"
+    },
+    {
+     "id": "c3",
+     "width": "auto",
+     "border": "default",
+     "pad": "2mm",
+     "block": {
+      "type": "numeric_answers",
+      "columns": 4,
+      "heading": "Mark your numerical answers here"
+     },
+     "align": "center"
+    }
+   ]
+  },
+  {
+   "id": "s5",
+   "align": "top",
+   "same_height": false,
+   "gap": "2mm",
+   "after": "3mm",
+   "cells": [
+    {
+     "id": "c1",
+     "width": 12,
+     "border": "default",
+     "pad": "2mm",
+     "block": {
+      "type": "choice_answers",
+      "columns": 3,
+      "heading": "Mark your choice for the objective questions"
+     },
+     "align": "center"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,72 @@
+\documentclass[a4paper,11pt]{article}
+% RJ Style Paper Builder: the paper and the answer sheet are composed in
+% Questions > Paper builder, which keeps the design in paper.json and
+% writes paper-layout.tex from it (the packages, the page, the footer,
+% the version code and the macros \amcuiPaperFront and \amcuiPaperBack
+% used below). The sections between the SECTION markers are written by
+% the Sections panel. The rest of this file is yours to edit.
+
+% pdflatex by default; XeLaTeX when the school name needs it (set by the app).
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+\else
+  \usepackage{fontspec}
+  \setmainfont{Linux Libertine O}
+\fi
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{multicol}
+
+% The layout, written by the Paper builder. Edit it only after choosing
+% "Keep my changes" there, or the builder rewrites it.
+\input{paper-layout}
+
+% ------ Scoring defaults (Marking scheme changes them) ------
+\scoringDefaultS{e=-0.75,v=0,b=3,m=-0.75}
+\scoringDefaultM{e=-1.25,v=0,b=5,m=-1.25}
+\AMCnumericOpts{scoreexact=5,scoreapprox=0,decimals=0,sign=false,scoring=true,vspace=.5ex,vertical=true,vhead=false,borderwidth=0pt,backgroundcol=black!15,approx=1,Tpoint={\bf \LARGE .\tiny (decimal separator)}}
+
+%%AMCUI:MACROS%%
+% Section headings written by the Paper design panel.
+\providecommand{\amcuiSectionHeading}[1]{\par\vspace{2ex}{\centering\bfseries\Large #1\par}\vspace{1ex}\hrule\vspace{2ex}}
+\providecommand{\amcuiSectionText}[1]{\noindent #1\par\vspace{1.5ex}\hrule\vspace{2ex}}
+%%AMCUI:END MACROS%%
+
+\begin{document}
+\AMCrandomseed{1237893}
+\AMCsetScoreZoneAnswerSheet{width=1.5em, height=2ex, depth=.5ex, position=question}
+
+% The questions, one \element{section}{...} each.
+\input{questions}
+
+\onecopy{4}{
+
+\amcuiPaperFront
+
+%%AMCUI:SECTION sectionI%%
+\clearpage
+\amcuiSectionHeading{Section 1: Objective Questions}
+\amcuiSectionText{Each question has exactly one correct answer. Darken exactly one square per question on the OMR sheet.}
+\shufflegroup{sectionI}
+\insertgroup[3]{sectionI}
+%%AMCUI:END SECTION%%
+%%AMCUI:SECTION sectionII%%
+\clearpage
+\amcuiSectionHeading{Section 2: Objective Questions}
+\amcuiSectionText{Each question has exactly one correct answer and carries more marks. Darken exactly one square per question on the OMR sheet.}
+\shufflegroup{sectionII}
+\insertgroup{sectionII}
+%%AMCUI:END SECTION%%
+%%AMCUI:SECTION numerical%%
+\clearpage
+\amcuiSectionHeading{Section 3: Numerical Answer Type Questions}
+\amcuiSectionText{The answer to each question is a whole number between 000 and 999. Darken one square in each of the three columns on the OMR sheet: for example, 9 is marked as 009 and 10 as 010.}
+\shufflegroup{numerical}
+\insertgroup{numerical}
+%%AMCUI:END SECTION%%
+
+\amcuiPaperBack
+
+}
+\end{document}

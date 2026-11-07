@@ -1,0 +1,22 @@
+{
+ "title": "Blank",
+ "text": "Only what AMC needs: the student's name and the questions. Add rows and blocks from there.",
+ "order": 3,
+ "format": 1,
+ "kind": "paper",
+ "codes": {"style": "none", "same_length": false, "zero_pad": false},
+ "fields": {"exam_name": "", "organiser": "", "level": "", "date": "", "time": "", "max_marks": ""},
+ "student": {"id_prefix": "", "id_digits": 4, "class_digits": 2},
+ "page": {"margins": "normal", "border": "solid", "shuffle_answers": false, "question_style": "default",
+          "footer": {"pattern": "Page {page}", "align": "center", "border": "none", "mono": false},
+          "sheet_footer": null, "fill_pages": 0},
+ "instructions": {"heading": "Instructions", "bullet": "dot", "rule": true, "items": [{"summary": true}]},
+ "paper": [
+  {"id": "r1", "after": "4mm", "cells": [{"id": "c1", "width": 12, "block": {"type": "student", "name": true, "id": false, "klass": false, "level": false}}]},
+  {"id": "r2", "cells": [{"id": "c1", "width": 12, "border": "none", "block": {"type": "questions"}}]}
+ ],
+ "answer_sheet": [
+  {"id": "s1", "after": "4mm", "cells": [{"id": "c1", "width": 12, "block": {"type": "student", "name": true, "id": false, "klass": false, "level": false}}]},
+  {"id": "s2", "cells": [{"id": "c1", "width": 12, "border": "none", "block": {"type": "all_answers", "columns": 2, "heading": ""}}]}
+ ]
+}

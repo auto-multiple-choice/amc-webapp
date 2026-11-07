@@ -550,6 +550,28 @@ for bad in ({"op": "section_add", "name": "part B"}, {"op": "section_add", "name
         st.apply(t2, [bad]); check(f"structure: refused {bad}", False)
     except st.EditError:
         check(f"structure: refused {bad['op']} {bad.get('name')} {bad.get('new', bad.get('count', bad.get('heading', '')))}", True)
+# page breaks between sections: the builder starter has three sections, each on a new page
+pb_src = open(os.path.join(SERVER, "school_templates/builder/exam.tex")).read()
+br = lambda t: st.breaks(st.read_sections(t))
+check("structure: page breaks read from the sections", br(pb_src) == (True, True) and st.read(pb_src, "exam.tex", [])["breaks"] == {"first": True, "between": True})
+p1, what, _ = st.apply(pb_src, [{"op": "sections_break", "between": False}])
+check("structure: each section right after the previous one, the first still on a new page", br(p1) == (True, False) and p1.count("\\clearpage\n\\amcuiSectionHeading") == 1 and what == "Paper design: each section right after the previous one")
+p2, what, _ = st.apply(p1, [{"op": "sections_break", "first": False}])
+check("structure: the first section's break on its own", br(p2) == (False, False) and "\\clearpage\n\\amcuiSectionHeading" not in p2 and "first section right after" in what)
+p3, _, _ = st.apply(p1, [{"op": "section_add", "name": "extra", "heading": "Extra"}])
+check("structure: a new section follows the later sections' choice", [x["newpage"] for x in st.read_sections(p3)] == [True, False, False, False] and st.read_sections(st.apply(pb_src, [{"op": "section_add", "name": "extra"}])[0])[-1]["newpage"])
+p4, _, _ = st.apply(p1, [{"op": "section_move", "name": "numerical", "before": "sectionI"}])
+check("structure: moving a section keeps the paper's page breaks", [x["name"] for x in st.read_sections(p4)] == ["numerical", "sectionI", "sectionII"] and br(p4) == (True, False))
+p5, _, _ = st.apply(p1, [{"op": "section_delete", "name": "sectionI"}])
+check("structure: removing the first section keeps the paper's page breaks", [x["name"] for x in st.read_sections(p5)] == ["sectionII", "numerical"] and br(p5) == (True, False))
+p6, _, _ = st.apply(pb_src, [{"op": "section_set", "name": "sectionII", "newpage": False}])
+p7, _, _ = st.apply(p6, [{"op": "section_move", "name": "numerical", "before": "sectionI"}])
+check("structure: sections' own differing choices are left as they are", br(p6) == (True, None) and [x["newpage"] for x in st.read_sections(p7)] == [True, True, False])
+for bad in ({"op": "sections_break"}, ):
+    try:
+        st.apply(pb_src, [bad]); check("structure: refused a page-break change without a choice", False)
+    except st.EditError:
+        check("structure: refused a page-break change without a choice", True)
 inline_src = src.replace("\\begin{question}{q1}", "\\noindent Exam\n\n\\begin{question}{q1}")
 r = st.read(inline_src, "exam.tex", sc.read_latex(inline_src, "exam.tex"))
 check("structure: questions inside \\onecopy are counted as inline", r["inline"] == 2 and r["sections"] == [])
@@ -561,6 +583,71 @@ fr_src = inline_src.replace("\\onecopy{10}{", "\\exemplaire{10}{")
 t4b, _, _ = st.apply(fr_src, [{"op": "convert"}, {"op": "copies", "n": 3}])
 check("structure: AMC's French \\exemplaire works like \\onecopy", st.read(fr_src, "exam.tex", sc.read_latex(fr_src, "exam.tex"))["inline"] == 2 and "\\exemplaire{3}{" in t4b and t4b.index("\\element{main}{") < t4b.index("\\exemplaire"))
 
+
+# ---- paper builder (ui_builder.py)
+import ui_builder as pb
+check("builder: letters as spreadsheet columns", [pb.letters(n) for n in (1, 26, 27, 52, 53, 702)] == ["A", "Z", "AA", "AZ", "BA", "ZZ"])
+check("builder: code tables", pb.codes_table({"style": "letters"}, 28)[26:] == ["AA", "AB"] and pb.codes_table({"style": "letters", "same_length": True}, 27)[:2] == ["AA", "AB"] and pb.codes_table({"style": "numbers", "zero_pad": True}, 10)[:2] == ["01", "02"] and pb.codes_table({"style": "none"}, 3) == ["", "", ""] and pb.max_versions({"style": "letters", "same_length": True}) == 676 and pb.max_versions({"style": "letters"}) == 702)
+check("builder: three presets, the RJ layout first", [x["id"] for x in pb.presets()] == ["rj-olympiad", "simple", "blank"])
+rj = pb.preset("rj-olympiad")
+check("builder: the RJ preset normalizes with its rows and defaults", rj["kind"] == "separate" and len(rj["paper"]) == 8 and len(rj["answer_sheet"]) == 5 and rj["paper"][1]["cells"][1]["width"] == "fit" and rj["paper"][1]["cells"][0]["align"] == "left" and rj["paper"][0]["cells"][1]["align"] == "center" and rj["paper"][1]["cells"][0]["pad"] == "2mm")
+check("builder: only notes on the RJ preset", all(x["level"] == "info" for x in pb.check(rj, 4)) and len(pb.check(rj, 4)) == 2)
+for bad, what in (({"paper": [{"cells": [{"width": 7, "block": {"type": "text"}}, {"width": 6, "block": {"type": "text"}}]}]}, "add up"),
+                  ({"paper": [{"cells": [{"width": "fit", "block": {"type": "id_grid"}}]}]}, "can't go"),
+                  ({"answer_sheet": [{"cells": [{"width": "fit", "block": {"type": "id_grid"}}]}]}, "fixed width"),
+                  ({"paper": [{"cells": [{"block": {"type": "nope"}}]}]}, "Unknown block"),
+                  ({"paper": [{"cells": [{"block": {"type": "text", "latex": "a {b"}}]}]}, "unbalanced"),
+                  ({"paper": [{"cells": [{"block": {"type": "text", "latex": "\\input{x}"}}]}]}, "can't use"),
+                  ({"paper": [{"cells": [{"block": {"type": "logo", "file": "../x.png"}}]}]}, "file name"),
+                  ({"paper": [{"cells": [{"pad": "big", "block": {"type": "text"}}]}]}, "length"),
+                  ({"paper": [{"cells": [{"width": 12, "block": {"type": "text"}}, {"width": "auto", "block": {"type": "text"}}]}]}, "no room"),
+                  ({"student": {"id_digits": 40}}, "between"),
+                  ({"student": {"id_prefix": "MO 26"}}, "letters, digits"),
+                  ({"student": {"box_height": "tall"}}, "height of a box")):
+    try:
+        pb.normalize(bad); check(f"builder: refused {what}", False)
+    except pb.EditError as e:
+        check(f"builder: refused {what}", what in str(e))
+blank = pb.normalize({"kind": "paper", "paper": [{"cells": [{"block": {"type": "text", "latex": "x"}}]}]})
+pr = pb.check(blank, 1)
+check("builder: a paper without questions or a name field is flagged", [x["level"] for x in pr].count("error") == 2 and any("Questions block" in x["text"] for x in pr) and any("Student details" in x["text"] for x in pr))
+sep = pb.normalize({"kind": "separate", "paper": [{"cells": [{"block": {"type": "questions"}}]}], "answer_sheet": [{"cells": [{"block": {"type": "student"}}]}]})
+check("builder: an answer sheet without answer boxes is flagged", any("answer boxes" in x["text"] and x["level"] == "error" for x in pb.check(sep, 1)))
+check("builder: too many versions for the codes", any(x["level"] == "error" and "versions" in x["text"] for x in pb.check(pb.normalize({"codes": {"style": "letters", "same_length": True}}), 700)))
+check("builder: answer boxes printed twice are refused", any(x["level"] == "error" and "twice" in x["text"] for x in pb.check(pb.normalize({"kind": "separate", "answer_sheet": [{"cells": [{"block": {"type": "all_answers"}}]}, {"cells": [{"block": {"type": "numeric_answers"}}]}]}), 1)))
+check("builder: a row needing a row of its own", any("row of its own" in x["text"] for x in pb.check(pb.normalize({"paper": [{"cells": [{"block": {"type": "questions"}}, {"block": {"type": "text"}}]}]}), 1)))
+tex = pb.layout(rj, 28, ["\\amcuiPoint{Section 1: one}"])
+check("builder: the layout loads AMC with a separate answer sheet, answers in order", "\\usepackage[box,completemulti,separateanswersheet,noshuffle]{automultiplechoice}" in tex and "\\usepackage{graphicx,xcolor,dashbox,multicol,varwidth}" in tex)
+check("builder: the code table goes past Z", "\\or AA\\or AB\\fi" in tex and tex.count("\\or ") == 28)
+check("builder: the footer from its pattern", "\\AMCsetFoot{\\makebox[\\textwidth][c]{\\dbox{\\texttt{Level I // Code \\amcuiCode{} // Page \\thepage{}}}}}" in tex)
+rj2 = pb.normalize({**rj, "fields": {**rj["fields"], "level": ""}})
+check("builder: an empty level drops its footer segment", "\\texttt{Code \\amcuiCode{} // Page \\thepage{}}" in pb.layout(rj2, 4))
+check("builder: the name field wraps the sheet's student block only", tex.count("\\namefield{") == 1 and tex.index("\\namefield{") > tex.index("\\AMCformBegin"))
+check("builder: the instructions block prints the heading and the summary lines", "\\amcuiPoint{Section 1: one}" in tex and "\\begin{center}\\scshape Read the following" in tex and "\\amcuiPoint{Do not open this booklet" in tex)
+check("builder: widths fixed, measured and shared", "*8/12\\relax" in tex and "\\sbox\\amcuiBoxb{\\begin{varwidth}" in tex and "\\setlength{\\amcuiWc}{\\dimexpr(\\linewidth-2\\amcuiGapLen-\\amcuiWa-\\amcuiWb)/1\\relax}" in tex)
+check("builder: a same-height row measures its boxes; grids are printed once", "\\ifdim\\amcuiTmpLen>\\amcuiRowH" in tex and tex.count("\\AMCcodeGridInt[top,v]{student}{3}") == 1 and tex.count("\\AMCformFilter{\\AMCifcategory{numeric}}") == 1)
+aligned = pb.layout(pb.normalize({"paper": [{"align": "middle", "same_height": True, "cells": [{"width": 8, "block": {"type": "student"}}, {"block": {"type": "code", "label": "Code"}}]}, {"align": "bottom", "cells": [{"width": 6, "block": {"type": "student"}}, {"block": {"type": "code", "label": "Code"}}]}, {"cells": [{"block": {"type": "questions"}}]}]}), 2)
+check("builder: the boxes of a row line up on their edges, not their first baselines", "\\raisebox{-\\height}{" in tex and aligned.count("\\raisebox{\\dimexpr(\\depth-\\height)/2\\relax}{") == 4 and aligned.count("\\raisebox{\\depth}{") == 2 and "\\relax][c]{" in aligned and "\\begin{minipage}[c]" not in aligned)
+check("builder: the gap between columns is printed, on its own line", "\\end{minipage}}}}%\n\\hspace*{\\amcuiGapLen}%\n{\\setlength" in tex and "\\setlength{\\amcuiGapLen}{2mm}%" in tex and "}%\\hspace" not in tex)
+check("builder: the writing boxes take their size from the details, not from the padding", "\\setlength{\\amcuiBoxW}{7mm}\\setlength{\\amcuiBoxH}{7mm}" in tex and "\\amcuiCharBox{black}{white}{I}" in tex and "\\setlength{\\fboxsep}{0pt}\\fcolorbox{#1}{#2}{\\parbox[c][\\dimexpr\\amcuiBoxH-2\\fboxrule\\relax][c]" in tex and "\\setlength{\\amcuiBoxW}{9mm}" in pb.layout(pb.normalize({**rj, "student": {**rj["student"], "box_width": "9mm"}}), 2))
+check("builder: numeric answers: one box per question, its number on top, side by side", "\\amcuiNumericForm{4}" in tex and "\\newcommand{\\amcuiNumLabel}[1]{\\textsf{Q-\\ifnum#1<10 0\\fi#1}}" in tex and "\\def\\AMCformAfterQuestion{\\end{tabular}\\egroup" in tex and "\\begin{multicols*}{4}\n\\AMCformFilter{\\AMCifcategory{numeric}}" not in tex and "{\\small\\AMC@loc@qf{#1}}" in pb.layout(pb.normalize({**rj, "page": {**rj["page"], "question_style": "default"}}), 2))
+no_class = pb.layout(pb.normalize({**rj, "student": {**rj["student"], "klass": False}}), 2)
+no_level = pb.layout(pb.normalize({**rj, "student": {**rj["student"], "level": False}}), 2)
+check("builder: the class off in Details: no class boxes, no class grid", "{studclass}" not in no_class and "Class: " not in no_class and "{studclass}" in tex and "Class: \\amcuiDigitBoxes" in tex)
+check("builder: the level off: no level box, no level in the footer or the title", "\\amcuiCharBox{black}{white}{I}" not in no_level and "\\texttt{Code \\amcuiCode{} // Page \\thepage{}}" in no_level and "Level I" not in no_level and "\\amcuiCharBox{black}{white}{I}" in tex)
+check("builder: a class grid with the class off is noted, a student block with only the class is flagged", any(x["level"] == "info" and "Class grid prints nothing" in x["text"] for x in pb.check(pb.normalize({**rj, "student": {**rj["student"], "klass": False}}), 2)) and any(x["level"] == "error" and "nothing to print" in x["text"] for x in pb.check(pb.normalize({"kind": "paper", "student": {"klass": False}, "paper": [{"cells": [{"block": {"type": "student", "name": False, "id": False, "klass": True}}]}, {"cells": [{"block": {"type": "questions"}}]}]}), 1)))
+wiz = pb.apply_student(pb.preset("rj-olympiad"), {"klass": False, "level": "0"})
+check("builder: the wizard's choice takes the class grid off the sheet", not wiz["student"]["klass"] and not wiz["student"]["level"] and not any(c["block"]["type"] == "class_grid" for r in wiz["answer_sheet"] for c in r["cells"]) and len(wiz["answer_sheet"]) == 5 and pb.apply_student(pb.preset("rj-olympiad"), {})["student"]["klass"] and not any("your class" in c["block"].get("latex", "") for r in wiz["answer_sheet"] for c in r["cells"]) and any("Darken the digits of your registration number" in c["block"].get("latex", "") for r in wiz["answer_sheet"] for c in r["cells"]))
+check("builder: the questions split the paper, then filler pages and the sheet", tex.index("\\newcommand{\\amcuiPaperBack}") < tex.index("\\amcuiRoughWork{2}") < tex.index("\\AMCaddpagesto{10}") < tex.index("\\clearpage\n\\AMCformBegin"))
+paper_kind = pb.layout(pb.preset("simple"), 2)
+check("builder: answers on the paper: the name field on the paper, no form", "\\namefield{" in paper_kind and "\\AMCformBegin" not in paper_kind and "separateanswersheet" not in paper_kind and "\\AMCsetFoot{\\makebox[\\textwidth][c]{Code \\amcuiCode{} // Page \\thepage{}}}" in paper_kind)
+front = paper_kind.split("\\newcommand{\\amcuiPaperFront}")[1].split("\\newcommand{\\amcuiPaperBack}")[0]
+check("builder: an empty block takes no column, an empty row nothing", "Maximum marks" not in front and "\\amcuiWb" not in front and "\\LARGE" not in front)
+check("builder: the digest follows the design", pb.digest(rj) != pb.digest(rj2) and len(pb.digest(rj)) == 12)
+bq = sc.read_latex(open(os.path.join(SERVER, "school_templates/builder/questions.tex")).read(), "questions.tex")
+check("builder: the summary from the starter's files", len(pb.summary_for(open(os.path.join(SERVER, "school_templates/builder/exam.tex")).read(), bq)) == 3)
+check("builder: paper.json of the starter is the RJ preset", json.load(open(os.path.join(SERVER, "school_templates/builder/paper.json"))) == rj)
+check("builder: a first section goes before \\amcuiPaperBack", st._insert_point("\\onecopy{2}{\n\\amcuiPaperFront\n\\amcuiPaperBack\n}")[0] == len("\\onecopy{2}{\n\\amcuiPaperFront\n"))
 
 # question editor: inputs that must not break the file (review of !11)
 _shared = r"""\documentclass{article}
@@ -663,6 +750,21 @@ check("design: organising is refused when LaTeX sits between the questions", _re
 _summ = _doc.replace("\\onecopy{3}{ % note: { here", "\\onecopy{3}{\n%%AMCUI:SUMMARY%%\n%%AMCUI:END SUMMARY%%")
 _t10, _, _ = pst.apply(_summ, [{"op": "summary"}], [])
 check("design: the summary defines the macro its lines use", "\\providecommand{\\amcuiPoint}" in _t10 and "\\amcuiPoint{" in _t10)
+
+# paper builder: review of !13
+check("builder: a bare % in raw LaTeX is escaped, so it can't swallow the closing brace",
+      pb.normalize({"paper": [{"cells": [{"block": {"type": "text", "latex": "Total 100% of marks"}}]}]})["paper"][0]["cells"][0]["block"]["latex"] == "Total 100\\% of marks"
+      and pb.normalize({"paper": [{"cells": [{"block": {"type": "text", "latex": "50\\% kept"}}]}]})["paper"][0]["cells"][0]["block"]["latex"] == "50\\% kept")
+check("builder: a fit column with a border adds its own padding, not the default", "+2\\fboxrule+2\\dimexpr2mm\\relax" in tex and "+2\\fboxsep+2\\fboxrule" not in tex)
+for bad, what in (({"paper": [{"cells": [{"pad": "5000mm", "block": {"type": "text"}}]}]}, "too long"),
+                  ({"answer_sheet": [{"cells": [{"pad": "9999pt", "block": {"type": "text"}}]}]}, "too long")):
+    try:
+        pb.normalize(bad); check(f"builder: refused a length {what}", False)
+    except pb.EditError as e:
+        check(f"builder: refused a length {what}", what in str(e))
+check("builder: a logo file name may hold spaces", pb.normalize({"paper": [{"cells": [{"block": {"type": "logo", "file": "My Logo.png"}}]}]})["paper"][0]["cells"][0]["block"]["file"] == "My Logo.png")
+check("builder: an ID grid twice on the sheet is refused",
+      any(x["level"] == "error" and "grid printed twice" in x["text"] for x in pb.check(pb.normalize({"kind": "separate", "paper": [{"cells": [{"block": {"type": "questions"}}]}], "answer_sheet": [{"cells": [{"block": {"type": "student"}}]}, {"cells": [{"block": {"type": "id_grid"}}]}, {"cells": [{"block": {"type": "id_grid"}}]}, {"cells": [{"block": {"type": "all_answers"}}]}]}), 2)))
 
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

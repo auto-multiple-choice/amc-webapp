@@ -101,8 +101,8 @@ async function main_() {
   // ---- versions
   await b.setValue('#d-copies', '3');
   b.check('Versions', await settle(`S.design.copies === 3`) && (await main()).includes('\\onecopy{3}{') && String((await structure()).copies_setting) === '3');
-  await b.setValue('#d-copies', '30');
-  b.check('...refused out of range', await b.waitFor(`[...document.querySelectorAll('.toast')].some(t => t.textContent.includes('1 to 26'))`, 10000) && (await main()).includes('\\onecopy{3}{'));
+  await b.setValue('#d-copies', '1000');
+  b.check('...refused out of range', await b.waitFor(`[...document.querySelectorAll('.toast')].some(t => t.textContent.includes('1 to 999'))`, 10000) && (await main()).includes('\\onecopy{3}{'));
   await b.waitFor('S.dform && !S.dform.saving', 5000);
   await b.shot('d4-versions');
 

@@ -94,7 +94,7 @@ RUN chown -R 1000:1000 /amc-web
 # The new interface's template gallery: each template compiled once
 # (server/ui_gallery.py). A layer of its own, redone only when the
 # templates or the script change.
-COPY --chown=1000:1000 server/ui_gallery.py /amc-web/gallery-build/ui_gallery.py
+COPY --chown=1000:1000 server/ui_gallery.py server/ui_builder.py server/ui_structure.py server/ui_scale.py server/ui_questions.py /amc-web/gallery-build/
 COPY --chown=1000:1000 server/school_templates /amc-web/gallery-build/school_templates
 RUN HOME=/tmp/gallery-home AMC_TXT_DEFAULTFONT="Linux Libertine" \
     python3 /amc-web/gallery-build/ui_gallery.py /usr/share/auto-multiple-choice/models \
