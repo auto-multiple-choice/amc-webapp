@@ -56,8 +56,9 @@ MAX_FIT = 4
 MAX_TEXT = 20000
 _LETTERS = "abcdefgh"
 
-_DIM = re.compile(r"^-?\d+(\.\d+)?(pt|mm|cm|in|ex|em|bp)$")
-_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+_DIM = re.compile(r"^-?(\d+(?:\.\d+)?)(pt|mm|cm|in|ex|em|bp)$")
+_MAX_MM = {"pt": 1422, "mm": 500, "cm": 50, "in": 20, "ex": 200, "em": 200, "bp": 1422}  # about 50cm, TeX's own limit is 575cm
+_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,99}$")
 _ID = re.compile(r"^[a-z][a-z0-9]{0,15}$")
 _TOKEN = re.compile(r"\{(exam_name|organiser|level|date|time|max_marks|code|page)\}")
 
@@ -207,8 +208,11 @@ def _int(v, lo, hi, what):
 
 def _dim(v, default, what):
     s = _line(v).replace(" ", "") or default
-    if not _DIM.match(s):
+    m = _DIM.match(s)
+    if not m:
         raise EditError(f"{what} is a length such as 3mm, 1.5cm or 2ex.")
+    if float(m.group(1)) > _MAX_MM[m.group(2)]:
+        raise EditError(f"{what} is too long for a page.")
     return s
 
 
@@ -219,6 +223,8 @@ def _choice(v, choices, default):
 
 def _latex(v, what="This LaTeX"):
     s = _str(v, MAX_TEXT, what)
+    # a bare % would comment out the closing brace of the box the text goes in: "100%" is meant literally
+    s = re.sub(r"(?<!\\)((?:\\\\)*)%", r"\1\\%", s)
     depth = 0
     i = 0
     while i < len(s):
@@ -488,6 +494,9 @@ def check(design, versions, files=()):
             add("error", "All answers already prints every question's boxes, and AMC refuses boxes printed twice: remove it or the Numeric and Choice answers blocks.", "sheet")
         if any(sheet.count(t) > 1 for t in ANSWER_BLOCKS):
             add("error", "An answer block is on the answer sheet twice: AMC refuses boxes printed twice. Keep one.", "sheet")
+        for t in ("id_grid", "class_grid"):
+            if sheet.count(t) > 1:
+                add("error", f"The {BLOCKS[t][0]} is on the answer sheet twice: AMC refuses a grid printed twice. Keep one.", "sheet")
         if versions > 1 and "id_grid" not in sheet:
             add("info", "With several versions, an ID grid on the answer sheet lets AMC match sheets to students without reading names.", "sheet")
         if "student" in paper:
@@ -708,7 +717,7 @@ def _row_tex(design, row, where, summary, namefield_cell):
             fixed_terms.append(r"\amcuiW%s" % L)
         elif c["width"] == "fit":
             lines.append(r"\sbox\amcuiBox%s{%s}%%" % (L, _measure_tex(content, c["align"])))
-            extra = r"+2\fboxsep+2\fboxrule" if border != "none" else ""
+            extra = (r"+2\fboxrule+2\dimexpr%s\relax" % c["pad"]) if border != "none" else ""  # the cell's own padding
             lines.append(r"\setlength{\amcuiW%s}{\dimexpr\wd\amcuiBox%s%s\relax}%%" % (L, L, extra))
             fit_terms.append(r"\amcuiW%s" % L)
         else:

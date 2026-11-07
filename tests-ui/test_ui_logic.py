@@ -751,5 +751,20 @@ _summ = _doc.replace("\\onecopy{3}{ % note: { here", "\\onecopy{3}{\n%%AMCUI:SUM
 _t10, _, _ = pst.apply(_summ, [{"op": "summary"}], [])
 check("design: the summary defines the macro its lines use", "\\providecommand{\\amcuiPoint}" in _t10 and "\\amcuiPoint{" in _t10)
 
+# paper builder: review of !13
+check("builder: a bare % in raw LaTeX is escaped, so it can't swallow the closing brace",
+      pb.normalize({"paper": [{"cells": [{"block": {"type": "text", "latex": "Total 100% of marks"}}]}]})["paper"][0]["cells"][0]["block"]["latex"] == "Total 100\\% of marks"
+      and pb.normalize({"paper": [{"cells": [{"block": {"type": "text", "latex": "50\\% kept"}}]}]})["paper"][0]["cells"][0]["block"]["latex"] == "50\\% kept")
+check("builder: a fit column with a border adds its own padding, not the default", "+2\\fboxrule+2\\dimexpr2mm\\relax" in tex and "+2\\fboxsep+2\\fboxrule" not in tex)
+for bad, what in (({"paper": [{"cells": [{"pad": "5000mm", "block": {"type": "text"}}]}]}, "too long"),
+                  ({"answer_sheet": [{"cells": [{"pad": "9999pt", "block": {"type": "text"}}]}]}, "too long")):
+    try:
+        pb.normalize(bad); check(f"builder: refused a length {what}", False)
+    except pb.EditError as e:
+        check(f"builder: refused a length {what}", what in str(e))
+check("builder: a logo file name may hold spaces", pb.normalize({"paper": [{"cells": [{"block": {"type": "logo", "file": "My Logo.png"}}]}]})["paper"][0]["cells"][0]["block"]["file"] == "My Logo.png")
+check("builder: an ID grid twice on the sheet is refused",
+      any(x["level"] == "error" and "grid printed twice" in x["text"] for x in pb.check(pb.normalize({"kind": "separate", "paper": [{"cells": [{"block": {"type": "questions"}}]}], "answer_sheet": [{"cells": [{"block": {"type": "student"}}]}, {"cells": [{"block": {"type": "id_grid"}}]}, {"cells": [{"block": {"type": "id_grid"}}]}, {"cells": [{"block": {"type": "all_answers"}}]}]}), 2)))
+
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

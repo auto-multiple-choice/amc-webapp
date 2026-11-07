@@ -1987,6 +1987,7 @@ def on_history_restore(data):
     add_activity(pdir, f"{fn}: the version of {label} restored" + ("" if existed else " (the file had been deleted)"))
     if not existed:
         core.emit_msg("project-files-list")
+    refresh_layout(pdir)  # a builder exam: the layout follows a restored paper.json or exam.tex
     core.emit_msg("ui-history-restored", {"file": fn, "id": vid})
     core.emit_msg("ui-changed", "questions")
 
@@ -2268,7 +2269,10 @@ def write_layout(pdir, design, what="Paper builder: layout rewritten", force=Fal
     if os.path.isfile(path):
         with open(path, "rb") as f:
             if f.read() == tex:
-                return source_history.digest(tex)
+                dg = source_history.digest(tex)
+                if info.get("layout_digest") != dg or info.get("detached"):  # the file is the design's again
+                    _update_record(pdir, lambda r: r.setdefault("builder", {}).update({"layout_digest": dg, "detached": False}))
+                return dg
     if write_refusal_bytes(path, tex):
         return None  # printed: the layout stays as it was built
     dg = save_source(pdir, paper_builder.LAYOUT_FILE, tex, what)
@@ -2306,6 +2310,10 @@ def before_build():
     if errors:
         core.dialog_msg(warn=f"The paper can't be built yet: {errors[0]['text']} (Questions › Paper builder)")
         return "refused"
+    rec = read_record(pdir)
+    if _layout_state(pdir, rec)["edited"] and not (rec.get("builder") or {}).get("detached"):
+        core.dialog_msg(warn=f"{paper_builder.LAYOUT_FILE} was edited by hand, so the paper is built from it as it is, not from "
+                             "the design. In Questions › Paper builder, choose to keep the edits or to rewrite the file.")
     write_layout(pdir, design, "Paper builder: layout updated for the build")
     return None
 
@@ -2357,7 +2365,8 @@ def api_builder_save():
     name = _open_project()
     if not name:
         return jsonify(error="This exam doesn't exist any more.")
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
     pdir = core.project_dir()
     if exam_lock(pdir):
         return jsonify(error=LOCKED, locked=True)
@@ -2365,6 +2374,8 @@ def api_builder_save():
         design = paper_builder.normalize(data.get("design"))
     except questions_edit.EditError as e:
         return jsonify(error=str(e))
+    if gallery.needs_unicode_engine(paper_builder.to_json(design)) and core.get_option("moteur_latex_b") != "xelatex":
+        core.change_option("moteur_latex_b", "xelatex")  # a detail in another script: the starter's preamble follows the engine
     what = re.sub(r"[^\w ,.:;()'\-’]", "", str(data.get("what") or "changed"))[:80]
     based_on = str(data.get("based_on") or "") or None
     try:
@@ -2388,7 +2399,8 @@ def api_builder_layout():
     pdir = core.project_dir()
     if exam_lock(pdir):
         return jsonify(error=LOCKED, locked=True)
-    action = (request.get_json(silent=True) or {}).get("action")
+    body = request.get_json(silent=True)
+    action = body.get("action") if isinstance(body, dict) else None
     if action == "keep":
         _update_record(pdir, lambda r: r.setdefault("builder", {}).update({"detached": True}))
         add_activity(pdir, "Paper builder: the layout file is edited by hand from now on")
@@ -2724,7 +2736,9 @@ def _install_builder(rep, style, design, logo):
     tex = paper_builder.layout(d, versions, paper_builder.summary_for(text, questions))
     with open(os.path.join(rep, paper_builder.LAYOUT_FILE), "w", encoding="utf-8") as f:
         f.write(tex)
-    return versions, source_history.digest(tex.encode("utf-8")), any(c["block"]["type"] == "id_grid" for r in d["answer_sheet"] for c in r["cells"])
+    return (versions, source_history.digest(tex.encode("utf-8")),
+            any(c["block"]["type"] == "id_grid" for r in d["answer_sheet"] for c in r["cells"]),
+            gallery.needs_unicode_engine(paper_builder.to_json(d)))
 
 
 def _install_starter(tid, rep, style, code_digits, design=None):
@@ -2804,7 +2818,8 @@ def on_create_exam(data):
     core.remove_uuid(name)
     if copies:
         core.change_option("nombre_copies", copies)
-    if gid == STARTER_GROUP and not tid.endswith("-txt") and gallery.needs_unicode_engine(branding().get("name", "")):
+    if gid == STARTER_GROUP and not tid.endswith("-txt") and (gallery.needs_unicode_engine(branding().get("name", ""))
+                                                               or (built and built[3])):
         core.change_option("moteur_latex_b", "xelatex")  # the starter's preamble follows the engine
     meta = {k: str(data.get(k) or "").strip()[:120] for k in META_FIELDS}
     _update_record(rep, lambda rec: rec.update({"meta": meta, "starter": tid if gid == STARTER_GROUP else None}))
