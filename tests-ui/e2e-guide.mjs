@@ -59,9 +59,9 @@ async function main() {
   b.check('Escape ends it', await b.waitFor(`!document.querySelector('#tour')`, 3000));
 
   // ---- Step boxes and the guide inside an exam
-  b.check('"What to do here" comes from the guide', await b.waitFor(`document.querySelector('#main .guide').textContent.includes('Write each question with its answers')`, 5000));
+  b.check('"What to do here" comes from the guide', await b.waitFor(`document.querySelector('#main .guide').textContent.includes('Pick a question on the left')`, 5000));
   // The same sentence is in the built-in fallback, so prove the box reads the guide: change the guide's text and redraw.
-  b.check('...really from the guide, not the built-in fallback', await b.js(`(() => { const p = S.guidePages.find(x => x.id === 'questions'); p.markdown = p.markdown.replace('Write each question', 'Write each GUIDE-TEST question'); renderMain(); return document.querySelector('#main .guide').textContent.includes('GUIDE-TEST question'); })()`));
+  b.check('...really from the guide, not the built-in fallback', await b.js(`(() => { const p = S.guidePages.find(x => x.id === 'questions'); p.markdown = p.markdown.replace('Pick a question', 'Pick a GUIDE-TEST question'); renderMain(); return document.querySelector('#main .guide').textContent.includes('GUIDE-TEST question'); })()`));
   await b.click('#main .guide [data-act="guide-open"][data-page="questions"]');
   b.check('"More in the guide" opens the step\'s page', await b.waitFor(`document.querySelector('#preview .guide-page h2') && document.querySelector('#preview .guide-page h2').textContent === 'Questions'`, 3000));
   await b.click('.step[href$="/marking-scheme"]');

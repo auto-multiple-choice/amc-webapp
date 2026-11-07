@@ -48,7 +48,7 @@ const STEPS = [
   { id: 'annotate', n: 10, label: 'Annotate', group: 'after', phase: 4, built: true },
 ];
 const GUIDES = {
-  questions: ['Write each question with its answers, and mark which answers are correct.', 'Save, then build the preview to see the question paper on the right.', 'If the build fails, the message explains why and links to the LaTeX log.'],
+  questions: ['Pick a question on the left and change it in the form: its text, answers, which answers are correct, scoring. Changes are saved as you type.', 'Add, move and delete questions with the buttons. Build the preview to see the question paper on the right.', 'Prefer LaTeX? The LaTeX tab edits the source itself; Edit in LaTeX jumps to the question.'],
   'marking-scheme': ['Choose how single- and multiple-answer questions are scored by default.', 'Set what the final mark is out of, and how it is rounded.', 'All of this can still change after printing.'],
   papers: ['Choose how many copies to print. Add a few spares.', 'Build the papers. The layout is detected automatically.', 'Check the layout in the preview, then confirm it looks correct. Printing opens after that.'],
   print: ['Save the PDFs and print them anywhere, or print directly when the shared machine runs Linux.', 'Print on A4 at 100% (actual size), never "fit to page".', 'The exam locks after printing: questions and layout can no longer change.'],
@@ -88,6 +88,10 @@ const S = {
   source: { name: null, mode: null, url: null, dirty: false, loaded: false, failed: false, digest: null, tracked: false, draft: null },
   history: null,          // earlier versions of a source file, shown in the preview panel (/ui/api/history)
   deletingFile: null,     // file being deleted, so the editor moves off it
+  qtab: store.get('qtab', 'form'), // Questions: the 'form' or the 'latex' tab
+  qdata: null,            // the questions as the form reads them (/ui/api/editor)
+  qform: null,            // the question being edited: file, id, edits waiting to be saved
+  gotoLine: null,         // line to show when the LaTeX editor opens next
   theme: store.get('theme', 'auto'),
   previewOpen: store.get('previewOpen', window.innerWidth >= 1280),
   previewMax: false,
@@ -246,7 +250,7 @@ socket.on('project-files-list', () => {
 socket.on('ui-history-restored', (r) => {
   toast(`${r.file} restored.`, 'undo');
   if (S.source.name === r.file) { if (S.source.dirty) saveDraft(); S.source.dirty = false; S.source.loaded = false; loadSource(r.file); } else if (S.history) loadHistory();
-  if (S.route.step === 'questions') loadFiles();
+  if (S.route.step === 'questions') { loadFiles(); if (useForm() && S.qdata) { const f = S.qform; if (!f || (!f.pending.length && !f.saving)) loadEditor(); } }
 });
 socket.on('ui-changed', (what) => {
   if (what === 'unlock') { toast('Exam unlocked. Rebuild the papers, then check the layout again.', 'lock-slash'); S.previewMode = null; }
@@ -338,6 +342,7 @@ const leavesEditor = (r) => S.source.dirty && !(r.kind === 'exam' && r.name === 
 
 async function navigate(path, { replace = false } = {}) {
   if (leavesEditor(parsePath(path)) && !(await confirmLeave())) return;
+  flushQ();
   history[replace ? 'replaceState' : 'pushState']({}, '', path);
   onRoute();
 }
@@ -352,7 +357,10 @@ window.addEventListener('popstate', async () => {
   }
   onRoute();
 });
-window.addEventListener('beforeunload', (e) => { if (S.source.dirty) { saveDraft(); e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', (e) => {
+  if (S.qform && S.qform.pending.length) { flushQ(); e.preventDefault(); e.returnValue = ''; }
+  if (S.source.dirty) { saveDraft(); e.preventDefault(); e.returnValue = ''; }
+});
 
 function onRoute() {
   const r = parsePath(location.pathname);
@@ -362,7 +370,7 @@ function onRoute() {
   S.route = r; S.menu = null; S.previewDoc = null; S.previewFile = null; S.previewMax = false;
   S.previewMode = keepGuide ? 'guide' : null;
   S.review = null; S.previewImage = null; S.previewList = null;
-  if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) { dropEditor(); S.history = null; }
+  if (leavingQuestions || r.kind !== 'exam' || r.name !== S.project) { dropEditor(); S.history = null; S.qdata = null; S.qform = null; }
   if (r.kind === 'exams' || r.kind === 'new' || r.kind === 'appearance') {
     S.project = null; S.status = null; S.files = null;
     document.title = `${{ new: 'New exam', appearance: 'Appearance' }[r.kind] || 'Exams'} · ${BRAND}`;
@@ -432,7 +440,7 @@ function suggestStep() {
 }
 
 function enterStep() {
-  if (S.route.step === 'questions') { loadFiles(); if (!S.source.loaded) loadSource(''); }
+  if (S.route.step === 'questions') enterQuestions();
   if (S.route.step === 'settings' || S.route.step === 'marking-scheme') loadConfig();
   if (S.route.step === 'marking-scheme') { loadScoring(); loadQuestions({ refresh: true }); }
   if (S.route.step === 'print') loadPrinters();
@@ -642,8 +650,14 @@ function renderMain(keepScroll = false) {
   else if (r.step === 'export-marks') html = viewExport();
   else if (r.step === 'annotate') html = viewAnnotate();
   else html = viewSettings();
-  main.classList.toggle('fill', r.kind === 'exam' && r.step === 'questions');
-  if (r.step === 'questions' && editor && $('#ace-host')) { // keep the live editor
+  main.classList.toggle('fill', r.kind === 'exam' && r.step === 'questions' && !useForm());
+  if (r.step === 'questions' && useForm() && $('#q-editor')) { // keep the form and what is being typed in it
+    $('#q-head').innerHTML = questionsHead();
+    renderQList();
+    if (S.qform && S.qform.locked !== locked()) renderQForm(); // printed meanwhile: fields go read-only
+    return;
+  }
+  if (r.step === 'questions' && !useForm() && editor && $('#ace-host')) { // keep the live editor
     editor.setReadOnly(locked());
     $('#q-head').innerHTML = questionsHead();
     renderEditorBar();
@@ -668,7 +682,9 @@ function renderMain(keepScroll = false) {
     if (el) { el.value = typing.value; el.focus(); try { el.setSelectionRange(typing.start, typing.end); } catch { /* not a text field */ } }
   }
   if (keepScroll) main.scrollTop = top;
-  if (r.step === 'questions' && S.project) mountEditor();
+  if (r.step === 'questions' && S.project && S.status) {
+    if (useForm()) { if (editor) dropEditor(); renderQuestionsForm(); } else mountEditor();
+  }
   if (r.step === 'match-students' && S.matchFocus) { S.matchFocus = false; const f = $('#match-search'); if (f) f.focus(); }
 }
 
@@ -1024,24 +1040,34 @@ function wizardOptions() {
 /* ---------- View: questions ---------- */
 
 function viewQuestions() {
+  if (!S.status) return '<div class="page"><div class="skeleton" style="height:40px;width:40%;margin-bottom:16px"></div><div class="skeleton"></div></div>';
   return `<div class="page wide">
     <div id="q-head">${questionsHead()}</div>
-    <div class="editor-bar" id="editor-bar"></div>
+    ${useForm() ? '<div class="q-editor" id="q-editor"><div class="q-list" id="q-list"></div><div class="q-form" id="q-form"></div></div>'
+    : `<div class="editor-bar" id="editor-bar"></div>
     <div id="draft-bar"></div>
-    <div class="editor-frame grow" id="editor-frame"><div id="ace-host"></div></div>
+    <div class="editor-frame grow" id="editor-frame"><div id="ace-host"></div></div>`}
   </div>`;
 }
 
 /* The header part of Questions, redrawn on its own so the editor stays. */
 function questionsHead() {
   const L = locked();
+  const form = useForm();
+  const tabs = canForm() ? `<div class="segmented q-tabs" role="tablist" aria-label="How to edit"><button role="tab" aria-pressed="${form}" data-act="qtab" data-v="form">${ic('list')} Questions</button><button role="tab" aria-pressed="${!form}" data-act="qtab" data-v="latex">${ic('code')} LaTeX</button></div>` : '';
+  const sub = L ? 'The exam is printed, so the questions are read-only: only the correct answers and scoring can change.'
+    : form ? 'Pick a question and change it in the form; changes are saved as you type. Build the preview to see the question paper.'
+      : 'Write the questions and answers. Save, then build the preview to see the question paper.';
+  const build = `<button class="btn ${form ? 'btn-primary' : ''}" data-act="build" ${(form ? S.qdata : S.source.loaded) ? '' : 'disabled'}>${ic('refresh')} Build preview</button>`;
+  const actions = form
+    ? `<button class="btn btn-ghost" data-act="qf-history" ${S.qdata ? '' : 'disabled'}>${ic('clock-rotate-right')} History</button>${L ? `<a class="btn btn-primary" href="${examPath(S.project, 'marking-scheme')}" data-nav>${ic('percentage-circle')} Marking scheme</a>` : build}`
+    : L ? `<a class="btn btn-primary" href="${examPath(S.project, 'marking-scheme')}" data-nav>${ic('percentage-circle')} Correct the answer key</a>`
+      : `${build}<button class="btn btn-primary" data-act="save" id="save-btn" disabled>${ic('floppy-disk')} Save</button>`;
   return `
-    ${header('questions', 'Questions', L ? 'The exam is printed, so the questions are read-only.' : 'Write the questions and answers. Save, then build the preview to see the question paper.',
-    L ? `<a class="btn btn-primary" href="${examPath(S.project, 'marking-scheme')}" data-nav>${ic('percentage-circle')} Correct the answer key</a>`
-      : `<button class="btn" data-act="build" ${S.source.loaded ? '' : 'disabled'}>${ic('refresh')} Build preview</button>
-     <button class="btn btn-primary" data-act="save" id="save-btn" disabled>${ic('floppy-disk')} Save</button>`)}
+    ${header('questions', 'Questions', sub, actions)}
+    ${tabs}
     ${guideBox('questions')}
-    ${L ? lockBanner('Correct the answer key and change scoring in <b>Marking scheme</b>: those changes are still allowed, because nothing moves on the printed papers.') : ''}`;
+    ${L ? lockBanner(form ? 'Tick the correct answers and change scoring here or in <b>Marking scheme</b>: those changes are still allowed, because nothing moves on the printed papers.' : 'Correct the answer key and change scoring in <b>Marking scheme</b>: those changes are still allowed, because nothing moves on the printed papers.') : ''}`;
 }
 
 function renderEditorBar() {
@@ -1152,6 +1178,7 @@ async function onSourceName(name, mode, url) {
     if (!editor) renderMain();
     setEditorText(S.source.text);
     if (editor) editor.setReadOnly(locked() || S.source.failed);
+    if (editor && S.gotoLine) { editor.gotoLine(S.gotoLine, 0, true); editor.focus(); S.gotoLine = null; }
     const b = $('[data-act="build"]'); if (b) b.disabled = S.source.failed;
   }
   if (S.history && S.history.file === name && S.previewMode === 'history') loadHistory();
@@ -1319,6 +1346,7 @@ function diffHtml(a, b) {
 }
 
 async function buildPreview() {
+  await flushQ();
   if (S.source.dirty && !(await saveSource())) return;
   const st = S.status || {};
   if (st.printed || st.scans) {
@@ -1551,6 +1579,319 @@ async function editQuestion(title) {
   if (!data) return;
   if (data.choice === 'full' || data.choice === 'none') socket_emit('ui-question-edit', { title, action: 'neutral', how: data.choice });
   else socket_emit('ui-question-edit', { title, action: 'rule', rule: data.choice === 'default' ? '' : data.choice === 'custom' ? data.custom.trim() : data.choice.slice(7) });
+}
+
+/* ---------- View: questions, the form editor ---------- */
+
+const canForm = () => !!(S.status && S.status.format === 'latex');
+const useForm = () => canForm() && S.qtab === 'form';
+const qfile = (name) => S.qdata && S.qdata.files.find((f) => f.file === name);
+const qsel = () => { const f = S.qform; const fl = f && qfile(f.file); return (fl && fl.questions.find((q) => q.id === f.id)) || null; };
+const KIND_NAMES = { single: 'Single answer', multiple: 'Multiple answers', numeric: 'Numeric answer' };
+
+function enterQuestions() {
+  if (!S.status) { refreshStatus().then(() => { if (S.route.step === 'questions' && S.status) { renderMain(); enterQuestions(); } }); return; }
+  loadFiles();
+  if (useForm()) loadEditor();
+  else if (!S.source.loaded) loadSource('');
+}
+
+async function loadEditor() {
+  const project = S.project;
+  let r;
+  try { r = await getJSON('/ui/api/editor'); } catch (e) {
+    console.error(e);
+    if (S.project === project) { S.qdata = { error: 'The questions couldn\'t be read.', files: [], main: null }; renderQuestionsForm(); }
+    return;
+  }
+  if (S.project !== project || r.project !== project) return;
+  S.qdata = r;
+  if (!qsel()) {
+    const first = r.files.flatMap((f) => f.questions.map((q) => ({ file: f.file, id: q.id })))[0];
+    S.qform = first ? { file: first.file, id: first.id, pending: [], saving: false } : null;
+  }
+  renderQuestionsForm();
+  const h = $('#q-head'); if (h) h.innerHTML = questionsHead();
+}
+function renderQuestionsForm() { renderQList(); renderQForm(); }
+
+function renderQList() {
+  const host = $('#q-list');
+  if (!host) return;
+  const d = S.qdata;
+  if (!d) { host.innerHTML = '<div class="skeleton" style="height:200px;margin:12px"></div>'; return; }
+  const L = locked();
+  const total = d.files.reduce((n, f) => n + f.questions.length, 0);
+  const files = d.files.filter((f) => f.questions.length || f.file === d.main);
+  let html = `<div class="q-list-head"><b>Questions</b><span class="chip">${total}</span><span class="spacer"></span>${L || d.error ? '' : `<button class="btn btn-sm" data-act="q-add" title="Add a question after the selected one">${ic('plus')} Add</button>`}</div>`;
+  files.forEach((f) => {
+    if (files.length > 1) html += `<div class="q-file">${esc(f.file)}</div>`;
+    if (f.problem) html += `<p class="subtle q-note">${esc(f.problem)}</p>`;
+    let group;
+    f.questions.forEach((q, i) => {
+      if (i === 0 || q.group !== group) { group = q.group; html += `<div class="q-group">${group ? `Section · ${esc(group)}` : (i === 0 ? 'Questions' : 'Other questions')}</div>`; }
+      const sel = !!(S.qform && S.qform.file === f.file && S.qform.id === q.id);
+      html += `<button class="q-item ${sel ? 'is-selected' : ''} ${q.problem ? 'is-problem' : ''}" data-act="q-pick" data-file="${esc(f.file)}" data-id="${esc(q.id)}" aria-pressed="${sel}">
+        <span class="q-item-id">${esc(q.id)}</span><span class="q-item-kind">${q.kind}</span>
+        <span class="q-item-text">${q.problem ? `${ic('warning-triangle')} ${esc(q.problem)}` : esc(trunc(q.text || '(no text yet)', 70))}</span></button>`;
+    });
+    if (!f.questions.length) html += '<p class="subtle q-note">No question yet.</p>';
+  });
+  host.innerHTML = html;
+}
+
+function renderQForm() {
+  const host = $('#q-form');
+  if (!host) return;
+  const d = S.qdata;
+  if (!d) { host.innerHTML = '<div class="skeleton" style="height:260px"></div>'; return; }
+  if (d.error) { host.innerHTML = banner('warning', 'warning-triangle', d.error, '', `<button class="btn btn-sm" data-act="q-reload">Try again</button>`); return; }
+  const q = qsel();
+  const L = locked();
+  if (S.qform) S.qform.locked = L;
+  if (!q) {
+    const total = d.files.reduce((n, f) => n + f.questions.length, 0);
+    host.innerHTML = `<div class="q-empty"><p class="muted">${total ? 'Choose a question on the left.' : 'No question yet.'}</p>${L || total ? '' : `<button class="btn btn-primary" data-act="q-add">${ic('plus')} Add the first question</button>`}</div>`;
+    return;
+  }
+  const f = S.qform;
+  const ro = L || !q.editable;
+  const fileQs = qfile(f.file).questions;
+  const idx = fileQs.findIndex((x) => x.id === q.id);
+  const dis = ro ? 'disabled' : '';
+  const head = `<div class="q-form-head"><label class="sr-only" for="qf-kind">Type</label>
+    <select class="select" id="qf-kind" ${dis}>${Object.entries(KIND_NAMES).map(([v, l]) => `<option value="${v}" ${q.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <span class="spacer"></span>
+    ${ro ? '' : `<button class="btn btn-ghost btn-icon btn-sm" data-act="q-move" data-d="-1" ${idx > 0 ? '' : 'disabled'} title="Move up" aria-label="Move up">${ic('nav-arrow-up')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="q-move" data-d="1" ${idx < fileQs.length - 1 ? '' : 'disabled'} title="Move down" aria-label="Move down">${ic('nav-arrow-down')}</button>`}
+    <button class="btn btn-ghost btn-sm" data-act="q-latex" data-file="${esc(f.file)}" data-line="${q.line}">${ic('code')} Edit in LaTeX</button>
+    ${L ? '' : `<button class="btn btn-ghost btn-sm" data-act="q-delete">${ic('trash')} Delete</button>`}</div>`;
+  if (!q.editable) {
+    host.innerHTML = head + banner('warning', 'warning-triangle', 'This question can\'t be changed in the form.', `${esc(q.problem)} Open it with "Edit in LaTeX".`);
+    return;
+  }
+  const single = q.kind === 'single';
+  let answers;
+  if (q.kind === 'numeric') {
+    answers = `<div class="form-grid">
+      <label class="field"><span class="field-label">Correct answer (a number)</span><input class="input mono" id="qf-num-value" value="${esc(q.numeric.value)}" ${dis}></label>
+      <label class="field"><span class="field-label">Boxes (AMC options)</span><input class="input mono" id="qf-num-options" value="${esc(q.numeric.options)}" ${dis}>
+        <span class="field-hint"><code>digits=3</code> three digits; <code>decimals=1</code> one decimal place; <code>sign=true</code> a sign box; <code>scoreexact=2</code> points when exact.</span></label></div>`;
+  } else {
+    answers = `<div class="q-answers">${q.answers.map((a, i) => `<div class="q-ans">
+        <input type="${single ? 'radio' : 'checkbox'}" name="qf-correct" class="qf-ans-correct" data-i="${i}" ${a.correct ? 'checked' : ''} title="Correct answer" aria-label="Answer ${i + 1} is correct">
+        <input class="input mono qf-ans-text" data-i="${i}" value="${esc(a.latex)}" ${dis} aria-label="Answer ${i + 1}">
+        ${ro ? '' : `<button class="btn btn-ghost btn-icon btn-sm" data-act="qf-ans-move" data-i="${i}" data-d="-1" ${i ? '' : 'disabled'} title="Move up" aria-label="Move answer up">${ic('nav-arrow-up')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="qf-ans-move" data-i="${i}" data-d="1" ${i < q.answers.length - 1 ? '' : 'disabled'} title="Move down" aria-label="Move answer down">${ic('nav-arrow-down')}</button><button class="btn btn-ghost btn-icon btn-sm" data-act="qf-ans-remove" data-i="${i}" ${q.answers.length > 1 ? '' : 'disabled'} title="Remove" aria-label="Remove answer">${ic('xmark')}</button>`}</div>`).join('')}
+      ${ro ? '' : `<button class="btn btn-sm" data-act="qf-ans-add">${ic('plus')} Add an answer</button>`}
+      <p class="field-hint" style="margin:0">${single ? 'Tick the one correct answer.' : 'Tick every correct answer.'}${q.answers.some((a) => a.opts) ? ' Some answers carry their own scoring in the LaTeX.' : ''}</p></div>`;
+  }
+  host.innerHTML = `${head}
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Name</span><input class="input mono" id="qf-id" value="${esc(q.id)}" ${dis} autocomplete="off"><span class="field-hint">How the question is called in the marks.</span></label>
+      <div class="field"><span class="field-label">Scoring</span><div class="row" style="gap:8px;flex-wrap:wrap"><code>${esc(q.rule || 'default')}</code><button class="btn btn-sm" data-act="qf-scoring">Change…</button></div></div>
+    </div>
+    <label class="field"><span class="field-label">Question</span><textarea class="input mono" id="qf-text" rows="5" ${dis}>${esc(q.latex)}</textarea>
+      <span class="field-hint">LaTeX: maths between <code>$</code> signs, <code>\\textbf{…}</code> for bold, a blank line for a new paragraph.</span></label>
+    <div class="q-preview" id="qf-preview" aria-live="polite"></div>
+    <div><div class="field-label" style="margin-bottom:6px">Answers</div>${answers}</div>
+    <label class="field"><span class="field-label">Explanation (answer key only)</span><textarea class="input mono" id="qf-explain" rows="2" ${dis}>${esc(q.explain)}</textarea></label>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><span class="field-label" style="margin:0">Figure</span>${q.figure ? `<code>${esc(q.figure)}</code>${ro ? '' : `<button class="btn btn-ghost btn-sm" data-act="qf-figure-remove">Remove</button>`}` : '<span class="subtle">none</span>'}
+      ${ro ? '' : `<label class="btn btn-sm">${ic('upload')} Insert an image<input type="file" id="qf-figure-file" accept="image/png,image/jpeg,application/pdf" hidden></label>`}</div>
+    <div class="q-form-foot"><span class="subtle" id="qf-status"></span></div>`;
+  renderQPreview();
+  renderQStatus();
+}
+
+function renderQStatus(state) {
+  const el = $('#qf-status');
+  if (!el) return;
+  const f = S.qform;
+  const L = locked();
+  if (state === 'error') el.textContent = 'Not saved.';
+  else if (f && f.saving) el.textContent = 'Saving…';
+  else if (f && f.pending.length) el.textContent = 'Unsaved changes…';
+  else if (f && f.lastSaved) el.textContent = `Saved ${new Date(f.lastSaved).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}.`;
+  else el.textContent = L ? 'The exam is printed: only the correct answers and scoring can change.' : 'Changes are saved as you type.';
+}
+
+/* The question as students will read it: maths with KaTeX, a few common commands, the rest as typed. */
+function qPreviewHtml(latex) {
+  let t = esc(latex);
+  t = t.replace(/\\includegraphics\s*(\[[^\]]*\])?\s*\{([^{}]*)\}/g, (m, o, file) => `<img class="q-preview-img" src="${fsUrl(file.trim())}" alt="">`);
+  t = t.replace(/\\(?:textbf|bf)\{([^{}]*)\}/g, '<b>$1</b>').replace(/\\(?:emph|textit|it)\{([^{}]*)\}/g, '<i>$1</i>').replace(/\\(?:underline)\{([^{}]*)\}/g, '<u>$1</u>');
+  t = t.replace(/\n[ \t]*\n/g, '<br><br>').replace(/\\\\(\[[^\]]*\])?/g, '<br>').replace(/(?<!\\)%[^\n]*/g, '');
+  return t.trim() || '<span class="subtle">The question as students will read it appears here.</span>';
+}
+let qPreviewTimer = null;
+function scheduleQPreview() { clearTimeout(qPreviewTimer); qPreviewTimer = setTimeout(renderQPreview, 250); }
+function renderQPreview() {
+  const el = $('#qf-preview'); const ta = $('#qf-text');
+  if (!el || !ta) return;
+  el.innerHTML = qPreviewHtml(ta.value);
+  if (typeof renderMathInElement === 'function') {
+    try { renderMathInElement(el, { delimiters: [{ left: '$$', right: '$$', display: true }, { left: '\\[', right: '\\]', display: true }, { left: '$', right: '$', display: false }, { left: '\\(', right: '\\)', display: false }], throwOnError: false }); } catch (e) { console.error(e); }
+  }
+}
+
+/* Edits go to the server as operations (ui_questions.py), a few at a time. */
+let qflushTimer = null;
+function qop(op, { now = false } = {}) {
+  const f = S.qform;
+  if (!f) return Promise.resolve(null);
+  op = { ...op, id: 'id' in op ? op.id : f.id };
+  if (op.op === 'rename') { op.old_id = f.id; f.id = op.new_id; } // later edits name the question by its new name
+  const last = f.pending[f.pending.length - 1];
+  if (last && last.op === op.op && last.id === op.id && last.i === op.i && ['text', 'answer_text', 'explain', 'numeric'].includes(op.op)) f.pending[f.pending.length - 1] = op;
+  else f.pending.push(op);
+  renderQStatus();
+  if (now) return flushQ();
+  clearTimeout(qflushTimer); qflushTimer = setTimeout(flushQ, 900);
+  return Promise.resolve(null);
+}
+async function flushQ() {
+  clearTimeout(qflushTimer);
+  const f = S.qform;
+  if (!f) return null;
+  if (f.saving) await f.inflight; // one save at a time, in order (even if another question was picked meanwhile)
+  if (!f.pending.length) return null;
+  f.inflight = sendQ(f);
+  return f.inflight;
+}
+let qChain = Promise.resolve(); // the editor's saves go one after another, whichever question they belong to
+async function sendQ(f) {
+  const prev = qChain; let done; qChain = new Promise((r) => { done = r; });
+  f.saving = true; renderQStatus();
+  await prev;
+  try { return await sendQNow(f); } finally { done(); }
+}
+async function sendQNow(f) {
+  if (!f.pending.length) { f.saving = false; renderQStatus(); return { ok: true }; }
+  const ops = f.pending; f.pending = []; f.saving = true;
+  renderQStatus();
+  const file = f.file; const project = S.project;
+  const fl = qfile(file);
+  let r;
+  try {
+    const resp = await fetch('/ui/api/editor', { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file, based_on: fl ? fl.digest : '', ops }) });
+    r = await resp.json();
+  } catch { r = { error: 'The server couldn\'t be reached, so the change isn\'t saved.' }; }
+  f.saving = false;
+  if (S.project !== project || !S.qdata) return r;
+  if (r.ok) {
+    const i = S.qdata.files.findIndex((x) => x.file === file);
+    if (i >= 0) S.qdata.files[i] = r.file; else S.qdata.files.push(r.file);
+  }
+  if (!r.ok) {
+    const rename = ops.find((o) => o.op === 'rename');
+    if (rename) f.id = rename.old_id; // the name didn't change
+    toast(r.error || 'Not saved.', 'warning-triangle');
+    if (S.qform === f) renderQStatus('error');
+    if (r.conflict || r.locked) { f.pending = []; loadEditor(); } // show the file as it is
+    else if (f.pending.length) { clearTimeout(qflushTimer); qflushTimer = setTimeout(flushQ, 200); } // typed meanwhile: still to save
+    return r;
+  }
+  if (S.qform !== f) { renderQList(); if (f.pending.length) { clearTimeout(qflushTimer); qflushTimer = setTimeout(() => sendQ(f), 200); } return r; } // another question was picked meanwhile
+  f.lastSaved = Date.now();
+  renderQList();
+  if (ops.some((o) => ['add', 'delete', 'move', 'type', 'answer_add', 'answer_remove', 'answer_move', 'rename', 'scoring'].includes(o.op))) renderQForm(); else renderQStatus();
+  if (f.pending.length) { clearTimeout(qflushTimer); qflushTimer = setTimeout(flushQ, 200); }
+  return r;
+}
+
+function selectQuestion(file, id) {
+  flushQ();
+  S.qform = { file, id, pending: [], saving: false };
+  renderQuestionsForm();
+}
+async function addQuestion() {
+  const kind = await choiceDialog({ title: 'Add a question', icon: 'plus', body: '<p>What kind of question?</p>',
+    choices: [['numeric', 'Numeric answer', ''], ['multiple', 'Multiple answers', ''], ['single', 'Single answer', 'btn-primary']] });
+  if (!kind) return;
+  const f = S.qform; const file = f ? f.file : S.qdata.main;
+  const before = (qfile(file) || { questions: [] }).questions.map((q) => q.id);
+  if (!f) S.qform = { file, id: null, pending: [], saving: false };
+  const r = await qop({ op: 'add', id: null, kind, after: f ? f.id : null }, { now: true });
+  if (r && r.ok) {
+    const added = r.file.questions.find((q) => !before.includes(q.id));
+    if (added) { S.qform = { file, id: added.id, pending: [], saving: false, lastSaved: Date.now() }; renderQuestionsForm(); const t = $('#qf-text'); if (t) { t.focus(); t.select(); } }
+  }
+}
+async function deleteQuestion() {
+  const q = qsel(); const f = S.qform;
+  if (!q) return;
+  const ok = await confirmDialog({ title: `Delete ${esc(q.id)}?`, body: '<p>The question is removed from the source. The file as it is now stays in History.</p>', ok: 'Delete', danger: true, icon: 'trash' });
+  if (!ok) return;
+  const qs = qfile(f.file).questions; const i = qs.findIndex((x) => x.id === q.id);
+  const next = qs[i + 1] || qs[i - 1] || null;
+  const r = await qop({ op: 'delete' }, { now: true });
+  if (r && r.ok) { S.qform = next ? { file: f.file, id: next.id, pending: [], saving: false } : null; renderQuestionsForm(); }
+}
+function moveQuestion(d) {
+  const q = qsel(); const f = S.qform;
+  if (!q) return;
+  const qs = qfile(f.file).questions; const i = qs.findIndex((x) => x.id === q.id);
+  const before = d < 0 ? (qs[i - 1] ? qs[i - 1].id : null) : (qs[i + 2] ? qs[i + 2].id : null);
+  if (d < 0 && !before) return;
+  qop({ op: 'move', before }, { now: true });
+}
+async function editRuleForm() {
+  const q = qsel();
+  if (!q) return;
+  const presets = (q.kind === 'multiple' ? PRESETS_M : PRESETS_S).filter(([v]) => v).map(([v, l]) => [q.kind === 'multiple' && /^mz=/.test(v) ? 'haut=0,' + v : v, l]);
+  const current = !q.rule ? 'default' : presets.some(([v]) => v === q.rule) ? 'preset:' + q.rule : 'custom';
+  const radio = (value, title2, hint = '') => `<label class="check"><input type="radio" name="choice" value="${esc(value)}" ${current === value ? 'checked' : ''}><span>${title2}${hint ? `<br><span class="subtle">${hint}</span>` : ''}</span></label>`;
+  const data = await formDialog({
+    title: `Scoring of ${esc(q.id)}`, ok: 'Save', icon: 'percentage-circle',
+    body: `<div class="q-choices">${radio('default', 'The default scoring', 'As set in Marking scheme')}${presets.map(([v, l]) => radio('preset:' + v, esc(l), `<code>${esc(v)}</code>`)).join('')}${radio('custom', 'Own AMC rule')}
+      <input class="input mono" name="custom" style="margin:-2px 0 6px 24px;width:calc(100% - 24px)" value="${esc(current === 'custom' ? q.rule : '')}" placeholder="b=2,m=-1" autocomplete="off"></div>`,
+    validate: (v) => (!v.choice ? 'Choose how the question is scored.' : v.choice === 'custom' && !/^[A-Za-z0-9=.,+\-*/() \\]{1,200}$/.test((v.custom || '').trim()) ? 'Write an AMC rule, for example b=2,m=-1.' : ''),
+  });
+  if (!data) return;
+  qop({ op: 'scoring', rule: data.choice === 'default' ? '' : data.choice === 'custom' ? data.custom.trim() : data.choice.slice(7) }, { now: true });
+}
+async function changeQKind(sel) {
+  const q = qsel();
+  if (!q || sel.value === q.kind) return;
+  const toNumeric = sel.value === 'numeric', fromNumeric = q.kind === 'numeric';
+  if (toNumeric || fromNumeric) {
+    const ok = await confirmDialog({ title: `Make ${esc(q.id)} a ${KIND_NAMES[sel.value].toLowerCase()} question?`, icon: 'warning-triangle', ok: 'Change the type',
+      body: toNumeric ? '<p>Its answers are replaced by one numeric answer. The file as it is now stays in History.</p>' : '<p>Its numeric answer is replaced by two answers to fill in. The file as it is now stays in History.</p>' });
+    if (!ok) { sel.value = q.kind; return; }
+  }
+  qop({ op: 'type', kind: sel.value }, { now: true });
+}
+async function insertFigure(file) {
+  const q = qsel();
+  if (!q) return;
+  try { await upload('/upload/project', [[file, file.name]]); } catch (err) { toast(err.message, 'warning-triangle'); return; }
+  loadFiles();
+  const typed = $('#qf-text');
+  const latex = ((typed ? typed.value : q.latex).replace(/\s*\\includegraphics\s*(\[[^\]]*\])?\s*\{[^{}]*\}/, '') + '\n\n\\includegraphics[width=.5\\linewidth]{' + file.name + '}').trim();
+  const ta = $('#qf-text'); if (ta) ta.value = latex;
+  renderQPreview();
+  qop({ op: 'text', latex }, { now: true });
+}
+async function switchQTab(v) {
+  if (v === S.qtab) return;
+  if (v === 'form') {
+    if (S.source.dirty && !(await saveSource())) return;
+    dropEditor();
+    S.qtab = 'form'; store.set('qtab', 'form');
+    renderMain(); loadEditor();
+  } else {
+    await flushQ();
+    S.qtab = 'latex'; store.set('qtab', 'latex');
+    renderMain();
+    if (!S.source.loaded) loadSource('');
+  }
+}
+async function editInLatex(file, line) {
+  await flushQ();
+  S.qtab = 'latex'; store.set('qtab', 'latex');
+  S.gotoLine = line || null;
+  renderMain();
+  S.source.loaded = false; S.source.dirty = false;
+  loadSource(file);
 }
 
 /* ---------- View: papers ---------- */
@@ -3016,6 +3357,19 @@ const ACTIONS = {
   'draft-discard': () => { S.source.draft = null; clearDraft(); renderEditorBar(); },
   'delete-file': () => deleteCurrentFile(),
   'dialog-result': (el) => closeDialog(el.dataset.v),
+  qtab: (el) => switchQTab(el.dataset.v),
+  'q-pick': (el) => selectQuestion(el.dataset.file, el.dataset.id),
+  'q-add': () => addQuestion(),
+  'q-delete': () => deleteQuestion(),
+  'q-move': (el) => moveQuestion(+el.dataset.d),
+  'q-latex': (el) => editInLatex(el.dataset.file, +el.dataset.line),
+  'q-reload': () => loadEditor(),
+  'qf-history': () => openHistory(S.qform ? S.qform.file : S.qdata.main),
+  'qf-ans-add': () => qop({ op: 'answer_add', latex: 'New answer' }, { now: true }).then(() => { const inputs = [...document.querySelectorAll('.qf-ans-text')]; const last = inputs[inputs.length - 1]; if (last) { last.focus(); last.select(); } }),
+  'qf-ans-remove': (el) => qop({ op: 'answer_remove', i: +el.dataset.i }, { now: true }),
+  'qf-ans-move': (el) => { const i = +el.dataset.i; qop({ op: 'answer_move', i, j: i + (+el.dataset.d) }, { now: true }); },
+  'qf-scoring': () => editRuleForm(),
+  'qf-figure-remove': () => { const q = qsel(); if (q) qop({ op: 'text', latex: q.latex.replace(/\s*\\includegraphics\s*(\[[^\]]*\])?\s*\{[^{}]*\}/, '').trim() }, { now: true }); },
   build: () => buildPreview(),
   'dialog-ok': () => closeDialog(true),
   reload: () => location.reload(),
@@ -3054,6 +3408,10 @@ document.addEventListener('change', async (e) => {
     saveDraft(); S.source.loaded = false; S.source.dirty = false; loadSource(t.value);
   }
   if (t.id === 'hist-file' && S.history && t.value !== S.history.file) openHistory(t.value);
+  if (t.id === 'qf-kind' && S.qform) changeQKind(t);
+  if (t.id === 'qf-id' && S.qform) { const v = t.value.trim(); if (v && v !== S.qform.id) qop({ op: 'rename', new_id: v }, { now: true }); }
+  if (t.classList.contains('qf-ans-correct') && S.qform) qop({ op: 'answer_correct', i: +t.dataset.i, correct: t.checked }, { now: true });
+  if (t.id === 'qf-figure-file' && t.files[0]) { insertFigure(t.files[0]); t.value = ''; }
   if (t.id === 'other-file' && t.value) { S.previewFile = { name: t.value }; S.previewOpen = true; t.value = ''; renderTop(); renderPreview(); }
   if (t.id === 'add-file' && t.files[0]) {
     const f = t.files[0];
@@ -3118,6 +3476,13 @@ document.addEventListener('change', async (e) => {
 
 document.addEventListener('input', (e) => {
   const t = e.target;
+  if (t.id === 'qf-text' && S.qform) { qop({ op: 'text', latex: t.value }); scheduleQPreview(); }
+  if (t.id === 'qf-explain' && S.qform) qop({ op: 'explain', latex: t.value });
+  if (t.classList && t.classList.contains('qf-ans-text') && S.qform) qop({ op: 'answer_text', i: +t.dataset.i, latex: t.value });
+  if ((t.id === 'qf-num-value' || t.id === 'qf-num-options') && S.qform) {
+    const value = $('#qf-num-value').value.trim(); // half-typed numbers ("-", "1.") wait
+    if (/^-?\d+([.,]\d+)?$/.test(value)) qop({ op: 'numeric', value, options: $('#qf-num-options').value });
+  }
   if (t.dataset && t.dataset.wiz && S.wizard) { S.wizard[t.dataset.wiz] = t.value; if (t.dataset.wiz === 'name') { S.wizard.error = ''; const er = $('#wiz-error'); if (er) er.textContent = ''; } }
   if (t.id === 'wiz-search' && S.wizard) {
     S.wizard.query = t.value;

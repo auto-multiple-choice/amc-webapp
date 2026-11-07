@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="{{ static_url_for('static', filename='icons.css') }}">
   <link rel="stylesheet" href="{{ static_url_for('static', filename='ui/ui.css') }}">
   <link rel="stylesheet" href="{{ static_url_for('static', filename='ui/app.css') }}">
+  <link rel="stylesheet" href="{{ static_url_for('static', filename='ui/katex/katex.min.css') }}">
   {% if brand_css %}<style>{{ brand_css | safe }}</style>{% endif %}
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="{{ logo or url_for('static', filename='menu-amc.svg') }}">
@@ -30,6 +31,8 @@
   <noscript><p style="padding:24px">AMC needs JavaScript turned on.</p></noscript>
   <script src="{{ static_url_for('static', filename='socket.io.js') }}"></script>
   <script src="/ace/ace.js"></script>
+  <script src="{{ static_url_for('static', filename='ui/katex/katex.min.js') }}"></script>
+  <script src="{{ static_url_for('static', filename='ui/katex/auto-render.min.js') }}"></script>
   <script src="{{ static_url_for('static', filename='ui/app.js') }}"></script>
 </body>
 </html>

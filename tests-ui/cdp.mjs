@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 export const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
-export async function startBrowser({ base, user = '', pass = '', shots = null, port = 9334, tour = false }) {
+export async function startBrowser({ base, user = '', pass = '', shots = null, port = 9334, tour = false, qtab = 'latex' }) {
   const chromePath = process.env.CHROME
     || (process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome');
   const profile = mkdtempSync(join(tmpdir(), 'amc-e2e-'));
@@ -46,7 +46,8 @@ export async function startBrowser({ base, user = '', pass = '', shots = null, p
   });
   await send('Runtime.enable'); await send('Page.enable');
   // The first-run tour would cover the page in every test: mark it as seen, unless a test is about it.
-  if (!tour) await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { localStorage.setItem('amc-ui:tour-done', 'true'); } catch (e) {}" });
+  // Questions opens on the LaTeX tab unless a test asks for the form (qtab: 'form').
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { ${tour ? '' : "localStorage.setItem('amc-ui:tour-done', 'true');"} localStorage.setItem('amc-ui:qtab', ${JSON.stringify(JSON.stringify(qtab))}); } catch (e) {}` });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
 
   const b = {

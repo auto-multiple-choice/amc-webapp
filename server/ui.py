@@ -26,6 +26,7 @@ import time
 import uuid
 
 import ui_gallery as gallery
+import ui_questions as questions_edit
 import ui_scale as scale
 import ui_source as source_history
 
@@ -1696,6 +1697,8 @@ def api_questions():
             problem = "Two questions have this name in the source."
         elif s["problem"]:
             problem = s["problem"]
+        elif s.get("kind") == "numeric":
+            problem = "A numeric question is scored by its \\AMCnumericChoices options (scoreexact, scoreapprox): change them in Questions."
         elif not _agrees(s, amc, fresh):
             problem = "The source and AMC's reading of it don't agree for this question."
         rule = s["scoring"]["rule"] if s and s["scoring"] else ""
@@ -1984,6 +1987,98 @@ def on_history_restore(data):
         core.emit_msg("project-files-list")
     core.emit_msg("ui-history-restored", {"file": fn, "id": vid})
     core.emit_msg("ui-changed", "questions")
+
+
+# ---------------------------------------------------------------- the question editor
+
+def _editor_file(pdir, fn):
+    """One source file as the form editor sees it: its questions in file
+    order, with what each form field edits."""
+    with open(os.path.join(pdir, fn), "rb") as f:
+        raw = f.read()
+    out = {"file": fn, "digest": source_history.digest(raw), "problem": None, "questions": [], "groups": []}
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        out["problem"] = "The file isn't UTF-8 text, so it can only be read."
+        return out
+    qs = scale.read_latex(text, fn)
+    counts = {}
+    for q in qs:
+        counts[q["id"]] = counts.get(q["id"], 0) + 1
+    for q in qs:
+        problem = q["problem"] if counts[q["id"]] == 1 else "Two questions have this name."
+        out["questions"].append({
+            "id": q["id"], "line": q["line"], "kind": q["kind"], "group": q["group"],
+            "latex": q["text_latex"], "text": q["text"],
+            "answers": [{"latex": a["latex"], "text": a["text"], "correct": a["correct"], "opts": a["opts"]}
+                        for a in q["answers"]],
+            "choices": q["choices"]["kind"] if q["choices"] else None,
+            "numeric": {"value": q["numeric"]["value"], "options": q["numeric"]["options"]} if q["numeric"] else None,
+            "explain": q["explain"]["latex"] if q["explain"] else "",
+            "figure": q["figure"]["file"] if q["figure"] else None,
+            "rule": q["scoring"]["rule"] if q["scoring"] else "",
+            "problem": problem, "editable": problem is None})
+        if q["group"] and q["group"] not in out["groups"]:
+            out["groups"].append(q["group"])
+    return out
+
+
+@bp.route("/ui/api/editor")
+def api_editor():
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    fmt, _ = _main_source()
+    out = {"project": name, "format": fmt, "main": core.main_source_file(), "files": [],
+           "lock": bool(exam_lock(pdir))}
+    if fmt == "latex":
+        out["files"] = [_editor_file(pdir, fn) for fn in _source_files(pdir)]
+    return jsonify(out)
+
+
+@bp.route("/ui/api/editor", methods=["POST"])
+def api_editor_edit():
+    """Edits from the form (ui_questions.apply), written through the
+    history with the digest the form was built from."""
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+    fn = str(data.get("file") or "")
+    pdir = core.project_dir()
+    if _main_source()[0] != "latex":
+        return jsonify(error="The form editor works with LaTeX exams.")
+    if fn not in _source_files(pdir):
+        return jsonify(error="Not a source file of this exam.")
+    path = os.path.join(pdir, fn)
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+        text = raw.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return jsonify(error="This file isn't UTF-8 text, so it can't be changed here.")
+    based_on = str(data.get("based_on") or "") or None
+    if based_on and based_on != source_history.digest(raw):
+        return jsonify(error="This file was changed since the questions were read. Reload to see the changes.", conflict=True)
+    try:
+        new, what = questions_edit.apply(text, data.get("ops"))
+    except questions_edit.EditError as e:
+        return jsonify(error=str(e))
+    out = new.encode("utf-8")
+    if refusal := write_refusal_bytes(path, out):
+        return jsonify(error=refusal, locked=True)
+    try:
+        dg = save_source(pdir, fn, out, what, based_on=based_on)
+    except source_history.Conflict:
+        return jsonify(error="This file was changed since the questions were read. Reload to see the changes.", conflict=True)
+    ops = data.get("ops") or []
+    if any(isinstance(o, dict) and o.get("op") in ("answer_correct", "scoring", "add", "delete", "rename") for o in ops):
+        add_activity(pdir, what)
+    core.emit_msg("ui-changed", "questions")
+    return jsonify(ok=True, digest=dg, what=what, file=_editor_file(pdir, fn))
 
 
 # ---------------------------------------------------------------- dashboard and new-exam wizard

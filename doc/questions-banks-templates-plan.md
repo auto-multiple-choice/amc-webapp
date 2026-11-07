@@ -240,6 +240,40 @@ How it was built (phase 6):
   the rule editor offers the presets and the macro names found in the
   preamble.
 
+How it was built (phase 7):
+- `ui_scale.read_latex()` now records, for each question, every span the
+  form edits: the block (with its `\element{}{}` wrapper and group), the
+  text, the choices environment and each answer, a numeric answer
+  (`questionmultx` + `\AMCnumericChoices`), the explanation, a figure
+  and the question's `\scoring`. The marking panel reads the same data.
+- `server/ui_questions.py` applies edits as operations (text,
+  answer_text, answer_correct, answer_add/remove/move, numeric, explain,
+  type, scoring, rename, add, delete, move), re-parsing after each so
+  positions stay right. Added questions go after the selected one, in
+  its `\element` group; a first question goes after AMC's
+  `%%% end of the header` line.
+- `/ui/api/editor` (GET) gives the questions of every LaTeX source file
+  in file order; POST takes a file, the digest it was read at and a list
+  of operations, writes through the history (`save_source()`) and
+  returns the file's questions again. Operations that would move things
+  on a printed paper are refused by the lock; the answer key and scoring
+  pass.
+- The browser keeps edits as operations, coalesces typing, sends them
+  0.9 s after the last keystroke (at once for structural changes), one
+  request at a time, and shows "Saving… / Saved". The list on the left
+  groups questions by file and `\element` group; the form on the right
+  edits the selected one. The maths preview uses KaTeX (vendored in
+  `server/static/ui/katex/`, with the auto-render extension); common
+  commands (`\textbf`, `\emph`, `\\`, blank lines, `\includegraphics`)
+  are shown, the rest as typed.
+- "Edit in LaTeX" opens the LaTeX tab at the question's line; the tab
+  choice is remembered per browser. AMC-TXT exams keep the LaTeX tab only.
+- Scoring rules written as macros are accepted (`\scoring{\scoringDefaultS}`)
+  but the rule dialog offers presets and plain rules only.
+- Not done: drag-and-drop ordering (Move up/down buttons instead),
+  jumping to a question's page in the preview, the marking panel reading
+  the form's model directly (it still parses the source itself).
+
 ## 6. Paper structure: sections
 
 The one model that the editor, the Paper design panel, the RJ template
