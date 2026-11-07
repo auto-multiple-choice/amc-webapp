@@ -404,10 +404,10 @@ def delete_file(path):
         os.unlink(path)
 
 
-def note_built():
-    """After the question paper built: remember which version of each
-    source it was built from, so History can show "built OK"."""
-    pdir = core.project_dir()
+_building = {}  # exam folder -> the sources' digests when its build started
+
+
+def _source_digests(pdir):
     digests = {}
     for f in _source_files(pdir):
         try:
@@ -415,6 +415,26 @@ def note_built():
                 digests[f] = source_history.digest(fh.read())
         except OSError:
             pass
+    return digests
+
+
+def note_building():
+    """Before the question paper is built: the sources as they are now,
+    which is what the build reads (a save during the build mustn't be
+    taken for the version that built)."""
+    pdir = core.project_dir()
+    _building[pdir] = _source_digests(pdir)
+
+
+def note_built():
+    """After the question paper built: remember which version of each
+    source it was built from, so History can show "built OK"."""
+    pdir = core.project_dir()
+    digests = _building.pop(pdir, None)
+    if digests is None:
+        digests = _source_digests(pdir)
+    if not _is_exam(pdir):
+        return
     _update_record(pdir, lambda rec: rec.__setitem__("built_sources", digests))
     source_history.mark_built(pdir, digests)
 
@@ -471,6 +491,8 @@ SOURCE_EXTENSIONS = ("tex", "latex", "txt", "sty", "cls", "yml", "yaml")
 LOCKED = ("This exam has been printed, so its questions and layout are "
           "locked. {what} To change them, unlock the exam first (this "
           "removes its scans and marks), or work on a copy.")
+CHANGED_MEANWHILE = ("This file was changed meanwhile (from another tab, or by another teacher). "
+                     "Your change wasn't saved: look at the file again and redo it.")
 ONLY_SCORING = ("This exam has been printed, so only answer key and "
                 "scoring changes can be saved now: switching \\correctchoice "
                 "and \\wrongchoice, or changing \\scoring{…} and the default "
@@ -779,7 +801,12 @@ def on_scoring_defaults(data):
     if new != text:
         what = ("Default scoring changed: single " + (values["S"] or "AMC default")
                 + "; multiple " + (values["M"] or "AMC default"))
-        save_source(core.project_dir(), os.path.basename(path), new.encode("utf-8"), what)
+        try:
+            save_source(core.project_dir(), os.path.basename(path), new.encode("utf-8"), what,
+                        based_on=source_history.digest(text.encode("utf-8")))
+        except (source_history.Conflict, OSError):
+            core.dialog_msg(warn=CHANGED_MEANWHILE)
+            return
         add_activity(core.project_dir(), what)
     core.emit_msg("ui-scoring-saved", values)
 
@@ -1804,7 +1831,11 @@ def on_question_edit(data):
     if exam_lock(pdir) and not same_layout(old, new, ext):
         core.dialog_msg(warn=ONLY_SCORING)
         return
-    save_source(pdir, q["file"], new.encode("utf-8"), what)
+    try:
+        save_source(pdir, q["file"], new.encode("utf-8"), what, based_on=source_history.digest(old.encode("utf-8")))
+    except (source_history.Conflict, OSError):
+        core.dialog_msg(warn=CHANGED_MEANWHILE)
+        return
     _update_record(pdir, lambda r: r.__setitem__("neutral", neutral))
     add_activity(pdir, what)
     core.emit_msg("ui-changed", "questions")
@@ -1876,6 +1907,8 @@ def api_source_save():
             dg = source_history.digest(raw)
     except source_history.Conflict as c:
         return jsonify(error="This file was changed since you opened it.", conflict=True, digest=str(c))
+    except OSError:
+        return jsonify(error="This exam doesn't exist any more.")
     core.emit_msg("source-saved")
     return jsonify(ok=True, digest=dg)
 
@@ -1932,13 +1965,20 @@ def on_history_restore(data):
         core.dialog_msg(warn="This version doesn't exist any more.")
         return
     path = os.path.join(pdir, fn)
+    existed = os.path.isfile(path)
+    if not existed and exam_lock(pdir) and fn.rsplit(".", 1)[-1].lower() in SOURCE_EXTENSIONS:
+        core.dialog_msg(warn=LOCKED.format(what="A source file that comes back could change the printed papers."))
+        return
     if refusal := write_refusal_bytes(path, text):
         core.dialog_msg(warn=refusal)
         return
-    existed = os.path.isfile(path)
     label = time.strftime("%d %b %Y %H:%M", time.localtime(e.get("at") or 0))
-    source_history.restore(pdir, fn, vid, by=_who(), what=f"Restored the version of {label}",
-                           built_digest=_built_digest(read_record(pdir), fn))
+    try:
+        source_history.restore(pdir, fn, vid, by=_who(), what=f"Restored the version of {label}",
+                               built_digest=_built_digest(read_record(pdir), fn))
+    except OSError:
+        core.dialog_msg(warn="This exam doesn't exist any more.")
+        return
     add_activity(pdir, f"{fn}: the version of {label} restored" + ("" if existed else " (the file had been deleted)"))
     if not existed:
         core.emit_msg("project-files-list")
