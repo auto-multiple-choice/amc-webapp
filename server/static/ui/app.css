@@ -519,3 +519,15 @@ input[type="color"] { width: 44px; height: 34px; padding: 2px; border: 1px solid
 .b-diff { margin: 0 0 12px; }
 .b-diff .diff { max-height: 32vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; margin-top: 6px; }
 .b-clash { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; margin-top: 8px; font-size: 13px; overflow-wrap: anywhere; }
+/* Search and filters (banks.js, ui_bankindex.py) */
+.b-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 10px; }
+.b-filters .input[type="search"] { flex: 1 1 200px; width: auto; }
+.b-filters .select { width: auto; }
+.b-search { margin: 0 0 12px; }
+.b-results { margin: 0 0 16px; max-height: 50vh; }
+.b-hit { width: 100%; text-align: left; background: none; border-left: 0; border-right: 0; border-bottom: 0; cursor: pointer; font: inherit; color: inherit; grid-template-columns: auto auto auto 1fr auto; }
+.b-hit:hover { background: var(--accent-softer); }
+.q-item.is-archived { opacity: .55; }
+.b-arch { align-self: center; margin: 0; }
+.b-usage { font-size: 12.5px; margin: 0 0 8px; }
+.b-usage svg { width: 14px; height: 14px; vertical-align: -2px; }

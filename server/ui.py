@@ -36,6 +36,7 @@ import ui_changes as changes
 import ui_items as items
 import ui_latex as ltx
 import ui_banks as banks
+import ui_bankindex as bankindex
 import ui_vcs as vcs
 
 HISTORY_DIR = vcs.OLD_HISTORY_DIR  # the old per-file history: kept out of exam downloads until converted (amc.py)
@@ -476,7 +477,9 @@ def audit(action, pdir=None, **fields):
 
 
 def name_printed_version(pdir, how):
-    """Printing names the version the papers were built from."""
+    """Printing names the version the papers were built from, and the
+    exam's copies of bank questions count as used (ui_bankindex.py)."""
+    note_bank_usage(pdir)
     try:
         repo = exam_history(pdir)
         cid = repo.last_built() or repo.head()
@@ -485,6 +488,22 @@ def name_printed_version(pdir, how):
                               else f"Marked as printed {time.strftime('%d %b %Y')}", by=_who(), auto=True)
     except (vcs.HistoryError, OSError) as e:
         core.app.logger.error(f"History: {pdir}: {e}")
+
+
+def note_bank_usage(pdir):
+    """The exam's copies of bank items on its paper (pools.tex) are used once
+    more: recorded when it is printed, so a question dropped before doesn't
+    count."""
+    try:
+        on_paper = {p["name"] for p in items.read_pools(_pools_text(pdir))}
+        used = []
+        for n in _item_names(pdir):
+            o = banks.item_meta(pdir, n).get("origin") or {}
+            if n in on_paper and o.get("bank_uid") and o.get("item_uid"):
+                used.append((o["bank_uid"], o["item_uid"], o.get("item")))
+        bankindex.note_printed(vcs.amcweb_dir(pdir, _root()), os.path.basename(pdir), vcs.read_uid(pdir), used, by=_who())
+    except (OSError, ValueError) as e:
+        core.app.logger.error(f"Bank usage: {pdir}: {e}")
 
 
 def _build_stamp(pdir):

@@ -15,20 +15,28 @@ side uses ui.py's helpers. Registered by ui.py on its blueprint.
   POST /ui/api/bank/<b>/import           RJ-style LaTeX files (\\element blocks) with figures
   POST /ui/api/bank-pull                 bank -> the open exam
   POST /ui/api/bank-save                 the open exam -> a bank
+  GET  /ui/api/bank-search               search the teacher's banks (ui_bankindex.py)
+  GET  /ui/api/bank/<b>/usage            the exams that printed or hold an item
+  GET  /ui/api/bank/<b>/export           the bank as a zip, with its history (ui_bankzip.py)
+  POST /ui/api/banks/import              a bank's zip, checked, as a new bank
 
 Copies and their status, updates either way and a section's follow-up of
 its group are in ui_bankcopies.py.
 """
+import io
 import os
 import re
 import shutil
+import sqlite3
 import time
 import uuid
 
-from flask import jsonify, request
+from flask import jsonify, request, send_file
 
 import ui_bankcopies as copies
+import ui_bankindex as bankindex
 import ui_banks as banks
+import ui_bankzip as bankzip
 import ui_items as items
 import ui_latex as ltx
 import ui_questions as questions_edit
@@ -100,7 +108,7 @@ def _payload(name, bdir):
         f = ui._editor_file(bdir, items.item_file(n), pmap=gmap)
         m = banks.item_meta(bdir, n)
         f["meta"] = {"uid": m.get("uid"), "title": m.get("title") or "", "tags": m.get("tags") or [],
-                     "difficulty": m.get("difficulty") or "", "origin": m.get("origin")}
+                     "difficulty": m.get("difficulty") or "", "origin": m.get("origin"), "archived": bool(m.get("archived"))}
         files.append(f)
     return {"project": None, "bank": {"name": name, "title": b["title"], "description": b["description"], "uid": b["uid"],
                                       "groups": b["groups"], "loose": b["loose"]},
@@ -262,7 +270,8 @@ def api_bank_source(name):
 
 def api_bank_items(name):
     """add {kind, group, after}; delete {item}; move {item, group, before};
-    describe {item, title, tags, difficulty}."""
+    describe {item, title, tags, difficulty, archived}. An archived item is
+    hidden from "From a bank"; exams and history keep it."""
     bdir = ui.bank_dir(name)
     if not bdir:
         return _err("This bank doesn't exist any more.")
@@ -309,12 +318,14 @@ def api_bank_items(name):
                     diff = str(data.get("difficulty") or "")
                     if diff and diff not in banks.DIFFICULTIES:
                         raise banks.BankError("Difficulty: easy, medium or hard.")
-                    cs.what = f"Item {n}: title, tags or difficulty changed"
+                    archived = data["archived"] in (True, 1, "1", "true") if "archived" in data else bool(m.get("archived"))
+                    cs.what = (f"Item {n} archived" if archived and not m.get("archived") else f"Item {n} back from the archive"
+                               if m.get("archived") and not archived else f"Item {n}: title, tags or difficulty changed")
                     cs.write(f"{items.ITEMS_DIR}/{n}/{items.META_FILE}", banks.meta_json(
                         uid=m.get("uid"), title=str(data.get("title", m.get("title") or ""))[:120],
                         tags=banks.tidy_tags(data["tags"]) if "tags" in data else m.get("tags") or [],
                         difficulty=diff if "difficulty" in data else m.get("difficulty") or "",
-                        origin=m.get("origin"), created=m.get("created")).encode("utf-8"))
+                        origin=m.get("origin"), created=m.get("created"), archived=archived).encode("utf-8"))
                 else:
                     raise banks.BankError("Unknown action.")
             cs.write(banks.BANK_FILE, banks.to_json(b).encode("utf-8"))
@@ -575,6 +586,8 @@ def api_bank_pull():
         return _err("Choose a group of the bank.")
     chosen = data.get("items")
     names = [n for n in (chosen if isinstance(chosen, list) else g["items"]) if n in g["items"]]
+    if not isinstance(chosen, list):  # a whole group or a random pick: archived items stay out
+        names = [n for n in names if not banks.item_meta(bdir, n).get("archived")]
     if not names:
         return _err("Choose at least one question.")
     whole = not isinstance(chosen, list) and not data.get("count")
@@ -824,6 +837,143 @@ def api_bank_save():
     return jsonify(ok=True, what=what, bank=os.path.basename(bdir), clashes=clashes)
 
 
+# ---------------------------------------------------------------- search, usage (ui_bankindex.py)
+
+def _since(value):
+    """"never": never printed; a number of days: not printed in that long."""
+    if value == "never":
+        return 1  # not printed since the start of time
+    try:
+        days = int(value)
+    except (TypeError, ValueError):
+        return None
+    return int(time.time()) - days * 86400 if days > 0 else None
+
+
+def api_bank_search():
+    """q (words, as prefixes), bank, group, difficulty, kind, tag (one or
+    more, all needed), unused ("never", or days), archived=1."""
+    pd = _projects()
+    a = request.args
+    bank_uid = None
+    if a.get("bank"):
+        bdir = ui.bank_dir(a["bank"])
+        if not bdir:
+            return jsonify(items=[])
+        bank_uid = banks.read(bdir)["uid"]
+    kind = a.get("kind") if a.get("kind") in bankindex.KINDS else None
+    diff = a.get("difficulty") if a.get("difficulty") in banks.DIFFICULTIES else None
+    try:
+        limit = max(1, min(int(a.get("limit") or 500), 2000))
+    except ValueError:
+        limit = 500
+    try:
+        found = bankindex.search(ui._owner_home(), pd, q=a.get("q", "")[:200], bank=bank_uid, group=a.get("group") or None,
+                                 difficulty=diff, kind=kind, tags=[t[:40] for t in a.getlist("tag")][:10],
+                                 unused_since=_since(a.get("unused")), archived=a.get("archived") == "1", limit=limit)
+    except (sqlite3.Error, OSError) as e:
+        ui.core.app.logger.error(f"Bank search: {e}")
+        return jsonify(items=[], error="Search isn't available just now.")
+    return jsonify(items=found)
+
+
+def api_bank_usage(name):
+    """The exams that printed the item (the usage log), and the exams
+    holding a copy of it now."""
+    bdir = ui.bank_dir(name)
+    if not bdir:
+        return _err("This bank doesn't exist any more.")
+    n = request.args.get("item", "")
+    b = banks.read(bdir)
+    if n not in b["all"]:
+        return _err("Not an item of this bank.")
+    uid = banks.item_meta(bdir, n).get("uid")
+    u = bankindex.usage(ui._owner_home()).get((b["uid"], uid)) or {}
+    printed = sorted(({"exam": exam, "at": at} for at, exam in (u.get("exams") or {}).values()), key=lambda x: -x["at"])
+    held = [{"exam": e, "item": i} for e, i in bankindex.exams_with(ui.core.projects_dir(), b["uid"], uid)]
+    return jsonify(item=n, printed=printed, copies=held)
+
+
+# ---------------------------------------------------------------- a bank as a zip (ui_bankzip.py)
+
+def api_bank_export(name):
+    bdir = ui.bank_dir(name)
+    if not bdir:
+        return _err("This bank doesn't exist any more.", 404)
+    tmp = ui.core.amc_user_tmp(f"bank-export-{uuid.uuid4().hex[:8]}")
+    os.makedirs(tmp, exist_ok=True)
+    try:
+        bundle = os.path.join(tmp, bankzip.BUNDLE)
+        try:
+            _repo(bdir).bundle(bundle)
+        except (vcs.HistoryError, OSError) as e:
+            ui.core.app.logger.error(f"Bank export: {name}: no history in the zip: {e}")
+            bundle = None
+        buf = io.BytesIO()
+        bankzip.write(bdir, buf, bundle)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    buf.seek(0)
+    vcs.audit(vcs.amcweb_dir(bdir, ui._root(), "bank"), _who(), "bank downloaded", bank=os.path.basename(bdir))
+    return send_file(buf, mimetype="application/zip", as_attachment=True, download_name=f"{os.path.basename(bdir)}.zip")
+
+
+def api_banks_import():
+    """A bank's zip as a new bank of the teacher: checked (ui_bankzip.read),
+    named after NAME, the bank's title or the file, its history taken from
+    the zip when it can be. It keeps its uid unless this teacher has it
+    already (then it is a separate bank)."""
+    pd = _projects()
+    up = request.files.get("file")
+    if not up or not up.filename:
+        return _err("Choose a bank's zip.")
+    tmp = ui.core.amc_user_tmp(f"bank-zip-{uuid.uuid4().hex[:8]}")
+    os.makedirs(tmp, exist_ok=True)
+    try:
+        zpath = os.path.join(tmp, "upload.zip")
+        up.save(zpath)
+        unpacked = os.path.join(tmp, "bank")
+        os.makedirs(unpacked)
+        written, skipped = bankzip.read(zpath, unpacked)
+        b = banks.read(unpacked)
+        wanted = str(request.form.get("name") or "").strip() or b["title"] or re.sub(r"\.zip$", "", os.path.basename(up.filename), flags=re.I)
+        name = banks.free_name(pd, wanted)
+        home = ui._owner_home()
+        uid = b["uid"]
+        if not uid or uid in {x["uid"] for x in banks.list_banks(pd)} or os.path.exists(os.path.join(home, "history", "banks", f"{uid}.git")):
+            uid = vcs.new_uid()
+        bundle = os.path.join(unpacked, bankzip.BUNDLE)
+        if os.path.isfile(bundle):
+            os.replace(bundle, os.path.join(tmp, bankzip.BUNDLE))
+            bundle = os.path.join(tmp, bankzip.BUNDLE)
+        else:
+            bundle = None
+        b.update(uid=uid, title=name)
+        with open(os.path.join(unpacked, banks.BANK_FILE), "w", encoding="utf-8") as f:
+            f.write(banks.to_json(b))
+        if not os.path.isfile(os.path.join(unpacked, banks.PREAMBLE)):
+            with open(os.path.join(unpacked, banks.PREAMBLE), "w", encoding="utf-8") as f:
+                f.write(banks.PREAMBLE_TEXT)
+        bdir = banks.bank_dir(pd, name)
+        os.makedirs(banks.banks_root(pd), exist_ok=True)
+        shutil.move(unpacked, bdir)
+        history = bool(bundle) and vcs.import_bundle(bdir, ui._root(), bundle, "bank")
+        what = f"Bank \"{name}\" imported from {os.path.basename(up.filename)[:120]}" + ("" if history or not bundle else " (its history couldn't be read, so it starts here)")
+        vcs.snapshot(bdir, ui._root(), by=_who(), what=what, kind="save" if history else "create", target="bank")
+        vcs.audit(vcs.amcweb_dir(bdir, ui._root(), "bank"), _who(), "bank imported", bank=name, uid=uid, history=history,
+                  files=len(written), skipped=len(skipped))
+    except bankzip.ZipError as e:
+        return _err(str(e))
+    except banks.BankError as e:
+        return _err(str(e))
+    except (vcs.HistoryError, OSError, ValueError) as e:
+        ui.core.app.logger.error(f"Bank import: {e}")
+        return _err("This zip couldn't be imported. The server log has the details.")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return jsonify(ok=True, name=name, history=history, items=len(banks.read(bdir)["all"]), skipped=skipped[:20])
+
+
 ROUTES = [
     ("/ui/api/banks", api_banks, ["GET"]),
     ("/ui/api/banks", api_banks_edit, ["POST"]),
@@ -837,4 +987,8 @@ ROUTES = [
     ("/ui/api/bank/<name>/import", api_bank_import, ["POST"]),
     ("/ui/api/bank-pull", api_bank_pull, ["POST"]),
     ("/ui/api/bank-save", api_bank_save, ["POST"]),
+    ("/ui/api/bank-search", api_bank_search, ["GET"]),
+    ("/ui/api/bank/<name>/usage", api_bank_usage, ["GET"]),
+    ("/ui/api/bank/<name>/export", api_bank_export, ["GET"]),
+    ("/ui/api/banks/import", api_banks_import, ["POST"]),
 ]
