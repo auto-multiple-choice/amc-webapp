@@ -629,14 +629,14 @@ updated as each phase lands. ✅ built, ⬜ to build, ✖ not doing (why).
 - ✅ Item statistics after marking (Mark › How each question did): share right, separation (strongest 27% against weakest 27%, ranked by the total without the question), how often each answer was chosen (overall, strong, weak), notes in words; kept per bank item across exams (`_amcweb/<user>/stats/<exam uid>.json`, replaced when the exam is marked again) and shown on the bank's question
 - ✅ Blueprints ("3 easy + 5 medium from Algebra": rows of count, difficulty, group, tag) that fill a section for review: picked once and shown with the rows that couldn't be filled, then added; kept for the section
 
-**Left from P0 and the security section**
-- ⬜ "Build this version" (compile a version in a scratch folder)
-- ⬜ Blame (who last changed each line)
-- ⬜ Side-by-side diffs; a section as History's scope
-- ⬜ "Download with history" (git bundle)
-- ⬜ Admins see and restore an instructor's trash
-- ⬜ `./amc doctor`: `git fsck`, histories whose exam is gone, index rebuild
-- ⬜ Archive import and exam copy drop dot-folders and `.git`
+**Left from P0 and the security section** (P4a, built on `feature/history-extras-p4a`)
+- ✅ "Build this version": the version's files written into a scratch folder of the exam (files history doesn't keep, such as style files, as they are now), compiled in the papers' sandbox, the PDF shown
+- ✅ Blame: who last changed each line of a file, and in which version (a click opens it)
+- ✅ Side-by-side diffs; a section as History's scope (Paper design › History on a section: the versions that changed its items' files)
+- ✅ "Download with history": the exam as a zip with `history.bundle`; "Import an exam…" (Exams page, new) reads it back with its history under a new uid, every object checked. Also fixed: History's links to a version's file and its images now work for exams (they couldn't send the exam's name)
+- ✅ Admins see and restore an instructor's trash (shared machine, `AMC_ADMINS`: "Whose trash" in the Trash)
+- ✅ `./amc doctor` (and `amc doctor` on Windows): `git fsck` on every history, histories whose exam or bank is gone (listed, kept), the trash, the bank index looked at (`--rebuild-index` to throw it away and build it again); otherwise changes nothing, the trash included
+- ✅ Archive import and exam copy drop dot-folders (a planted `.git` anywhere) and the app's scratch folders; the old `.history/` stays, as it is converted into the history
 
 **Left from `questions-banks-templates-plan.md`**
 - ⬜ Drag-and-drop ordering of questions and sections (buttons today)

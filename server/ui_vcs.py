@@ -658,12 +658,14 @@ class Repo:
         return self.meta.get("head")
 
     def log(self, path=None, limit=100, skip=0):
-        """Versions, newest first: [entry], and how many there are in all."""
+        """Versions, newest first: [entry], and how many there are in all.
+        PATH: one file, or a list of files (a section's), changed in each."""
         args = ["log", "-z", "--format=%H%x1f%P%x1f%at%x1f%B", f"--max-count={int(limit)}", f"--skip={int(skip)}", BRANCH]
         count = ["rev-list", "--count", BRANCH]
-        if path:
-            args += ["--", path]
-            count += ["--", path]
+        paths = [p for p in ([path] if isinstance(path, str) else path or []) if p]
+        if paths:
+            args += ["--", *paths]
+            count += ["--", *paths]
         raw = _git(self.git_dir, *args).stdout.decode("utf-8", "replace")
         entries = []
         for rec in raw.split("\0"):
@@ -832,6 +834,36 @@ class Repo:
             else:
                 problems.append((path, "it was changed again since" if n else "it was removed since"))
         return plan, problems
+
+    def blame(self, path):
+        """Who last changed each line of PATH (as it is now in the history):
+        ([{"line", "text", "id"}], {id: {"by", "at", "what"}})."""
+        if not tracked(path) or not is_text_name(path):
+            return [], {}
+        p = _git(self.git_dir, "blame", "--porcelain", BRANCH, "--", path, ok=(0, 128))
+        if p.returncode:
+            return [], {}
+        lines, commits, cur = [], {}, None
+        for raw in p.stdout.decode("utf-8", "replace").split("\n"):
+            if raw.startswith("\t"):
+                lines.append({"line": len(lines) + 1, "text": raw[1:], "id": cur})
+                continue
+            head = raw.split(" ")
+            if len(head) >= 3 and COMMIT_RE.match(head[0]):
+                cur = head[0]
+                commits.setdefault(cur, {"by": None, "at": 0, "what": ""})
+            elif cur and raw.startswith("author-time "):
+                commits[cur]["at"] = int(raw.split(" ", 1)[1] or 0)
+            elif cur and raw.startswith("summary "):
+                commits[cur]["what"] = raw.split(" ", 1)[1]
+        if commits:  # the person is in the version's trailers, not git's author: one git log for all
+            raw = _git(self.git_dir, "log", "--no-walk=unsorted", "-z", "--format=%H%x1f%B", *commits).stdout.decode("utf-8", "replace")
+            for rec in raw.split("\0"):
+                cid, _, body = rec.strip("\n").partition("\x1f")
+                if cid in commits:
+                    what, tr = _trailers(body)
+                    commits[cid].update(by=tr.get("by") or None, what=what or commits[cid]["what"])
+        return lines, commits
 
     def bundle(self, path):
         """The whole history as a git bundle at PATH (a bank's zip)."""

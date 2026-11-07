@@ -527,6 +527,7 @@ def copy_files_progress(src_folder, dst_folder):
     os.mkdir(dst_folder)
     n = 0
     for root, dirs, files in os.walk(src_folder):
+        dirs[:] = [d for d in dirs if not ui.copy_skipped(d)]  # dot-folders and scratch folders stay out (ui.py)
         dst_root = lstrip_text(root, src_folder, dst_folder)
         for d in dirs:
             os.mkdir(f"{dst_root}/{d}")
@@ -774,6 +775,8 @@ def info_remove_root(m, root, dest=None, skip_special=True):
         return None
     if m.name.startswith(root):
         m.name = m.name.replace(root, "", 1)
+        if ui.archive_skipped(m.name):  # dot-folders (a planted .git) stay out (ui.py)
+            return None
         m.uid = None
         m.gid = None
         m.uname = None
@@ -840,8 +843,8 @@ def zip_extract_options_siblings(zipf, dest, skip_special=True):
             if m.filename.startswith(root):
                 m.filename = m.filename.replace(root, "", 1)
                 if m.filename != "":
-                    skip = False
-                    if skip_special:
+                    skip = ui.archive_skipped(m.filename)  # dot-folders (a planted .git) stay out (ui.py)
+                    if skip_special and not skip:
                         mode = m.external_attr >> 16
                         reg = stat.S_ISDIR(mode) or stat.S_ISREG(mode)
                         skip = not reg
@@ -935,6 +938,7 @@ def create_from_archive(name, rep, f):
         return { "error": f"Archive {f.filename} doesn't contain a valid AMC project" }
     create_project_dirs(rep)
     remove_uuid(name)
+    ui.exam_imported(rep)  # the history in a "Download with history" zip (ui.py)
     emit_msg("end-command")
     u_open_project(name)
     return { "ok": ok }

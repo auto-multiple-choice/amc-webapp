@@ -2324,11 +2324,24 @@ def bank_dir(name):
     return d if vcs.is_target(d, "bank") else None
 
 
-def _subject(bank):
+def _download_project():
+    """The open exam for a download link: an <a href> can't send the
+    AMC-project header, so a GET may name it with ?project= instead
+    (the teacher's own exams only, as with the header). Writes keep
+    needing the header, which another site's page can't send."""
+    name = _open_project()
+    if name or request.method != "GET" or not request.args.get("project"):
+        return name
+    flask_g.project_name = request.args.get("project")
+    return _open_project()
+
+
+def _subject(bank, download=False):
     """What a history request is about: (name, folder, target) of the open
-    exam (AMC-project header) or of the teacher's bank BANK, or None."""
+    exam (AMC-project header; DOWNLOAD: or ?project= on a GET) or of the
+    teacher's bank BANK, or None."""
     if bank is None:
-        name = _open_project()
+        name = _download_project() if download else _open_project()
         return (name, core.project_dir(), "exam") if name else None
     d = bank_dir(bank)
     return (bank, d, "bank") if d else None
@@ -2352,6 +2365,7 @@ def api_history(bank):
     fn = request.args.get("file") or None
     if fn is not None and not vcs.tracked(fn):
         return jsonify(project=name, error="No history is kept for this file."), 400
+    section = request.args.get("section") or None if target == "exam" else None
     try:
         skip = max(0, int(request.args.get("skip") or 0))
         limit = max(1, min(int(request.args.get("limit") or HISTORY_PAGE), 500))
@@ -2360,12 +2374,150 @@ def api_history(bank):
     try:
         repo = _repo(pdir, target)
         repo.record_outside()
-        versions, total = repo.log(fn, limit=limit, skip=skip)
         files = repo.files()
+        if section:  # a section of the paper: every file of the items it holds
+            names = {p["name"] for p in items.read_pools(_pools_text(pdir)) if p["group"] == section}
+            scope = [f["file"] for f in files if f["file"].startswith(items.ITEMS_DIR + "/") and f["file"].split("/")[1] in names]
+            versions, total = repo.log(scope, limit=limit, skip=skip) if scope else ([], 0)
+        else:
+            versions, total = repo.log(fn, limit=limit, skip=skip)
     except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
         return _history_error(name, e)
-    return jsonify(project=name, file=fn, versions=versions, total=total, skip=skip, files=files,
+    return jsonify(project=name, file=fn, section=section, versions=versions, total=total, skip=skip, files=files,
                    head=repo.head(), lock=bool(target == "exam" and exam_lock(pdir)), target=target)
+
+
+@bp.route("/ui/api/history/blame", defaults={"bank": None})
+@bp.route("/ui/api/bank/<bank>/history/blame")
+def api_history_blame(bank):
+    """Who last changed each line of a file, and in which version."""
+    subj = _subject(bank)
+    if not subj:
+        return jsonify(project=None)
+    name, pdir, target = subj
+    fn = request.args.get("file") or ""
+    if not vcs.tracked(fn) or not vcs.is_text_name(fn):
+        return jsonify(project=name, error="Who changed each line is shown for text files only."), 400
+    try:
+        repo = _repo(pdir, target)
+        repo.record_outside()
+        lines, commits = repo.blame(fn)
+    except (vcs.HistoryError, OSError) as e:
+        return _history_error(name, e)
+    return jsonify(project=name, file=fn, lines=lines[:5000], commits=commits, truncated=len(lines) > 5000)
+
+
+BUILD_MAX_FILES = 5000               # a version built in a scratch folder: its size is bounded
+BUILD_MAX_BYTES = 200 * 1024 * 1024
+
+
+@bp.route("/ui/api/history/<cid>/build", methods=["POST"])
+def api_history_build(cid):
+    """Build this version: every file the version holds written into a
+    scratch folder of the exam (files history doesn't keep, such as style
+    files, as they are now), the main file compiled there in the same
+    sandbox as the papers. Returns the PDF, or the first error."""
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    pdir = core.project_dir()
+    if _main_source()[0] != "latex":
+        return jsonify(error="Building a version works with LaTeX exams.")
+    main = core.main_source_file()
+    d = CHECK_PREFIX + uuid.uuid4().hex[:8]
+    full = os.path.join(pdir, d)
+    try:
+        repo = exam_history(pdir)
+        if not repo.check_commit(cid):
+            return jsonify(error="This version doesn't exist."), 404
+        tree = repo.tree_at(cid)
+        if main not in tree:
+            return jsonify(error=f"The main file {main} isn't in this version.")
+        if len(tree) > BUILD_MAX_FILES:  # a history that came in a bundle may hold anything
+            return jsonify(error=f"This version holds more than {BUILD_MAX_FILES} files; it isn't built here.")
+        os.makedirs(full)
+        written = 0
+        for path, bid in tree.items():
+            data = repo.blob(bid)
+            written += len(data)
+            if written > BUILD_MAX_BYTES:
+                return jsonify(error=f"This version's files take more than {BUILD_MAX_BYTES // 1024 // 1024} MB; it isn't built here.")
+            target = os.path.join(full, *path.split("/"))
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "wb") as f:
+                f.write(data)
+        for f in os.listdir(pdir):  # style files, fonts and the like the history doesn't keep
+            src = os.path.join(pdir, f)
+            if (f.rsplit(".", 1)[-1].lower() in BUILD_SUPPORT and not vcs.tracked(f) and os.path.isfile(src)
+                    and not os.path.islink(src) and os.path.getsize(src) < 20 * 1024 * 1024):
+                shutil.copyfile(src, os.path.join(full, f))
+        cmd = _sandboxed([_engine(), "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", main])
+        try:
+            p = subprocess.run(cmd, cwd=full, capture_output=True, timeout=240, preexec_fn=_tex_limits, env={**os.environ, "TMPDIR": core.amc_user_tmp()})
+        except subprocess.TimeoutExpired:
+            return jsonify(error="Building this version took too long (over 4 minutes).")
+        pdf = os.path.join(full, main.rsplit(".", 1)[0] + ".pdf")
+        if p.returncode != 0 or not os.path.isfile(pdf):
+            try:
+                with open(os.path.join(full, main.rsplit(".", 1)[0] + ".log"), encoding="utf-8", errors="replace") as f:
+                    log = f.read()
+            except OSError:
+                log = ""
+            e = ltx.first_error(log, full) or {}
+            where = f" ({e['file']}, line {e['line']})" if e.get("file") and e.get("line") else ""
+            return jsonify(error=f"This version doesn't build: {e.get('message') or 'LaTeX stopped.'}{where}")
+        with open(pdf, "rb") as f:
+            data = f.read()
+        audit("version built", pdir, exam=name, version=cid)
+        stamp = time.strftime("%Y%m%d-%H%M", time.localtime(repo.entry(cid)["at"]))
+        return send_file(io.BytesIO(data), mimetype="application/pdf", download_name=f"{name}.{stamp}.pdf")
+    except (vcs.HistoryError, OSError) as e:
+        return _history_error(name, e)
+    finally:
+        shutil.rmtree(full, ignore_errors=True)
+
+
+@bp.route("/ui/api/history/download")
+def api_history_download():
+    """Download with history: the exam's folder as a zip (as the exam list's
+    download, without dot-folders or scratch folders) with its history as
+    history.bundle; importing that zip as an exam takes the history back."""
+    name = _download_project()
+    if not name:
+        return jsonify(project=None), 404
+    pdir = core.project_dir()
+    tmp = core.amc_user_tmp(f"history-download-{uuid.uuid4().hex[:8]}")
+    os.makedirs(tmp, exist_ok=True)
+    zpath = os.path.join(tmp, "exam.zip")
+    try:
+        repo = exam_history(pdir)
+        repo.record_outside()
+        bundle = os.path.join(tmp, HISTORY_BUNDLE)
+        repo.bundle(bundle)
+        import zipfile
+        with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED, strict_timestamps=False) as z:  # a file dated before 1980 is kept too
+            for root, dirs, files in os.walk(pdir):
+                dirs[:] = sorted(x for x in dirs if not copy_skipped(x) and not os.path.islink(os.path.join(root, x)))
+                rel = os.path.relpath(root, pdir)
+                for f in sorted(files):
+                    p = os.path.join(root, f)
+                    if not os.path.islink(p) and not (rel == "." and f == HISTORY_BUNDLE):
+                        z.write(p, os.path.normpath(os.path.join(rel, f)))
+            z.write(bundle, HISTORY_BUNDLE, compress_type=zipfile.ZIP_STORED)
+    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
+        shutil.rmtree(tmp, ignore_errors=True)
+        return _history_error(name, e)
+    except Exception as e:  # noqa: BLE001 - whatever else the packing hits, the temporary folder goes
+        shutil.rmtree(tmp, ignore_errors=True)
+        core.app.logger.error(f"Download with history: {name}: {e}")
+        return jsonify(project=name, error="The exam couldn't be packed. The server log has the details."), 500
+
+    @after_this_request
+    def _cleanup(response):
+        shutil.rmtree(tmp, ignore_errors=True)  # the open file stays readable until it is sent
+        return response
+    audit("exam downloaded with history", pdir, exam=name)
+    return send_file(zpath, mimetype="application/zip", as_attachment=True, download_name=f"{name}.zip")
 
 
 def _design_or_none(data):
@@ -2382,7 +2534,7 @@ def api_history_version(cid, bank):
     changed since (against=now), or the differences with another version
     (against=<id>), in words and line by line. raw=1&file=F gives the file
     as it was (inline=1: an image to show)."""
-    subj = _subject(bank)
+    subj = _subject(bank, download=bool(request.args.get("raw")))
     if not subj:
         return jsonify(project=None)
     name, pdir, target = subj
@@ -2615,6 +2767,60 @@ def _owner_home():
     return vcs.amcweb_dir(os.path.join(core.projects_dir(), "x"), _root())
 
 
+HISTORY_BUNDLE = "history.bundle"   # an exam's history inside "Download with history"
+BUILD_SUPPORT = ("sty", "cls", "clo", "def", "cfg", "bib", "bst", "otf", "ttf", "pfb", "afm", "tfm", "fd", "enc", "map")
+
+
+def copy_skipped(dirname):
+    """A folder left out when an exam is imported from an archive or copied:
+    dot-folders (a .git or the like planted in an archive; the old .history
+    stays, it is converted into the history) and the app's scratch folders."""
+    return (dirname.startswith(".") and dirname != HISTORY_DIR) or dirname.startswith(CHECK_PREFIX)
+
+
+VCS_DIRS = (".git", ".hg", ".svn", ".bzr")
+
+
+def archive_skipped(member):
+    """Called by upstream's archive import for each member's path (inside
+    the exam): whether it is left out (copy_skipped on any of its folders)."""
+    parts = [p for p in str(member).replace("\\", "/").split("/") if p]
+    folders = parts if str(member).endswith("/") else parts[:-1]
+    # a tar directory entry has no trailing slash, and a file may carry a repository's name (a gitdir pointer)
+    return any(copy_skipped(p) for p in folders) or (bool(parts) and parts[-1] in VCS_DIRS)
+
+
+def exam_imported(pdir):
+    """Called by upstream after an exam was imported from an archive: a
+    history.bundle in it (from "Download with history") becomes the exam's
+    history under a new uid, every object checked; else the history starts
+    from the files."""
+    bundle = os.path.join(pdir, HISTORY_BUNDLE)
+    if not os.path.isfile(bundle) or os.path.islink(bundle):
+        return False
+    try:
+        vcs.write_uid(pdir)  # a new uid: the exam it came from may be on this server too
+        ok = vcs.import_bundle(pdir, _root(), bundle, "exam")
+    except (vcs.HistoryError, OSError) as e:
+        core.app.logger.error(f"History from the archive: {pdir}: {e}")
+        ok = False
+    finally:
+        try:
+            os.unlink(bundle)
+        except OSError:
+            pass
+    try:
+        if ok:  # the files are the bundle's last version (or changed since): that version is named
+            cid = vcs.snapshot(pdir, _root(), by=_who(), what="Imported from an archive", kind="save")
+            repo = exam_history(pdir)
+            repo.name_version(cid or repo.head(), f"Imported {time.strftime('%d %b %Y')}", by=_who(), auto=True)
+        else:
+            vcs.Repo(pdir, _root()).open(by=_who(), first_what="Imported from an archive", first_kind="create")
+    except (vcs.HistoryError, OSError) as e:
+        core.app.logger.error(f"History: {pdir}: {e}")
+    return ok
+
+
 def trash_exam(pdir):
     """Called by upstream's project-delete: the exam goes to the trash."""
     info = vcs.trash_exam(pdir, _root(), by=_who())
@@ -2632,14 +2838,37 @@ def exam_renamed(pdir, old, new):
     audit("exam renamed", pdir, exam=new, old=old)
 
 
+def _trash_owner():
+    """(the server folder, the projects folder) of the trash asked for: the
+    signed-in teacher's, or, for an admin, the teacher named by ?user= (or
+    "user" in the request)."""
+    core.headers_info()
+    data = request.get_json(silent=True) if request.method == "POST" else None
+    who = (data or {}).get("user") if isinstance(data, dict) else request.args.get("user")
+    if who and getattr(flask_g, "_is_admin", False):
+        if who not in core.users_list():
+            raise vcs.HistoryError("No such teacher.")
+        pd = core.projects_dir(user=who)
+    else:
+        pd = core.projects_dir()
+    return vcs.amcweb_dir(os.path.join(pd, "x"), _root()), pd
+
+
 @bp.route("/ui/api/trash")
 def api_trash():
+    """The trash. Admins (shared machine) also get the teachers, to look at
+    and restore another teacher's trash."""
     try:
-        items = vcs.list_trash(_owner_home())
-    except (vcs.HistoryError, OSError, subprocess.SubprocessError) as e:
+        home, _ = _trash_owner()
+        items = vcs.list_trash(home)
+    except vcs.HistoryError as e:
+        return jsonify(error=str(e)), 400
+    except (OSError, subprocess.SubprocessError) as e:
         core.app.logger.error(f"Trash: {e}")
         return jsonify(error="The trash can't be read just now."), 500
-    return jsonify(items=items, days=vcs.TRASH_DAYS)
+    admin = bool(getattr(flask_g, "_is_admin", False))
+    return jsonify(items=items, days=vcs.TRASH_DAYS, admin=admin, me=getattr(flask_g, "_real_user", None),
+                   user=request.args.get("user") if admin else None, users=sorted(core.users_list()) if admin else None)
 
 
 @bp.route("/ui/api/trash/<action>", methods=["POST"])
@@ -2648,11 +2877,11 @@ def api_trash_action(action):
     data = request.get_json(silent=True)
     tid = str((data or {}).get("id") or "") if isinstance(data, dict) else ""
     try:
-        home = _owner_home()
+        home, pd = _trash_owner()
         if action == "restore":
-            name, target = vcs.restore_trash(home, tid, core.projects_dir(), by=_who())
+            name, target = vcs.restore_trash(home, tid, pd, by=getattr(flask_g, "_real_user", None) or _who())
             if target == "exam":
-                add_activity(core.project_dir(p=name), "Restored from the trash")
+                add_activity(os.path.join(pd, name), "Restored from the trash" + (f" by {flask_g._real_user}" if pd != core.projects_dir() else ""))
             return jsonify(ok=True, name=name, target=target)
         if action == "delete":
             vcs.delete_trash(home, tid, by=_who())

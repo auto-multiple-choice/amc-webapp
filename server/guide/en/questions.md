@@ -135,6 +135,14 @@ Three ways to go back, each asking first and saying what will change:
 
 Each restore is itself a new version, so it can be undone the same way. **Name this version** gives a version a name ("Checked by the head of department") to find and compare with later. A file deleted with **Delete** stays in History and can be restored from there; the exam's main source file can't be deleted. A file changed outside the app (by the desktop app, or copied in) is kept as a version "Changed outside the app" before the next change.
 
+**More in History:**
+
+- **Who changed each line**: with a file chosen at the top, this view shows the file with, beside each run of lines, who changed it last, when, and in which version (a click opens that version).
+- **Side by side**: the changes with the old lines on the left and the new ones on the right.
+- **Build this version**: compiles the exam as it was in that version, in a scratch folder, and shows the PDF. Nothing in the exam changes; use it to see what an older version looked like before restoring it.
+- **The history of a section**: in Paper design, **History** on a section lists only the versions that changed its questions.
+- **With history** (at the top of History) downloads the exam as a zip with its whole history. **Import an exam…** on the Exams page reads such a zip, or any AMC project archive, as a new exam; the history comes along. Hidden folders in an archive (such as `.git`) are left out.
+
 Text typed but not saved is kept in your browser: if the page is closed by accident, the editor offers it back the next time the file is opened.
 
 ## Common problems

@@ -65,6 +65,10 @@ Cloudflare Tunnel; see doc/public-hosting.md):
 
   backup               Save all projects (and, on a shared machine, accounts and
                        the certificate authority) to AMC_DATA_DIR/backups
+  doctor [--rebuild-index]
+                       Check every exam's and bank's history (git fsck), the
+                       trash and the bank search index; changes nothing
+                       (--rebuild-index builds the search index again)
 
   help                 Show this help
 
@@ -891,6 +895,15 @@ cmd_user() {
   auth_exec "$@"
 }
 
+cmd_doctor() {
+  ensure_docker
+  ensure_env
+  load_settings
+  is_running "$SERVICE" || die "The app isn't running. Start it first: ./amc start"
+  # Histories (git fsck), the trash and the bank search index, for every teacher.
+  docker compose exec -T "$SERVICE" python3 /amc-web/server/ui_doctor.py "$@"
+}
+
 cmd_backup() {
   ensure_docker
   ensure_env
@@ -978,6 +991,7 @@ case $cmd in
   user)           cmd_user "$@" ;;
   cert)           cmd_cert ;;
   backup)         cmd_backup ;;
+  doctor)         cmd_doctor "$@" ;;
   printer)        cmd_printer "$@" ;;
   help|-h|--help) usage ;;
   *)              usage >&2; exit 1 ;;
