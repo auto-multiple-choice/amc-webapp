@@ -20,7 +20,8 @@ The app's icon file only keeps icons named in `server/templates/*.html`, so icon
 - the marking scheme panel (`server/ui_scale.py`): question maximums the way AMC computes them, reading questions from LaTeX and AMC-TXT, and answer key and scoring edits;
 - branding: the contrast-checked palette, logo file types, and the starters' school header.
 - the source history (`server/ui_source.py`): versions kept and read back, the "changed meanwhile" check, deleted files, "built OK", restore and pruning.
-- the question editor (`server/ui_questions.py`): the spans the parser finds (text, answers, choices, numeric, explanation, figure, `\element` groups) and every edit operation, including where new questions go.
+- the question editor (`server/ui_questions.py`): the spans the parser finds (text, answers, choices, numeric, explanation, figure, `\element` groups) and every edit operation, including where new questions go;
+- the annotated sheets' symbols and key (`server/ui_legend.py`): AMC's settings read back as a preset, the default and custom choices, refused schemes, and the key stamped once on each file, with a file whose key failed left for the next run.
 
 It runs with the app's image:
 
@@ -95,7 +96,7 @@ docker compose exec -T amc-auth python - amc.example.org < tests-ui/check_public
 - **Mark:** "Mark anyway" past the missing page, the rule-breaking answer and its link to the page, "out of date" after a final mark change, and recomputing;
 - **Match students:** loading a class list, automatic matching, matching by hand with the keyboard, moving a student to another sheet, "Not in the class list" and "Back to automatic";
 - **Export marks:** the table, histogram, sorting and search, CSV (previewed) and ODS files, and the shareable link;
-- **Annotate:** previewing one student, annotating all sheets, previous/next in the preview, the zip download, and "out of date" after a settings change;
+- **Annotate:** previewing one student, annotating all sheets, previous/next in the preview, the zip download, and "out of date" after a settings change: the student's name in the header (`%(name) %(surname)`), also for an exam matched by hand before that was fixed (it removes AMC's `key_in_list` to check); "Clear in black and white" symbols by default, written to the teacher's AMC settings; the key on each page, once, also after annotating again; "AMC's colours" and a custom shape;
 - the exam's history.
 
 ```

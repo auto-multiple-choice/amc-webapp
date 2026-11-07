@@ -62,6 +62,7 @@ Check it:
 ```
 ./amc public status                  # address, and whether the tunnel is connected
 docker compose exec -T amc-auth python - amc.example.org < tests-ui/check_public.py
+docker compose exec -T amc-web rmdir /amc-web/files/MC-Projects/check-public   # its empty folder
 ```
 
 `check_public.py` talks to Caddy's tunnel site the way `cloudflared` does. It checks sign-in, the visitor addresses behind the tunnel, the app's live connection and cache headers, using a temporary account it deletes afterwards.

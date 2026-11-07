@@ -2994,7 +2994,7 @@ function viewAnnotate() {
       <section class="card"><div class="card-header"><h2>On each sheet</h2></div><div class="card-body">
         <label class="field"><span class="field-label">Marks for each question</span><select class="select" data-option="annote_position">${POSITIONS.map(([v, l]) => `<option value="${v}" ${(o.annote_position || 'marges') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="field" style="margin-top:12px"><span class="field-label">Header text</span><textarea class="textarea mono" rows="3" id="verdict" data-option="verdict" placeholder="${esc(a.default_verdict)}">${esc(o.verdict)}</textarea>
-          <span class="field-hint">Written at the top of the first page. Empty: AMC's default. <code>%s</code> mark, <code>%m</code> out of, <code>%S</code> points, <code>%M</code> maximum points, <code>(ID)</code> the student's name.</span></label>
+          <span class="field-hint">Written at the top of the first page. Empty: AMC's default. <code>%s</code> mark, <code>%m</code> out of, <code>%S</code> points, <code>%M</code> maximum points, <code>%(ID)</code> the student's name, or any class list column, such as <code>%(name) %(surname)</code>.</span></label>
       </div></section>
       <section class="card"><div class="card-header"><h2>Files</h2></div><div class="card-body">
         <div class="segmented full" role="radiogroup" aria-label="Files"><button role="radio" aria-pressed="${!single}" aria-checked="${!single}" data-act="annotate-type" data-v="STUDENTS">One PDF per student</button><button role="radio" aria-pressed="${single}" aria-checked="${single}" data-act="annotate-type" data-v="ALL">One PDF for the class</button></div>
@@ -3005,6 +3005,7 @@ function viewAnnotate() {
         ${single ? '' : check('annotate_dont_overwrite', 'Keep sheets already made', 'Only make the missing ones.')}
       </div></section>
     </div>
+    ${annotateStyleCard(a)}
     <section class="card" style="margin-top:16px"><div class="card-header">${ic('eye')}<h2>Preview one student</h2></div><div class="card-body">
       <div class="row" style="flex-wrap:wrap;gap:8px"><label class="sr-only" for="annot-copy">Sheet</label>
         <select class="select" id="annot-copy" style="max-width:360px">${rows.map((r) => `<option value="${r.student}/${r.copy}">${copyName(r.student, r.copy)}${r.name ? ' · ' + esc(r.name) : ''}</option>`).join('')}</select>
@@ -3013,6 +3014,61 @@ function viewAnnotate() {
     </div></section>
     ${annotatedCard(a)}
   </div>`;
+}
+
+/* The symbols AMC draws on each answer box, and the key stamped on every
+   page (server/ui_legend.py). Each case shows its colour and, beside it,
+   how it prints in greyscale. */
+const KEY_PLACES = [['right', 'In the right margin'], ['top', 'In the top right corner'], ['none', 'No key']];
+const COLOR_RE = /^#[0-9a-f]{6}$/;
+
+function symSvg(shape, color, ticked) {
+  const c = COLOR_RE.test(color) ? color : '#000000';
+  const mark = {
+    // as AMC draws them: corner to corner, through the corners, on the outline
+    mark: `<path d="M6 6L18 18M6 18L18 6" stroke="${c}" stroke-width="2" fill="none"/>`,
+    circle: `<circle cx="12" cy="12" r="7.07" stroke="${c}" stroke-width="2" fill="none"/>`,
+    box: `<rect x="7" y="7" width="10" height="10" stroke="${c}" stroke-width="2.4" fill="none"/>`,
+  }[shape] || '';
+  return `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" fill="${ticked ? '#c7c7c7' : '#fff'}" stroke="#555" stroke-width="1"/>${mark}</svg>`;
+}
+
+function annotateStyleCard(a) {
+  if (!a.style) return '';
+  const st = a.style, sc = st.scheme, custom = st.preset === 'custom';
+  const shapeName = (v) => (a.shapes.find((x) => x[0] === v) || [v, v])[1];
+  const preset = (v, l) => `<button role="radio" aria-pressed="${st.preset === v}" aria-checked="${st.preset === v}" data-act="astyle-preset" data-v="${v}">${l}</button>`;
+  const rows = a.cases.map(([c, label]) => {
+    const [shape, color] = sc[c];
+    return `<tr><td>${esc(label)}</td>
+      <td>${custom ? `<select class="select input-sm" data-astyle="${c}:0" aria-label="Shape for ${esc(label)}">${a.shapes.map(([v, n]) => `<option value="${v}" ${v === shape ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>` : esc(shapeName(shape))}</td>
+      <td>${custom ? `<input type="color" data-astyle="${c}:1" value="${esc(color)}" aria-label="Colour for ${esc(label)}">` : `<span class="mono subtle">${esc(color)}</span>`}</td>
+      <td style="text-align:center">${symSvg(shape, color, c.endsWith('_1'))}</td><td style="text-align:center;filter:grayscale(1)">${symSvg(shape, color, c.endsWith('_1'))}</td></tr>`;
+  }).join('');
+  const textRow = `<tr><td>Marks and header text</td><td>Text</td>
+    <td>${custom ? `<input type="color" data-astyle="text" value="${esc(sc.text)}" aria-label="Colour of the marks and header text">` : `<span class="mono subtle">${esc(sc.text)}</span>`}</td>
+    <td style="text-align:center"><b style="color:${COLOR_RE.test(sc.text) ? sc.text : '#000'}">7/10</b></td><td style="text-align:center;filter:grayscale(1)"><b style="color:${COLOR_RE.test(sc.text) ? sc.text : '#000'}">7/10</b></td></tr>`;
+  const clash = st.legend === 'right' && (a.options.annote_position || 'marges') === 'marges';
+  return `<section class="card" style="margin-top:16px"><div class="card-header">${ic('palette')}<h2>Symbols and key</h2></div><div class="card-body">
+    <div class="segmented" role="radiogroup" aria-label="Symbols">${preset('clear', 'Clear in black and white')}${preset('amc', 'AMC\'s colours')}${preset('custom', 'Custom')}</div>
+    <p class="field-hint" style="margin-top:8px">${st.preset === 'clear' ? 'A different shape for each case, in dark colours that stay visible when the sheets are printed in greyscale.' : st.preset === 'amc' ? 'Red and blue, as in AMC. In greyscale, the cross on a correct tick looks like the cross on a missed answer.' : 'Your own shapes and colours. Keep the shapes different: colours alone are lost in greyscale.'}</p>
+    <div class="table-wrap" style="margin-top:10px"><table class="table"><thead><tr><th>Box</th><th>Shape</th><th>Colour</th><th style="text-align:center">On the sheet</th><th style="text-align:center">In greyscale</th></tr></thead><tbody>${rows}${textRow}</tbody></table></div>
+    <label class="field" style="margin-top:12px;max-width:320px"><span class="field-label">Key on each page</span><select class="select" id="astyle-legend">${KEY_PLACES.map(([v, l]) => `<option value="${v}" ${st.legend === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <span class="field-hint">Explains the symbols to students: added to every page of the annotated sheets.</span></label>
+    ${clash ? banner('warning', 'warning-triangle', 'The marks for each question are also written in both margins.', 'Choose "In one margin" under Marks for each question, so they don\'t cover the key.') : ''}
+    <p class="field-hint" style="margin-top:10px">Changes apply the next time the sheets are annotated; Preview shows them at once.</p>
+  </div></section>`;
+}
+
+function sendAnnotateStyle(ch) {
+  const a = S.annotateInfo;
+  if (!a || !a.style) return;
+  const next = { preset: ch.preset || a.style.preset, legend: ch.legend || a.style.legend,
+    scheme: JSON.parse(JSON.stringify(ch.scheme || a.style.scheme)) };
+  socket_emit('ui-annotate-style', next);
+  a.style = { preset: next.preset, legend: next.legend, scheme: next.preset === 'custom' ? next.scheme : a.presets[next.preset] };
+  renderMain(true);
+  toast('Saved. Annotate again to apply it.');
 }
 
 function annotatedCard(a) {
@@ -3553,6 +3609,7 @@ const ACTIONS = {
     const v = $('#public-link').value;
     try { await navigator.clipboard.writeText(v); toast('Link copied.'); } catch { $('#public-link').select(); toast('Select the link and copy it.', 'info-circle'); }
   },
+  'astyle-preset': (el) => sendAnnotateStyle({ preset: el.dataset.v }),
   'annotate-type': (el) => { socket_emit('set-config', ['regroupement_type', el.dataset.v]); if (S.annotateInfo) S.annotateInfo.options.regroupement_type = el.dataset.v; renderMain(true); },
   annotate: () => socket_emit('ui-annotate'),
   'annotate-preview': () => {
@@ -3722,6 +3779,13 @@ document.addEventListener('change', async (e) => {
     toast('Saved.');
     if (name === 'app_public_marks') setTimeout(loadExport, 300);
     if (S.route.step === 'annotate' || S.route.step === 'export-marks') setTimeout(refreshStatus, 300);
+  }
+  if (t.id === 'astyle-legend') sendAnnotateStyle({ legend: t.value });
+  if (t.dataset.astyle && S.annotateInfo && S.annotateInfo.style) {
+    const scheme = JSON.parse(JSON.stringify(S.annotateInfo.style.scheme));
+    const [c, i] = t.dataset.astyle.split(':');
+    if (c === 'text') scheme.text = t.value.toLowerCase(); else scheme[c][+i] = i === '1' ? t.value.toLowerCase() : t.value;
+    sendAnnotateStyle({ preset: 'custom', scheme });
   }
   if (t.id === 'list-file' && t.files[0]) { uploadClassList(t.files[0]); t.value = ''; }
   if (t.id === 'list-key' && t.value) changeListKey(t);

@@ -21,11 +21,13 @@ import os
 import re
 import shutil
 import sqlite3
+import subprocess
 import tarfile
 import time
 import uuid
 
 import ui_gallery as gallery
+import ui_legend as legend
 import ui_structure as paper_structure
 import ui_builder as paper_builder
 import ui_questions as questions_edit
@@ -1468,6 +1470,12 @@ def on_match(data):
         for s, c in freed:
             db.db.execute("UPDATE association.association_association SET manual='' "
                           "WHERE student=? AND copy=?", (s, c))
+    # AMC finds a matched student's row in the class list (the name in the
+    # annotated sheets' header) by this column: set it as upstream's
+    # do_associate does, or the header loses the name.
+    key = core.get_option("liste_key")
+    if key and db.get_variable("association", "key_in_list") != key:
+        db.set_variable_nocommit("association", "key_in_list", key)
     cur = db.db.execute("INSERT OR IGNORE INTO association.association_association "
                         "(student, copy, manual, auto) VALUES (?, ?, ?, NULL)", (student, copy, sid))
     if cur.rowcount <= 0:
@@ -1553,6 +1561,104 @@ def _annotated_files(pdir, names):
     return out
 
 
+def _ensure_match_key(pdir):
+    """Exams matched by hand before this was fixed have no key_in_list, so
+    AMC can't fill the student's name or class list columns into the
+    header: set it from the column chosen in Match students."""
+    key = core.get_option("liste_key")
+    if not key or not _has_db(pdir, "association"):
+        return
+    db = core.get_db()
+    if not db.get_variable("association", "key_in_list"):
+        db.set_variable("association", "key_in_list", key)
+
+
+def _symbol_options():
+    """The AMC settings that draw the symbols: AMC keeps them per teacher
+    (cf.default.xml in their settings folder), not per exam. {name: value},
+    or None while the teacher has no settings file."""
+    try:
+        o = core.get_options(["global:" + n for n in legend.option_names()])
+    except OSError:
+        return None
+    return {k.split(":", 1)[1]: v for k, v in o.items()}
+
+
+def _make_settings_file():
+    """An empty AMC settings file for the teacher. AMC writes the file
+    itself when an exam is opened, so it is normally there already; but
+    without it the symbols chosen here would never reach AMC, which would
+    draw its own while the page shows another choice."""
+    path = core.user_confdir() + "/cf.default.xml"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        with open(path, "x", encoding="utf-8") as f:
+            f.write('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<global>\n</global>\n')
+    except FileExistsError:
+        pass
+
+
+def _annotate_style(pdir):
+    """The exam's symbols and key (ui_legend). Its symbols are written into
+    the teacher's AMC settings just before AMC annotates, so each exam gets
+    its own. A change remakes every sheet."""
+    have = _symbol_options()
+    st = legend.style_of(read_record(pdir), have or {})
+    want = legend.amc_options(st["scheme"])
+    if have is None:
+        _make_settings_file()
+        have = {}
+    changed = False
+    for k, v in want.items():
+        if str(have.get(k) or "") != v:
+            core.change_option("global:" + k, v)
+            changed = True
+    if changed:
+        core.annotate_source_change()
+    return st
+
+
+def _stamp_key(pdir, st, pdf=None):
+    """Add the key to the annotated sheets (or to one PDF, the preview)."""
+    try:
+        if pdf:
+            size = legend.page_size(pdf) if st["legend"] != "none" else None
+            if size:
+                legend.stamp(pdf, legend.make_legend(st["scheme"], st["legend"], size, f"{pdir}/{PREVIEW_DIR}"))
+        else:
+            legend.stamp_folder(_annotated_dir(pdir), st["scheme"], st["legend"], f"{pdir}/{PREVIEW_DIR}")
+    except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+        core.app.logger.error(f"Annotation key: {e}")
+        core.dialog_msg(warn=f"The sheets are annotated, but the key couldn't be added to all of them: {e}")
+
+
+def on_annotate_style(data):
+    """Symbols and key chosen in Annotate: a preset, or custom shapes and
+    colours; where the key goes."""
+    data = data if isinstance(data, dict) else {}
+    preset, where = data.get("preset"), data.get("legend")
+    pdir = core.project_dir()
+    if preset == "custom":
+        try:
+            scheme = legend.check_scheme(data.get("scheme"))
+        except ValueError as e:
+            core.dialog_msg(warn=str(e))
+            return
+    elif preset not in legend.PRESETS:
+        core.dialog_msg(warn="Unknown symbols.")
+        return
+    if where not in legend.LEGENDS:
+        core.dialog_msg(warn="Unknown place for the key.")
+        return
+
+    def change(rec):
+        rec["annotate_style"] = {"preset": preset, "legend": where, **({"scheme": scheme} if preset == "custom" else {})}
+    _update_record(pdir, change)
+    _annotate_style(pdir)
+    core.annotate_source_change()  # the key changed too: remake every sheet
+    core.emit_msg("ui-changed", "annotated")
+
+
 @bp.route("/ui/api/annotate")
 def api_annotate():
     name = _open_project()
@@ -1561,7 +1667,10 @@ def api_annotate():
     pdir = core.project_dir()
     o = core.get_options(list(ANNOTATE_OPTIONS))
     preview = f"{pdir}/{PREVIEW_DIR}/{PREVIEW_FILE}"
+    st = legend.style_of(read_record(pdir), _symbol_options() or {})
     return jsonify(project=name, options=o, default_verdict=DEFAULT_VERDICT,
+                   style=st, presets=legend.PRESETS, cases=legend.CASES,
+                   shapes=[[k, v] for k, v in legend.SHAPE_NAMES.items()],
                    files=_annotated_files(pdir, student_names(class_list())),
                    preview=f"{PREVIEW_DIR}/{PREVIEW_FILE}" if os.path.isfile(preview) else None)
 
@@ -1573,6 +1682,8 @@ def on_annotate(data=None):
     keep = core.to_bool(core.get_option("annotate_dont_overwrite"))
     if not (single or keep):
         core.unlink_indiv_annotated()
+    _ensure_match_key(pdir)
+    st = _annotate_style(pdir)
     core.emit_msg("begin-command")
     core.emit_msg("t", "Annotating the answer sheets")
     messages, variables = core.amc_command(
@@ -1582,6 +1693,7 @@ def on_annotate(data=None):
     if messages.get("ERR"):
         core.annotate_source_change()
     else:
+        _stamp_key(pdir, st)
         n = len(_files(_annotated_dir(pdir), exclude=("all-students.pdf",)))
         add_activity(pdir, "Annotated sheets made: " + ("one file for the class" if single
                                                         else f"{n} file{'' if n == 1 else 's'}"))
@@ -1606,6 +1718,8 @@ def on_annotate_preview(data):
         os.unlink(f"{out_dir}/{PREVIEW_FILE}")
     except OSError:
         pass
+    _ensure_match_key(pdir)
+    st = _annotate_style(pdir)
     id_file = core.amc_user_tmp("annotate-preview.txt", is_file=True)
     with open(id_file, "w") as f:
         f.write(f"{student}:{copy}\n" if copy else f"{student}\n")
@@ -1616,6 +1730,8 @@ def on_annotate_preview(data):
         "--progression-id", "ANNOT", "--progression", "1")
     core.emit_msg("end-command")
     ok = os.path.isfile(f"{out_dir}/{PREVIEW_FILE}")
+    if ok and not messages.get("ERR"):
+        _stamp_key(pdir, st, f"{out_dir}/{PREVIEW_FILE}")
     if messages.get("ERR") or not ok:
         if not messages.get("ERR"):
             messages["ERR"].append(":AMC didn't make the preview.")
@@ -3101,6 +3217,7 @@ SOCKET_EVENTS = {
     "ui-export": on_export,
     "ui-annotate": on_annotate,
     "ui-annotate-preview": on_annotate_preview,
+    "ui-annotate-style": on_annotate_style,
     "ui-scale-refresh": on_scale_refresh,
     "ui-question-edit": on_question_edit,
     "ui-create-exam": on_create_exam,
