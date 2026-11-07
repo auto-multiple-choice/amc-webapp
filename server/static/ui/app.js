@@ -262,7 +262,7 @@ socket.on('t', (text) => { S.workText = text; if (S.work) { S.work.text = text; 
 socket.on('p', (p) => { if (S.work) { S.work.p = p; renderWork(); } });
 socket.on('end-command', () => {
   S.work = null; S.workText = ''; renderWork();
-  S.previewStamp = Date.now();
+  S.previewStamp = Date.now(); S.previewPage = null;
   refreshStatus().then(() => {
     if (S.previewMode === 'layout' && !S.buildQueue.length && S.status && S.status.layout_pages) socket_emit('layout-init');
   });
@@ -441,6 +441,7 @@ function onRoute() {
     return;
   }
   if (r.name !== S.project) {
+    S.previewPage = null; // the page found for a question of another exam
     S.status = null; S.files = null; S.config = null; S.scans = null;
     S.marks = null; S.students = null; S.exportInfo = null; S.annotateInfo = null; S.matchSheet = null; S.questions = null;
     render();
@@ -2103,6 +2104,7 @@ function renderQList() {
         <span class="q-item-text">${q.problem ? `${ic('warning-triangle')} ${esc(q.problem)}` : esc(trunc(q.text || '(no text yet)', 70))}</span></button>`;
     });
     if (!f.questions.length) html += '<p class="subtle q-note">No question yet.</p>';
+    else if (!f.item && !L) html += `<div class="q-drop-end" data-dropend="q" data-file="${esc(f.file)}" aria-hidden="true"></div>`; // a drop here: the end of the file
   });
   if (d.can_split && !L) html += `<div class="q-split"><button class="btn btn-ghost btn-sm" data-act="q-split" title="Each question gets its own file, ready for question banks">${ic('folder')} Move questions into item files…</button></div>`;
   host.innerHTML = html;
@@ -2597,6 +2599,7 @@ function renderDSections(d, L) {
       ${!L && !isOpen ? `<div class="d-row"><button class="btn btn-ghost btn-sm" data-act="d-sec-addq" data-name="${esc(s.name)}">${ic('plus')} Add a question</button>${S.design.modular && s.pool ? `<button class="btn btn-ghost btn-sm" data-act="d-sec-latex" data-name="${esc(s.name)}" title="All the section's questions as one LaTeX document">${ic('code')} Edit as LaTeX</button><button class="btn btn-ghost btn-sm" data-act="d-sec-history" data-name="${esc(s.name)}" title="The versions that changed this section's questions">${ic('clock-rotate-right')} History</button>` : ''}${S.design.modular ? `<button class="btn btn-ghost btn-sm" data-act="bank-pick" data-section="${esc(s.name)}" title="Add questions from one of your question banks">${ic('book-stack')} From a bank…</button>${s.pool ? `<button class="btn btn-ghost btn-sm" data-act="bank-save-section" data-section="${esc(s.name)}" title="Copy this section's questions into a bank, as a group">${ic('book-stack')} Save to a bank…</button>` : ''}` : ''}</div>` : ''}
     </div>`;
   });
+  if (!L && d.sections.length > 1) html += '<div class="d-drop-end" data-dropend="sec" aria-hidden="true"></div>'; // a drop here: last
   (d.unused || []).forEach((u) => { html += banner('info', 'info-circle', `${u.pool} question${u.pool > 1 ? 's' : ''} in the group "${esc(u.name)}" ${u.pool > 1 ? 'aren\'t' : 'isn\'t'} printed.`, 'No section uses this group.', L ? '' : `<button class="btn btn-sm" data-act="d-sec-adopt" data-name="${esc(u.name)}">Add a section for it</button>`); });
   return html + '</div>';
 }

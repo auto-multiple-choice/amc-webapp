@@ -580,3 +580,7 @@ button.bl-who:hover { color: var(--brand); }
 .is-dragging { opacity: .45; }
 .drop-before { box-shadow: inset 0 3px 0 var(--brand); }
 .drop-into { background: var(--accent-soft) !important; box-shadow: inset 0 -3px 0 var(--brand); }
+
+/* where a drop lands after the last question of a file, or the last section (extras.js) */
+.q-drop-end, .d-drop-end { height: 12px; margin: 0 8px; border-radius: 4px; }
+.q-drop-end.drop-before, .d-drop-end.drop-before { background: var(--brand-soft, rgba(0, 120, 212, .15)); }

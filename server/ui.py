@@ -1515,11 +1515,11 @@ def api_question_page():
         return jsonify(project=name, page=None)
     db = core.Amcdb(pdir)
     db.use_module("layout")
-    rows = _rows(db, """SELECT p.subjectpage AS page FROM layout.layout_box AS b
+    rows = _rows(db, """SELECT p.subjectpage AS page, b.student AS copy FROM layout.layout_box AS b
                         JOIN layout.layout_question AS q ON q.question = b.question
                         JOIN layout.layout_page AS p ON p.student = b.student AND p.page = b.page
-                        WHERE q.name = ? AND b.role = 1 ORDER BY b.student, b.page LIMIT 1""", (qid,))
-    return jsonify(project=name, id=qid, page=rows[0]["page"] if rows else None)
+                        WHERE q.name = ? AND b.role IN (1, 2) ORDER BY b.student, b.page LIMIT 1""", (qid,))  # answer boxes, or the question's own box
+    return jsonify(project=name, id=qid, page=rows[0]["page"] if rows else None, copy=rows[0]["copy"] if rows else None)
 
 
 # ---- question statistics (ui_stats.py)
@@ -3166,6 +3166,8 @@ def api_items():
             if iname not in names:
                 return jsonify(error=f"The item \"{iname}\" isn't in this exam any more.")
             files = banks.item_files(os.path.join(pdir, items.ITEMS_DIR, iname))
+            if items.ITEM_FILE not in files:
+                return jsonify(error=f"The item \"{iname}\" has no item.tex to copy.")
             text = files[items.ITEM_FILE].decode("utf-8", "replace")
             taken = {q["id"] for q in _all_questions(pdir, _source_files(pdir))}
             mapping = banks.free_ids(text, taken)  # every name is taken: each question of the copy gets a new one
@@ -3173,13 +3175,14 @@ def api_items():
             first = (banks.question_ids(new_text) or [iname])[0]
             new = items.free_name(first, names)
             m = banks.item_meta(pdir, iname)
-            group = pmap.get(iname) or next(iter(pmap.values()), None)
+            group = pmap.get(iname)  # an item outside the sections stays outside: the paper isn't changed unasked
+            title = str(m.get("title") or "")
+            title = title if not title or title.endswith(" (copy)") else f"{title} (copy)"
             what = f"{iname}: duplicated as {new}"
             with history_change(pdir, what):
                 save_source(pdir, items.item_file(new), new_text.encode("utf-8"), what)
                 save_source(pdir, f"{items.ITEMS_DIR}/{new}/{items.META_FILE}", banks.meta_json(  # a new question: no link to a bank
-                    title=(m.get("title") or "") and f"{m.get('title')} (copy)", tags=m.get("tags") or [],
-                    difficulty=m.get("difficulty") or "").encode("utf-8"), what)
+                    title=title, tags=m.get("tags") or [], difficulty=m.get("difficulty") or "").encode("utf-8"), what)
                 for f, d in banks.figures_of(files).items():
                     save_source(pdir, f"{items.ITEMS_DIR}/{new}/{f}", d, what)
                 if group:
@@ -4168,6 +4171,7 @@ def gallery_templates():
 
 MY_TEMPLATES = "_templates"
 MY_GROUP = "mine"
+TEMPLATE_META = "_meta"            # the template's own files (description, preview), apart from the exam's
 TEMPLATE_INFO = "template.json"
 TEMPLATE_RECORD = ("builder", "starter")   # what the record of the exam it came from says about its paper
 
@@ -4191,19 +4195,26 @@ def my_templates():
         d = _my_template(n)
         if not d:
             continue
-        info = vcs._read_json(os.path.join(d, TEMPLATE_INFO)) or {}
+        info = vcs._read_json(os.path.join(d, TEMPLATE_META, TEMPLATE_INFO)) or {}
         out.append({"gid": MY_GROUP, "id": n, "title": info.get("title") or n, "mine": True, "starter": False,
                     "text": info.get("description") or (f"Saved from the exam \"{info.get('from')}\"" if info.get("from") else ""),
-                    "format": info.get("format") or "latex", "preview": os.path.isfile(os.path.join(d, "preview.pdf")), "pages": None})
+                    "format": info.get("format") or "latex", "preview": os.path.isfile(os.path.join(d, TEMPLATE_META, "preview.pdf")), "pages": None})
     return out
 
 
 def _template_files(pdir):
     """The files of an exam a template keeps: its sources (what history
-    keeps, items included), options.xml, and style files and fonts."""
+    keeps, items included), options.xml, and style files and fonts. Not
+    the class list (students' names have no place in a template)."""
     out = []
+    try:
+        students = os.path.basename(str(core.get_option("listeetudiants") or ""))
+    except Exception:  # noqa: BLE001 - no open exam, no list
+        students = ""
     for f in sorted(os.listdir(pdir)):
         p = os.path.join(pdir, f)
+        if f == students or f.rsplit(".", 1)[-1].lower() == "csv":
+            continue
         if os.path.isfile(p) and not os.path.islink(p) and (vcs.tracked(f) or f == "options.xml" or f.rsplit(".", 1)[-1].lower() in BUILD_SUPPORT):
             out.append(f)
     for n in _item_names(pdir):
@@ -4226,7 +4237,11 @@ def api_my_templates():
         d = _my_template(str(data.get("name") or ""))
         if not d:
             return jsonify(error="This template doesn't exist any more.")
-        shutil.rmtree(d)
+        try:
+            shutil.rmtree(d)
+        except OSError as e:
+            core.app.logger.error(f"Delete template {d}: {e}")
+            return jsonify(error="The template couldn't be removed. The server log has the details.")
         return jsonify(ok=True)
     if op != "save":
         return jsonify(error="Unknown action."), 400
@@ -4248,16 +4263,18 @@ def api_my_templates():
         for rel in _template_files(pdir):
             os.makedirs(os.path.dirname(os.path.join(tmp, rel)), exist_ok=True)
             shutil.copyfile(os.path.join(pdir, rel), os.path.join(tmp, rel))
+        meta = os.path.join(tmp, TEMPLATE_META)  # the template's own files, apart from the exam's (an exam may have a thumb.png)
+        os.makedirs(meta)
         sujet = os.path.join(pdir, "DOC-sujet.pdf")
         if os.path.isfile(sujet) and os.path.getsize(sujet) < 20 * 1024 * 1024:  # the last build, as its preview
-            shutil.copyfile(sujet, os.path.join(tmp, "preview.pdf"))
-            subprocess.run(["pdftoppm", "-png", "-r", "40", "-f", "1", "-l", "1", "-singlefile", sujet, os.path.join(tmp, "thumb")],
+            shutil.copyfile(sujet, os.path.join(meta, "preview.pdf"))
+            subprocess.run(["pdftoppm", "-png", "-r", "40", "-f", "1", "-l", "1", "-singlefile", sujet, os.path.join(meta, "thumb")],
                            capture_output=True, timeout=60)
         rec = read_record(pdir)
         info = {"title": tname, "description": str(data.get("description") or "").strip()[:300], "from": name,
                 "created": int(time.time()), "by": _who(), "format": _main_source()[0],
                 "record": {k: rec[k] for k in TEMPLATE_RECORD if rec.get(k) is not None}}
-        with open(os.path.join(tmp, TEMPLATE_INFO), "w", encoding="utf-8") as f:
+        with open(os.path.join(meta, TEMPLATE_INFO), "w", encoding="utf-8") as f:
             json.dump(info, f, indent=1, ensure_ascii=False)
         os.replace(tmp, dest)
     except (OSError, subprocess.SubprocessError) as e:
@@ -4286,7 +4303,7 @@ def gallery_file(gid, tid, kind):
     core.headers_info()
     if gid == MY_GROUP:  # the teacher's own template: the build it was saved with
         d = _my_template(tid)
-        path = os.path.join(d, "thumb.png" if kind == "thumb" else "preview.pdf") if d else None
+        path = os.path.join(d, TEMPLATE_META, "thumb.png" if kind == "thumb" else "preview.pdf") if d else None
         if not path or not os.path.isfile(path):
             abort(404)
         return send_file(path, max_age=60)
@@ -4411,8 +4428,8 @@ def on_create_exam(data):
         if not src:
             core.dialog_msg(warn="This template doesn't exist any more.")
             return
-        shutil.copytree(src, rep, dirs_exist_ok=True, ignore=shutil.ignore_patterns(TEMPLATE_INFO, "preview.pdf", "thumb.png"))
-        info = vcs._read_json(os.path.join(src, TEMPLATE_INFO)) or {}
+        shutil.copytree(src, rep, dirs_exist_ok=True, ignore=lambda d, names: {TEMPLATE_META} if os.path.abspath(d) == os.path.abspath(src) else set())
+        info = vcs._read_json(os.path.join(src, TEMPLATE_META, TEMPLATE_INFO)) or {}
         title = info.get("title") or tid
         mine = info.get("record") if isinstance(info.get("record"), dict) else {}
     else:
@@ -4427,6 +4444,8 @@ def on_create_exam(data):
         title = next((t.get("title") for t in core.templates if t["gid"] == gid and t["id"] == tid), tid)
     core.create_project_dirs(rep)
     name, _ = core.set_project(name)
+    if gid == MY_GROUP:
+        core.change_option("listeetudiants", "")  # the template carries no class list; the option mustn't point at the old exam's
     if gid == STARTER_GROUP and not tid.endswith("-txt"):
         try:  # the app's own starters keep their questions in items (doc/question-bank-plan.md, section 4)
             def _write(rel, data):

@@ -30,6 +30,12 @@ function dropTarget(e) {
     const t = e.target.closest('.d-sec[data-drag="sec"]');
     return t && t.dataset.name !== DRAG.name ? { el: t, name: t.dataset.name } : null;
   }
+  if (DRAG.drag !== 'q') return null;
+  const end = e.target.closest('[data-dropend]');
+  if (end) { // after the last one: the end of a file's questions, or of the sections
+    if (end.dataset.dropend === 'sec') return DRAG.drag === 'sec' ? { el: end, name: null } : null;
+    return DRAG.drag === 'q' && !DRAG.item && end.dataset.file === DRAG.file ? { el: end, end: true } : null;
+  }
   const q = e.target.closest('.q-item[data-drag="q"]');
   if (q) {
     const same = q.dataset.file === DRAG.file && (q.dataset.id === DRAG.id || (DRAG.item && q.dataset.item === DRAG.item));
@@ -58,6 +64,8 @@ document.addEventListener('drop', (e) => {
 
 async function dropDo(d, t) {
   if (d.drag === 'sec') { dop({ op: 'section_move', name: d.name, before: t.name }, { now: true }); return; }
+  if (typeof flushQ === 'function') await flushQ(); // what was typed in the form is saved first
+  if (t.end) { S.qform = { file: d.file, id: d.id, pending: [], saving: false }; qop({ op: 'move', before: null }, { now: true }); return; }
   const group = (t.q ? t.q.group : t.group) || null;
   const before = t.q ? t.q.item : null;
   if (inBank()) {
@@ -138,8 +146,13 @@ async function duplicateQuestion() {
 /* ---------- The teacher's own templates ---------- */
 
 async function saveAsTemplate() {
+  if (typeof flushQ === 'function') await flushQ();
+  if (typeof flushD === 'function') await flushD();
+  if (typeof flushB === 'function') await flushB();
+  // the exam's name, as a template's name can be written (letters, digits, spaces and . , - _ ( ) ' +)
+  const suggested = (S.project || '').replace(/[^A-Za-z0-9 _().,'+-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^[^A-Za-z0-9]+/, '').slice(0, 80);
   const data = await formDialog({ title: 'Save as a template', ok: 'Save', icon: 'page',
-    body: `<label class="field"><span class="field-label">Name</span><input class="input" name="name" maxlength="80" value="${esc(S.project || '')}"></label>
+    body: `<label class="field"><span class="field-label">Name</span><input class="input" name="name" maxlength="80" value="${esc(suggested)}"></label>
       <label class="field"><span class="field-label">Description (optional)</span><input class="input" name="description" maxlength="300" placeholder="Term test: 3 sections, answer sheet with student codes"></label>
       <p class="field-hint">The exam's sources are kept: questions, sections, the paper and its settings. Not its scans, marks or history. New exam › My templates starts from it.</p>`,
     validate: (d) => ((d.name || '').trim() ? '' : 'Give the template a name.') });
