@@ -952,7 +952,7 @@ def int_prefix(s, sep="_"):
 def file_upload(dest):
     headers_info()
     
-    request_files = request.files.getlist("file")
+    request_files = request.files.getlist("file") + ui.staged_files()  # big uploads (ui.py)
     if not request_files:
         return { 'error': 'Empty upload' }
 

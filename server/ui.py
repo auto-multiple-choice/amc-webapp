@@ -35,7 +35,9 @@ import ui_source as source_history
 HISTORY_DIR = source_history.HISTORY_DIR  # kept out of exam downloads (amc.py)
 
 from flask import Blueprint, Response, abort, jsonify, make_response, render_template, request, send_file
+from flask import after_this_request
 from flask import g as flask_g
+from werkzeug.datastructures import FileStorage
 
 bp = Blueprint("ui", __name__)
 core = None  # the main server module (amc.py), set by init_app()
@@ -586,6 +588,68 @@ def upload_refusal(upload, dest):
     """In /upload: the reason this file can't be saved, or None."""
     fn, _ = core.upload_file_parts(upload)
     return write_refusal(os.path.join(core.project_dir(), fn), upload)
+
+
+# Big uploads. A request through Cloudflare (a public server) carries at
+# most 100 MB, so the browser sends bigger uploads in parts (app.js
+# upload()): each file is appended part by part to a file in the session's
+# temporary folder, then the /upload request names the assembled files in
+# "staged" fields (ID:FILENAME) and /upload treats them as files sent with
+# it. Leftovers go with the nightly cleanup of temporary folders.
+UPLOAD_ID = re.compile(r"[0-9a-f]{32}")
+UPLOAD_PART_MAX = 64 * 1024 * 1024
+
+
+def _staged_path(upload_id):
+    return core.amc_user_tmp(f"uploads/{upload_id}", is_file=True)
+
+
+@bp.route("/ui/api/upload-part", methods=["POST"])
+def api_upload_part():
+    if (request.content_length or 0) > UPLOAD_PART_MAX + 1024 * 1024:
+        return jsonify(error="This part is too big."), 413
+    upload_id = request.form.get("id", "")
+    part = request.files.get("file")
+    try:
+        offset = int(request.form.get("offset", ""))
+    except ValueError:
+        offset = -1
+    if not UPLOAD_ID.fullmatch(upload_id) or part is None or offset < 0:
+        return jsonify(error="An upload part needs an id, an offset and a file."), 400
+    path = _staged_path(upload_id)
+    size = os.path.getsize(path) if os.path.exists(path) else 0
+    if offset != size:
+        # A part sent twice (its answer was lost) or out of order. The
+        # browser compares the size to tell which.
+        return jsonify(error=f"Upload part out of order (expected offset {size}).", size=size), 409
+    with open(path, "ab") as f:
+        shutil.copyfileobj(part.stream, f)
+    return jsonify(ok=True, size=os.path.getsize(path))
+
+
+def staged_files():
+    """In /upload: the files the browser sent in parts, as uploaded files.
+    They are deleted once the request is answered."""
+    files = []
+    for item in request.form.getlist("staged"):
+        upload_id, _, name = item.partition(":")
+        path = _staged_path(upload_id) if UPLOAD_ID.fullmatch(upload_id) else None
+        if not name or path is None or not os.path.isfile(path):
+            for f in files:
+                f.close()
+            abort(make_response(jsonify(error="An uploaded file is missing. Try again."), 400))
+        files.append(FileStorage(stream=open(path, "rb"), filename=name))
+    if files:
+        @after_this_request
+        def remove_staged(resp):
+            for f in files:
+                f.close()
+                try:
+                    os.remove(f.stream.name)
+                except OSError:
+                    pass
+            return resp
+    return files
 
 
 BRACED = r"\{(?:[^{}]|\{[^{}]*\})*\}"

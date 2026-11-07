@@ -7,6 +7,7 @@ This is our own version of the AMC team's web app (https://gitlab.com/auto-multi
 
 - a one-command launcher: `./amc start` (macOS, Linux) or `amc.cmd start` (Windows) builds the Docker image, starts the app at http://localhost:8090 and opens it. `./amc help` lists the other commands (stop, update, import, backup...). Settings are in `.env`, explained in `.env.example`.
 - a shared-machine mode (`./amc login on`): sign-in with accounts, HTTPS, one projects folder per teacher, and direct printing on Linux (`./amc printer on`).
+- a public server mode (`./amc public on amc.example.org`): the same, served at a web address through a Cloudflare Tunnel. Setting up the server, Cloudflare and backups is in `doc/public-hosting.md`.
 - a new interface built around the ten steps of an exam, from the questions to the annotated sheets. The plan and decisions are in `doc/ui-redesign-plan.md`; its tests are in `tests-ui/` (see `tests-ui/README.md`).
 
 The rest of this file is the AMC team's documentation for running the server without the launcher.

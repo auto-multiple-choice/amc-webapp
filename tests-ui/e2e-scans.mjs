@@ -38,6 +38,22 @@ async function main() {
   await b.click('.step[href$="/upload-scans"]');
   b.check('Upload scans opens with its options', await b.waitFor(`!!document.querySelector('#scan-files') && !!document.querySelector('#scan-photocopy')`));
   await b.shot('s1-upload');
+
+  // Big uploads go in parts (app.js upload(), ui.py api_upload_part).
+  const part = (id, offset, text) => b.js(`(async () => { const f = new FormData(); f.append('id', ${JSON.stringify(id)}); f.append('offset', '${offset}'); f.append('file', new Blob([${JSON.stringify(text)}]), 'part'); const r = await fetch('/ui/api/upload-part', {method: 'POST', headers: headers(), body: f}); return {status: r.status, body: await r.json()}; })()`);
+  const pid = 'ab'.repeat(16);
+  b.check('An upload part needs a valid id', (await part('../x', 0, 'x')).status === 400);
+  let pr = await part(pid, 0, 'hello ');
+  b.check('A first part is stored', pr.status === 200 && pr.body.size === 6, JSON.stringify(pr));
+  pr = await part(pid, 0, 'hello ');
+  b.check('A part sent twice is refused with the size stored', pr.status === 409 && pr.body.size === 6, JSON.stringify(pr));
+  pr = await part(pid, 6, 'world');
+  b.check('The next part is added', pr.status === 200 && pr.body.size === 11, JSON.stringify(pr));
+  pr = await b.js(`(async () => { const f = new FormData(); f.append('staged', '${'cd'.repeat(16)}:list.csv'); const r = await fetch('/upload/students', {method: 'POST', headers: headers(), body: f}); return r.json(); })()`);
+  b.check('An upload naming a missing part is refused', /missing/.test(pr.error || ''), JSON.stringify(pr));
+  // AMC_E2E_PARTS=1: the scans go up in small parts, the way big uploads do.
+  if (process.env.AMC_E2E_PARTS) await b.js(`UPLOAD_LIMITS.direct = 1; UPLOAD_LIMITS.part = 8 * 1024; true`);
+
   await b.setFiles('#scan-files', files);
   b.check('Uploading shows progress', await b.waitFor(`!!document.querySelector('#work')`, 10000));
   b.check('The scans are read', await b.waitFor(`!document.querySelector('#work') && S.status && S.status.scans > 0`, 240000));

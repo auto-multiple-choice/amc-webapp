@@ -1,0 +1,6 @@
+# cloudflared's settings in public server mode (compose.tunnel.yml).
+# The tunnel itself comes from TUNNEL_TOKEN; this file only says where to
+# send visitors: everything goes to caddy's tunnel site, which answers only
+# for AMC_PUBLIC_HOST.
+ingress:
+  - service: http://caddy:8091

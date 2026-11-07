@@ -12,6 +12,7 @@ SERVICE=amc-web          # service name in docker-compose.yml
 IMAGE=amc-web            # image name in docker-compose.yml
 MIN_COMPOSE=2.24.4       # first version supporting `!override`
 LOGIN_FILES=docker-compose.yml,docker-compose.override.yml,compose.login.yml
+TUNNEL_FILE=compose.tunnel.yml   # public server mode (./amc public on)
 
 if [ -t 1 ]; then
   B=$'\033[1m'; RED=$'\033[31m'; YEL=$'\033[33m'; GRN=$'\033[32m'; N=$'\033[0m'
@@ -50,6 +51,13 @@ Shared machine (sign-in, HTTPS, one projects folder per teacher):
   user list            List accounts
   user enable NAME     Re-enable a disabled account
   cert                 Show how browsers can trust the app's HTTPS certificate
+
+Public server (a web address such as https://amc.example.org, through a
+Cloudflare Tunnel; see doc/public-hosting.md):
+  public on HOST       Serve the app at https://HOST (asks for the tunnel token;
+                       turns on sign-in, keeps the server's port 127.0.0.1-only)
+  public off           Stop serving the public address
+  public status        Show the public address and whether the tunnel is up
 
   printer on|off|status
                        Print directly on this machine's printers (Linux only;
@@ -160,7 +168,10 @@ load_settings() {
     '') die "AMC_DATA_DIR is not set in .env." ;;
     *)  die "AMC_DATA_DIR in .env must be an absolute path (got '$DATA_DIR')." ;;
   esac
-  if login_mode; then
+  PUBLIC_HOST=$(env_get AMC_PUBLIC_HOST "")
+  if public_mode; then
+    URL="https://$PUBLIC_HOST"
+  elif login_mode; then
     URL="https://localhost:$PORT"
   else
     URL="http://localhost:$PORT"
@@ -168,6 +179,8 @@ load_settings() {
 }
 
 login_mode() { [ "$(env_get AMC_LOGIN 0)" = 1 ]; }
+# Public server mode needs sign-in: a public address without it is never used.
+public_mode() { login_mode && [ -n "$(env_get AMC_PUBLIC_HOST "")" ]; }
 
 # --- docker -----------------------------------------------------------------
 
@@ -303,12 +316,16 @@ export_sites() {
     sites="${sites:+$sites, }https://$h:$PORT"
     origins="${origins:+$origins,}https://$h:$PORT"
   done
+  # The public address (caddy/tunnel/site.caddy) is reached on the standard
+  # HTTPS port, so browsers send it as their origin without a port.
+  h=$(env_get AMC_PUBLIC_HOST "")
+  if public_mode; then origins="$origins,https://$h"; fi
   LAN_IP=$(lan_address)
   export AMC_SITES="$sites" AMC_ORIGINS="$origins" AMC_DEFAULT_SNI="${LAN_IP:-localhost}"
   # A label on the caddy service (compose.login.yml), so that `up` recreates
-  # caddy when the Caddyfile changed (after ./amc update, say): caddy reads
-  # it only when it starts.
-  AMC_CADDYFILE_HASH=$(cksum caddy/Caddyfile | cut -d' ' -f1)
+  # caddy when its configuration changed (after ./amc update, say): caddy
+  # reads it only when it starts.
+  AMC_CADDYFILE_HASH=$(cat caddy/Caddyfile caddy/tunnel/*.caddy | cksum | cut -d' ' -f1)
   export AMC_CADDYFILE_HASH
 }
 
@@ -366,6 +383,25 @@ check_sandbox() {
   die "$problem The app was stopped. If you trust every teacher, set AMC_ALLOW_UNISOLATED=1 in .env (this turns the sandbox off) and start again."
 }
 
+# Whether cloudflared is connected to Cloudflare. Its readiness address is
+# only reachable inside the compose network, so ask from caddy's container.
+tunnel_ready() {
+  docker compose exec -T caddy wget -q -O /dev/null -T 3 http://cloudflared:2000/ready >/dev/null 2>&1
+}
+
+check_tunnel() {
+  local i=0
+  until tunnel_ready; do
+    i=$((i + 1))
+    if [ "$i" -ge 30 ]; then
+      warn "The Cloudflare tunnel isn't connected yet. Check the token and the log: docker compose logs cloudflared"
+      return 0
+    fi
+    sleep 2
+  done
+  ok "Connected to Cloudflare"
+}
+
 auth_exec() {
   if [ -t 0 ]; then
     docker compose exec amc-auth flask user "$@"
@@ -410,7 +446,11 @@ confirm() {
 }
 
 print_where() {
-  if login_mode; then
+  if public_mode; then
+    echo "    Address:           https://$PUBLIC_HOST (through the Cloudflare tunnel)"
+    echo "    On this server:    https://localhost:$PORT (over SSH, e.g. ssh -L $PORT:localhost:$PORT)"
+    echo "    Projects:          in a Docker volume, one folder per teacher (./amc backup exports them)"
+  elif login_mode; then
     echo "    On this computer:  $URL"
     if [ "$BIND" != 127.0.0.1 ] && [ -n "${LAN_IP:-}" ]; then
       echo "    Colleagues:        https://$LAN_IP:$PORT"
@@ -442,6 +482,14 @@ cmd_start() {
     export_sites
     if [ "$(env_get AMC_ALLOW_UNISOLATED 0)" = 1 ]; then export AMC_ISOLATE=0; fi
   fi
+  if public_mode; then
+    [ -n "$(env_get AMC_TUNNEL_TOKEN "")" ] ||
+      die "AMC_TUNNEL_TOKEN is not set in .env. Run ./amc public on $PUBLIC_HOST to enter it."
+    # Docker publishes ports past the firewall (ufw): anything but
+    # 127.0.0.1 would let browsers skip Cloudflare.
+    [ "$BIND" = 127.0.0.1 ] ||
+      warn "AMC_BIND is $BIND: port $PORT is reachable without going through Cloudflare. Set AMC_BIND=127.0.0.1 in .env."
+  fi
 
   if [ "$(published_port)" != "$PORT" ]; then
     local who
@@ -468,8 +516,11 @@ cmd_start() {
   docker compose up -d --build --remove-orphans
   wait_ready
   if login_mode; then check_sandbox; fi
+  if public_mode; then check_tunnel; fi
 
-  if login_mode; then
+  if public_mode; then
+    ok "AMC is running at https://$PUBLIC_HOST (sign-in required)"
+  elif login_mode; then
     ok "AMC is running in shared-machine mode (sign-in required)"
   else
     ok "AMC is running at $URL"
@@ -497,7 +548,12 @@ cmd_status() {
   load_settings
   if login_mode; then export_sites; fi
   if is_running "$SERVICE"; then
-    if login_mode; then ok "Running in shared-machine mode (sign-in required)"; else ok "Running at $URL"; fi
+    if public_mode; then ok "Running at https://$PUBLIC_HOST (sign-in required)"
+    elif login_mode; then ok "Running in shared-machine mode (sign-in required)"
+    else ok "Running at $URL"; fi
+    if public_mode; then
+      if tunnel_ready; then ok "Connected to Cloudflare"; else warn "The Cloudflare tunnel isn't connected: docker compose logs cloudflared"; fi
+    fi
   else
     echo "Stopped. Start it with ./amc start"
   fi
@@ -628,6 +684,7 @@ create_first_admin() {
 apply_compose_files() {
   local files=""
   if login_mode; then files=$LOGIN_FILES; fi
+  if public_mode; then files="$files,$TUNNEL_FILE"; fi
   if [ "$(env_get AMC_PRINTER 0)" = 1 ]; then
     files="${files:-docker-compose.yml,docker-compose.override.yml},compose.printer.yml"
   fi
@@ -718,6 +775,10 @@ cmd_login() {
         env_set AMC_LOGIN 1
         apply_compose_files
       fi
+      if public_mode && [ "$bind" != 127.0.0.1 ]; then
+        bind=127.0.0.1
+        say "Public server mode is on: the server's own port stays reachable from this machine only."
+      fi
       env_set AMC_BIND "$bind"
       cmd_start --no-open
       if [ "$(account_count)" = 0 ]; then create_first_admin; fi
@@ -726,6 +787,7 @@ cmd_login() {
       [ $# -eq 0 ] || die "Unknown option: $1"
       ensure_docker
       ensure_env
+      public_mode && die "The public address needs sign-in. Turn it off first: ./amc public off"
       if login_mode; then
         say "Turning off shared-machine mode: this computer only, no sign-in."
         docker compose down >/dev/null 2>&1 || true
@@ -739,6 +801,86 @@ cmd_login() {
       warn "Teachers' projects stay in the Docker volume and come back with ./amc login on."
       ;;
     *) die "Usage: ./amc login on [--local] | ./amc login off" ;;
+  esac
+}
+
+# HOST from "amc.example.org" or "https://amc.example.org/", lower-cased.
+public_host_arg() {
+  local h
+  h=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  h=${h#https://}; h=${h#http://}; h=${h%/}
+  printf '%s' "$h" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' ||
+    die "Give the address as a host name, e.g. ./amc public on amc.example.org (got '$1')."
+  printf '%s' "$h"
+}
+
+# The tunnel token, typed (hidden) or piped in. Prompts go to stderr: the
+# caller captures stdout.
+read_tunnel_token() {
+  local token=""
+  if [ -t 0 ]; then
+    say "Paste the tunnel's token (from 'cloudflared tunnel token NAME' or the Cloudflare dashboard). It isn't shown." >&2
+    printf 'Tunnel token: ' >&2
+    read -rs token || true
+    echo >&2
+  else
+    read -r token || true
+  fi
+  token=$(printf '%s' "$token" | tr -d '[:space:]')
+  case $token in ''|*[!A-Za-z0-9+/=_-]*) die "That doesn't look like a tunnel token." ;; esac
+  printf '%s' "$token"
+}
+
+cmd_public() {
+  local sub=${1:-status} host token a new_token=0
+  [ $# -gt 0 ] && shift
+  case $sub in
+    on)
+      [ $# -ge 1 ] || die "Usage: ./amc public on HOST [--new-token]"
+      host=$(public_host_arg "$1")
+      shift
+      for a in "$@"; do
+        case $a in --new-token) new_token=1 ;; *) die "Unknown option: $a" ;; esac
+      done
+      ensure_docker
+      ensure_env
+      if [ -z "$(env_get AMC_TUNNEL_TOKEN "")" ] || [ "$new_token" = 1 ]; then
+        token=$(read_tunnel_token)
+        env_set AMC_TUNNEL_TOKEN "$token"
+      fi
+      chmod 600 .env   # the token gives control of the tunnel
+      say "Serving the app at https://$host through the Cloudflare tunnel (sign-in required)."
+      docker compose down >/dev/null 2>&1 || true
+      env_set AMC_LOGIN 1
+      env_set AMC_PUBLIC_HOST "$host"
+      env_set AMC_BIND 127.0.0.1
+      apply_compose_files
+      cmd_start --no-open
+      if [ "$(account_count)" = 0 ]; then create_first_admin; fi
+      ;;
+    off)
+      [ $# -eq 0 ] || die "Unknown option: $1"
+      ensure_docker
+      ensure_env
+      if ! public_mode; then say "Public server mode is already off."; return 0; fi
+      say "Stopping the public address. Sign-in stays on, reachable from this machine only."
+      docker compose down >/dev/null 2>&1 || true
+      env_unset AMC_PUBLIC_HOST
+      apply_compose_files
+      cmd_start --no-open
+      ;;
+    status)
+      ensure_env
+      load_settings
+      if public_mode; then
+        say "Public address: https://$PUBLIC_HOST"
+        ensure_docker
+        if tunnel_ready; then ok "Connected to Cloudflare"; else warn "The tunnel isn't connected: docker compose logs cloudflared"; fi
+      else
+        say "Public server mode is off. Turn it on with ./amc public on HOST"
+      fi
+      ;;
+    *) die "Usage: ./amc public on HOST [--new-token] | off | status" ;;
   esac
 }
 
@@ -830,6 +972,7 @@ case $cmd in
   update)         cmd_update "$@" ;;
   import)         cmd_import "$@" ;;
   login)          cmd_login "$@" ;;
+  public)         cmd_public "$@" ;;
   user)           cmd_user "$@" ;;
   cert)           cmd_cert ;;
   backup)         cmd_backup ;;
