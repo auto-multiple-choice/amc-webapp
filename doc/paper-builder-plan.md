@@ -430,7 +430,14 @@ Question banks (phase 9) come after B4, or before B1 (section 14, point 3).
   left. Borders are `\dbox` (dashed), `\fbox` (solid) or nothing, with
   the column's padding as `\fboxsep`, the inner minipage narrowed by it.
   "Same height" measures each box in an `\sbox`, takes the tallest and
-  gives the others a fixed-height minipage. Blocks that register boxes
+  gives the others a fixed-height minipage, the content placed where the
+  row aligns (top, middle, bottom). Each box is then lifted with
+  `\raisebox` so that the boxes of a row line up on their top edges,
+  their centres or their bottom edges. (The first version aligned the
+  minipages themselves, which TeX does on their first baselines: a code
+  box starting with a tall line sat higher than a student box starting
+  with a space. Reported from the printed paper and fixed on 7 November.)
+  Blocks that register boxes
   with AMC (the ID and class grids, the answer areas) are never typeset
   in a measuring box, because AMC would see them twice: they can't be
   "fit" columns and keep their own height. The name field is wrapped

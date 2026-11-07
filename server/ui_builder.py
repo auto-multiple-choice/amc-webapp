@@ -529,6 +529,7 @@ _SIZE = {"giant": r"\fontsize{40}{48}\selectfont", "Huge": r"\Huge", "huge": r"\
 _STYLE = {"plain": "", "bold": r"\bfseries", "smallcaps": r"\scshape", "boldsc": r"\scshape\bfseries", "italic": r"\itshape"}
 _ALIGN = {"left": r"\raggedright", "center": r"\centering", "right": r"\raggedleft"}
 _VALIGN = {"top": "t", "middle": "c", "bottom": "b"}
+_LIFT = {"t": r"-\height", "c": r"\dimexpr(\depth-\height)/2\relax", "b": r"\depth"}
 
 
 def _digit_boxes(n):
@@ -703,14 +704,18 @@ def _row_tex(design, row, where, summary, namefield_cell):
         content, border, is_name = contents[j]
         is_name = is_name and not measuring
         inner_w = r"\amcuiW%s" % L if border == "none" else r"\dimexpr\amcuiW%s-2\fboxsep-2\fboxrule\relax" % L
+        pos = _VALIGN[row["align"]]
         h = ""
-        if height:
-            h = "[%s][t]" % (r"\amcuiRowH" if border == "none" else r"\dimexpr\amcuiRowH-2\fboxsep-2\fboxrule\relax")
-        mp = r"\begin{minipage}[%s]%s{%s}%s %s\end{minipage}" % (_VALIGN[row["align"]], h, inner_w, _ALIGN[c["align"]], content)
+        if height:  # the row's shared height; the content sits where the row aligns
+            h = "[%s][%s]" % (r"\amcuiRowH" if border == "none" else r"\dimexpr\amcuiRowH-2\fboxsep-2\fboxrule\relax", pos)
+        mp = r"\begin{minipage}[t]%s{%s}%s %s\end{minipage}" % (h, inner_w, _ALIGN[c["align"]], content)
         frame = {"none": "%s", "dashed": r"\dbox{%s}", "solid": r"\fbox{%s}"}[border] % mp
         if is_name:
             frame = r"\namefield{%s}" % frame
-        return r"{\setlength{\fboxsep}{%s}%s}" % (c["pad"], frame)
+        # The boxes line up on their edges (top, centre or bottom), not on
+        # their first baselines: a box starting with a tall line would
+        # otherwise sit higher than one starting with a space.
+        return r"{\setlength{\fboxsep}{%s}\raisebox{%s}{%s}}" % (c["pad"], _LIFT[pos], frame)
     measurable = [j for j in range(n) if cells[j]["block"]["type"] not in REGISTERING]
     if row["same_height"] and n > 1 and len(measurable) > 1:
         lines.append(r"\setlength{\amcuiRowH}{0pt}%")
