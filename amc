@@ -902,13 +902,17 @@ cmd_backup() {
     # Projects from the volume, plus accounts and the certificate authority.
     mkdir -p "$DATA_DIR/auth" "$DATA_DIR/caddy"
     # busybox tar honours only one -C, so gather the three folders under
-    # /stage with symlinks and follow them (-h).
+    # /stage with symlinks and follow them (-h). The container runs as
+    # root: on Linux the file is then given to the user (AMC_UID), who
+    # copies backups elsewhere.
+    local owner
+    owner="$(env_get AMC_UID 1000):$(env_get AMC_GID 0)"
     docker compose run --rm --no-deps -T -v "$dir:/backup" -v "$DATA_DIR/auth:/auth:ro" \
       -v "$DATA_DIR/caddy:/caddy:ro" --entrypoint sh amc-home-init -c "
         mkdir /stage && ln -s /amc-web/files/MC-Projects /stage/MC-Projects &&
         ln -s /auth /stage/auth && ln -s /caddy /stage/caddy &&
         tar czhf /backup/$name -C /stage MC-Projects auth caddy &&
-        chmod 600 /backup/$name" ||
+        { chown $owner /backup/$name 2>/dev/null || true; } && chmod 600 /backup/$name" ||
       { rm -f "$dir/$name"; die "The backup failed (messages above)."; }
   else
     if [ -d "$DATA_DIR/.AMC.d" ]; then
