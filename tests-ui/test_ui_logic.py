@@ -507,6 +507,54 @@ try:
     whats = [e["what"] for e in vcs.Repo(gx, root).open().log()[0]]
     check("vcs: when git fails the file is still saved, and the next save keeps it as changed outside the app",
           saved and whats[:2] == ["Saved later", vcs.OUTSIDE] and read(gx, "exam.tex") == b"three\n")
+    # a file name the file system couldn't decode doesn't stop saves
+    ux = new_exam("Odd name", {"exam.tex": b"one\n"})
+    with open(os.path.join(ux, b"caf\xe9.csv".decode("utf-8", "surrogateescape")), "wb") as f:
+        f.write(b"x")
+    try:
+        vcs.write(ux, root, "exam.tex", b"two\n", by="ann", what="Saved beside an odd name")
+        odd_ok = read(ux, "exam.tex") == b"two\n" and vcs.Repo(ux, root).open().log()[0][0]["what"] == "Saved beside an odd name"
+    except Exception as e:
+        odd_ok = False
+    check("vcs: a file whose name isn't UTF-8 is left out, and saving goes on", odd_ok)
+    # packed refs (git gc) aren't damage
+    px = new_exam("Packed", {"exam.tex": b"one\n"})
+    vcs.write(px, root, "exam.tex", b"two\n", by="ann", what="Second")
+    rp = vcs.Repo(px, root).open()
+    vcs._git(rp.git_dir, "pack-refs", "--all")
+    os.unlink(rp.meta_path)
+    rp2 = vcs.Repo(px, root).open()
+    check("vcs: a history whose refs git packed is read, not restarted", rp2.log()[1] == 2 and not any(".damaged-" in x for x in os.listdir(rp.dir) if x.startswith(rp.uid)))
+    # git not answering isn't damage either: the request fails, the history stays
+    real_git = vcs.GIT
+    vcs.GIT = "/nonexistent/git"
+    try:
+        os.unlink(rp.meta_path)
+        try:
+            vcs.Repo(px, root).open(); gone = "opened"
+        except vcs.GitUnavailable:
+            gone = "unavailable"
+    finally:
+        vcs.GIT = real_git
+    check("vcs: when git can't run the history is left alone", gone == "unavailable" and vcs.Repo(px, root).open().log()[1] == 2)
+    # restoring into a name taken meanwhile never nests the exam
+    tx = new_exam("Taken", {"exam.tex": b"t\n"})
+    vcs.trash_exam(tx, root, by="ann")
+    new_exam("Taken", {"exam.tex": b"other\n"})
+    real_free = vcs._free_name
+    vcs._free_name = lambda pd, n: n  # as if the name was taken between the check and the move
+    try:
+        try:
+            vcs.restore_trash(home, vcs.list_trash(home)[0]["id"], root, by="ann"); nested = "restored"
+        except OSError:
+            nested = "refused"
+    finally:
+        vcs._free_name = real_free
+    check("vcs: a restore can't land inside an exam that took the name meanwhile",
+          nested == "refused" and read(os.path.join(root, "Taken"), "exam.tex") == b"other\n" and not os.path.exists(os.path.join(root, "Taken", "exam")))
+    later = time.time() + vcs.TRASH_DAYS * 86400 + 5
+    check("vcs: the doctor's look at the trash removes nothing", len(vcs.list_trash(home, now=later, purge=False)) == 1
+          and len(vcs.list_trash(home)) == 1 and vcs.list_trash(home, now=later) == [])
     # diffs and changes in words
     td = vcs.text_diff("one two three\nsame\n", "one 2 three\nsame\nnew\n")
     check("vcs: line diff with word changes", td["added"] == 2 and td["removed"] == 1 and td["rows"][0] == ["d", "one two three", [[0, "one "], [1, "two"], [0, " three"]]]
