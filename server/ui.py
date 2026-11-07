@@ -23,6 +23,7 @@ import shutil
 import sqlite3
 import subprocess
 import tarfile
+import threading
 import time
 import uuid
 
@@ -2848,6 +2849,31 @@ def _picture(pdf):
         return None
 
 
+CHECK_TEXT_MAX = 200000          # characters of LaTeX one check compiles
+CHECK_LOG_MAX = 8 * 1024 * 1024    # of a log, read from the start (the first error is what matters)
+TEX_FILE_MAX = 512 * 1024 * 1024   # a TeX run may not write a bigger file (a \message loop fills the disk otherwise)
+_checks_running = threading.BoundedSemaphore(3)
+
+
+def _tex_limits():
+    """For subprocess.run(preexec_fn=): no file bigger than TEX_FILE_MAX."""
+    try:
+        import resource
+        resource.setrlimit(resource.RLIMIT_FSIZE, (TEX_FILE_MAX, TEX_FILE_MAX))
+    except (ImportError, ValueError, OSError):
+        pass
+
+
+def read_capped(path, most=CHECK_LOG_MAX):
+    """The start of a text file (MOST bytes), decoded leniently; "" when it
+    can't be read."""
+    try:
+        with open(path, "rb") as f:
+            return f.read(most).decode("utf-8", "replace")
+    except OSError:
+        return ""
+
+
 def compile_check(pdir, source):
     """Compile SOURCE in a scratch folder of the exam (the item's \\input and
     figures resolve as in the real build). Returns (ok, log, png or None)."""
@@ -2857,20 +2883,18 @@ def compile_check(pdir, source):
     try:
         with open(os.path.join(full, "check.tex"), "w", encoding="utf-8") as f:
             f.write(source)
-        cmd = _sandboxed([_engine(), "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape",
+        cmd = _sandboxed([_engine(), "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", "-file-line-error",
                           f"-output-directory={d}", f"{d}/check.tex"])
         try:
-            p = subprocess.run(cmd, cwd=pdir, capture_output=True, timeout=120, env={**os.environ, "TMPDIR": core.amc_user_tmp()})
+            with open(os.path.join(full, "check.out"), "wb") as out:
+                p = subprocess.run(cmd, cwd=pdir, stdout=out, stderr=subprocess.STDOUT, timeout=120, preexec_fn=_tex_limits,
+                                   env={**os.environ, "TMPDIR": core.amc_user_tmp()})
             code = p.returncode
         except subprocess.TimeoutExpired:
             return False, "! The check took too long (over 2 minutes).", None
-        try:
-            with open(os.path.join(full, "check.log"), encoding="utf-8", errors="replace") as f:
-                log = f.read()
-        except OSError:
-            log = ""
-        if "\n! " not in "\n" + log:  # an error LaTeX couldn't write to its log (a file it may not read)
-            log += "\n" + (p.stdout or b"").decode("utf-8", "replace")
+        log = read_capped(os.path.join(full, "check.log"))
+        if "\n! " not in "\n" + log and not re.search(r"^[^\n]*\.tex:\d+: ", log, re.M):
+            log += "\n" + read_capped(os.path.join(full, "check.out"), 256 * 1024)  # an error LaTeX couldn't write to its log
         pdf = os.path.join(full, "check.pdf")
         ok = code == 0 and os.path.isfile(pdf)
         return ok, log, _picture(pdf) if ok else None
@@ -2896,13 +2920,20 @@ def api_check():
     body = data.get("text")
     if not isinstance(body, str) or not body.strip():
         return jsonify(error="Nothing to check.")
+    if len(body) > CHECK_TEXT_MAX:
+        return jsonify(error="This is too long to check as one question.")
     pre = ltx.preamble(_main_text(pdir))
     if pre is None:
         return jsonify(error="The main file has no \\begin{document}.")
     if p := ltx.problems(body):
         return jsonify(ok=False, errors=[{"line": p[0]["line"], "message": p[0]["message"], "file": None}], image=None)
     src, first = ltx.check_source(pre, body, items.item_of(fn))
-    ok, log, png = compile_check(pdir, src)
+    if not _checks_running.acquire(blocking=False):
+        return jsonify(error="Other checks are running just now. Try again in a moment.")
+    try:
+        ok, log, png = compile_check(pdir, src)
+    finally:
+        _checks_running.release()
     errors = []
     if not ok:
         why = next((l.strip() for l in log.split("\n")
@@ -2915,8 +2946,10 @@ def api_check():
                 errors.append({"line": e["line"] - first + 1, "message": e["message"], "context": e["context"], "file": None})
             else:
                 errors.append({"line": None, "message": f"{e['message']} (in the exam's preamble)", "context": e["context"], "file": core.main_source_file()})
-        else:
-            errors.append({"line": e["line"], "message": e["message"], "context": e["context"], "file": e["file"]})
+        else:  # a file of the exam, or none (a package's path says nothing the teacher can open)
+            known = e["file"] in _source_files(pdir)
+            errors.append({"line": e["line"] if known else None, "message": e["message"], "context": e["context"],
+                           "file": e["file"] if known else None})
     return jsonify(ok=ok, errors=errors, image=("data:image/png;base64," + base64.b64encode(png).decode()) if png else None)
 
 
@@ -2979,7 +3012,11 @@ def api_section_latex():
             continue
         entries.append((n, raw.decode("utf-8", "replace")))
         digests[n] = vcs.digest(raw)
-    return jsonify(project=name, group=group, text=ltx.section_document(entries), digests=digests, lock=bool(exam_lock(pdir)))
+    try:
+        text = ltx.section_document(entries)
+    except ValueError as e:
+        return jsonify(project=name, group=group, error=str(e))
+    return jsonify(project=name, group=group, text=text, digests=digests, lock=bool(exam_lock(pdir)))
 
 
 @bp.route("/ui/api/section-latex", methods=["POST"])
@@ -2998,6 +3035,7 @@ def api_section_latex_save():
     digests = data.get("digests") if isinstance(data.get("digests"), dict) else {}
     if not isinstance(text, str):
         return jsonify(error="Nothing to save.")
+    text = text.replace("\r\n", "\n")
     if exam_lock(pdir):
         return jsonify(error=LOCKED.format(what="Correct the answer key in Marking scheme or in the form."), locked=True)
     current = _section_items(pdir, group)
@@ -3011,14 +3049,17 @@ def api_section_latex_save():
     if missing := [n for n in current if n not in names]:
         return jsonify(error=f"The item {missing[0]} is missing from the document. To take it out of the section, delete it in the form.")
     pmap = items.pool_map(_pools_text(pdir))
-    all_items = set(_item_names(pdir))
+    all_items = {x.lower(): x for x in _item_names(pdir)}  # folders are compared without case: the host may not tell Foo from foo
     changed, added = [], []
     texts = {}
     for n, t, line in parts:
         if not items.NAME_RE.match(n):
             return jsonify(error=f"Line {line}: \"{n}\" can't be an item's name (letters, digits and - only).")
-        if n in all_items and n not in current:
-            return jsonify(error=f"Line {line}: the item {n} belongs to {pmap.get(n) or 'no section'}; move it in the form.")
+        if n.lower() in all_items and all_items[n.lower()] not in current:
+            other = all_items[n.lower()]
+            return jsonify(error=f"Line {line}: the item {other} belongs to {pmap.get(other) or 'no section'}; move it in the form.")
+        if n.lower() in all_items and all_items[n.lower()] != n:
+            return jsonify(error=f"Line {line}: the item is named {all_items[n.lower()]}, not {n}.")
         if problem := items.check_item_text(t, n):
             return jsonify(error=f"Line {line}: {problem}")
         if p := ltx.problems(t):
@@ -3027,8 +3068,8 @@ def api_section_latex_save():
         if n not in current:
             added.append(n)
         else:
-            with open(os.path.join(pdir, items.item_file(n)), encoding="utf-8") as f:
-                if f.read() != t:
+            with open(os.path.join(pdir, items.item_file(n)), encoding="utf-8", newline="") as f:
+                if f.read().replace("\r\n", "\n") != t:
                     changed.append(n)
     ids = [q["id"] for n, t in texts.items() for q in scale.read_latex(t)]
     others = {q["id"] for q in _all_questions(pdir, [f for f in _source_files(pdir) if items.item_of(f) not in current])}

@@ -320,6 +320,8 @@ def set_latex(text, q, new):
         raise EditError("Write exactly one question here, from \\begin{question} to \\end{question}.")
     if re.search(r"\\element\s*\{", new):
         raise EditError("The section is set in Paper design, not with \\element here.")
+    if "\r\n" in text:  # the file's line endings, kept
+        new = new.replace("\r\n", "\n").replace("\n", "\r\n")
     out = _replace(text, q["span"], new)
     ids = [x["id"] for x in scale.read_latex(out)]
     if ids.count(qs[0]["id"]) > 1:

@@ -640,6 +640,22 @@ for _bad, _why in ((_doc.replace("%%%% item b %%%%", "%%%% item b %%%"), "change
         ltx.split_section(_bad); check(f"latex: a section document with a separator {_why} is refused", False)
     except ValueError as e:
         check(f"latex: a section document with a separator {_why} is refused", _why in str(e))
+check("latex: \\verb* and an unclosed \\verb hide nothing past their line", ltx.problems("\\verb*|a| }\n\\end{x}") != [] and ltx.problems("\\verb|a\n}\n\\end{x}") != []
+      and ltx.problems("\\verb*|{| \\lstinline[language=C]|{| \\mintinline{c}|{| \\mintinline{c}{ { }") == [])
+check("latex: a \\verb or % inside verbatim can't swallow its \\end", ltx.problems("\\begin{verbatim}\n\\verb|x\n% {\n\\end{verbatim}\n") == [])
+check("latex: a warning's parentheses don't close the item's file in the log",
+      ltx.first_error("(./main.tex (./items/b.tex\nOverfull \\hbox (74pt too wide) in paragraph at lines 1--2\n! Undefined control sequence.\nl.2 \\foo\n")["file"] == "items/b.tex")
+_long = "(./items/" + "a" * 67 + "/it"
+check("latex: a path the log wrapped at 79 characters is read whole",
+      ltx.first_error("(./main.tex\n" + _long + "\nem.tex\n! Undefined control sequence.\nl.3 x\n")["file"] == "items/" + "a" * 67 + "/item.tex")
+check("latex: the file:line: form of -file-line-error is read first",
+      ltx.first_error("(./main.tex\n./items/q/item.tex:7: Undefined control sequence.\nl.7 \\foo\n") == {"file": "items/q/item.tex", "line": 7, "message": "Undefined control sequence.", "context": "\\foo"})
+check("latex: a commented \\begin{document} doesn't end the preamble", ltx.preamble("% \\begin{document}\n\\x\n\\begin{document}") == "% \\begin{document}\n\\x\n")
+try:
+    ltx.section_document([("n1", "t\n%%%% item x %%%%\nmore")]); check("latex: an item holding a separator line can't be a section document", False)
+except ValueError as e:
+    check("latex: an item holding a separator line can't be a section document", "n1" in str(e))
+check("latex: a CRLF section document is read", ltx.split_section("%%%% item a %%%%\r\nx\r\n") == [("a", "x\n", 1)])
 check("latex: the macros a preamble defines (not commented ones)", ltx.macros("\\newcommand{\\N}{\\mathbb N}\\def\\Z{x}\\DeclareMathOperator{\\lcm}{lcm} % \\newcommand{\\hidden}") == ["N", "Z", "lcm"])
 import ui_questions as _qe
 _inl = "\\element{g}{\n  \\begin{question}{a}A\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n}\n\\element{g}{\n\\begin{question}{b}B\\begin{choices}\\correctchoice{1}\\end{choices}\\end{question}\n}\n"
