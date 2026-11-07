@@ -2637,6 +2637,7 @@ def _install_builder(rep, style, design, logo):
     codes = design.get("codes") if isinstance(design.get("codes"), dict) else {}
     d["codes"].update({k: codes[k] for k in ("style", "same_length", "zero_pad") if k in codes})
     paper_builder.apply_fields(d, design.get("fields") if isinstance(design.get("fields"), dict) else {})
+    paper_builder.apply_student(d, design.get("student") if isinstance(design.get("student"), dict) else {})
     if logo:
         for r in d["paper"]:
             for c in r["cells"]:

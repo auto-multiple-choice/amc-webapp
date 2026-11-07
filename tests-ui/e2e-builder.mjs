@@ -48,6 +48,8 @@ async function main_() {
   await b.click('[data-act="wiz-style"][data-v="separate"]');
   await b.setValue('[data-bw="fields.organiser"]', 'Test Maths Club');
   await b.setValue('[data-bw="versions"]', '3');
+  await b.click('[data-bw="student.klass"]');
+  b.check('The wizard asks for the level and the class', await b.js(`document.querySelector('[data-bw="student.level"]').checked && !document.querySelector('[data-bw="student.klass"]').checked`));
   await b.shot('b1-wizard');
   await b.click('[data-act="wiz-create"]');
   b.check('Creating opens the exam on the Paper builder, with the RJ rows', await b.waitFor(`decodeURIComponent(location.pathname) === '/exam/${EXAM}/questions' && S.qtab === 'design' && S.builder && S.builder.builder && document.querySelectorAll('.b-page[data-sheet="paper"] .b-row').length === 8`, 30000));
@@ -55,6 +57,7 @@ async function main_() {
   b.check('The wizard\'s choices are in the design and the source', r.design.kind === 'separate' && r.design.fields.organiser === 'Test Maths Club' && r.design.fields.exam_name === EXAM && r.versions === 3 && r.codes.last === 'C' && (await main()).includes('\\onecopy{3}{'));
   b.check('...the app\'s copies follow the versions', String((await structure()).copies_setting) === '3');
   b.check('The layout file is written from the design', (await file('paper-layout.tex')).includes('Test Maths Club') && r.layout.exists && !r.layout.edited && !r.detached);
+  b.check('No class: the class grid left the answer sheet and nothing prints the class', r.design.student.klass === false && r.design.student.level === true && !r.design.answer_sheet.some((row) => row.cells.some((c) => c.block.type === 'class_grid')) && r.design.answer_sheet.length === 5 && !(await file('paper-layout.tex')).includes('{studclass}') && !(await file('paper-layout.tex')).includes('Class: ') && !(await file('paper-layout.tex')).includes('Darken your class'));
   b.check('The tabs: question paper, answer sheet, instructions, details, sections, versions', await b.js(`[...document.querySelectorAll('.b-tabs [data-act="pb-tab"]')].map(t => t.dataset.v).join(',') === 'paper,sheet,instructions,details,sections,page'`));
   await b.shot('b2-canvas');
 
@@ -120,6 +123,10 @@ async function main_() {
   await b.waitFor(`!!document.querySelector('[data-pbd="fields.exam_name"]')`, 5000);
   await typeInto('[data-pbd="fields.exam_name"]', 'Olympiad & Co');
   b.check('A detail is saved, escaped for LaTeX', await saved() && (await file('paper-layout.tex')).includes('Olympiad \\& Co'));
+  await b.click('[data-pbd="student.level"]');
+  b.check('The level off: no level box, no level in the footer', await settle(`S.builder.design.student.level === false && document.querySelector('[data-pbd="fields.level"]').disabled`) && !(await file('paper-layout.tex')).includes('Level I') && !(await file('paper-layout.tex')).includes('\\amcuiCharBox{black}{white}{I}'));
+  await b.click('[data-pbd="student.level"]');
+  b.check('...and back on', await settle(`S.builder.design.student.level === true`) && (await file('paper-layout.tex')).includes('\\amcuiCharBox{black}{white}{I}'));
   await typeInto('[data-pbd="student.box_width"]', '8mm');
   b.check('The size of the writing boxes is a detail', await saved() && (await file('paper-layout.tex')).includes('\\setlength{\\amcuiBoxW}{8mm}\\setlength{\\amcuiBoxH}{7mm}'));
   await b.click('[data-act="pb-tab"][data-v="page"]');

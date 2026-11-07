@@ -127,7 +127,7 @@ function blockSummary(b) {
   switch (b.type) {
     case 'logo': return b.file || 'no image yet';
     case 'title': return b.lines.map((l) => ('field' in l ? f[l.field] || `{${fieldLabel(l.field)}}` : l.text)).filter(Boolean).join(' / ') || 'no line';
-    case 'student': return [b.name && b.name_label, b.id && `${b.id_label} ${d.student.id_prefix}${'□'.repeat(d.student.id_digits)}`, b.klass && b.class_label, b.level && f.level && `${b.level_label} ${f.level}`].filter(Boolean).join(', ') || 'nothing ticked';
+    case 'student': return [b.name && b.name_label, b.id && `${b.id_label} ${d.student.id_prefix}${'□'.repeat(d.student.id_digits)}`, b.klass && d.student.klass && b.class_label, b.level && d.student.level && f.level && `${b.level_label} ${f.level}`].filter(Boolean).join(', ') || 'nothing to print';
     case 'code': return `${b.label ? b.label + ' ' : ''}${S.builder.codes ? S.builder.codes.first : 'A'}`;
     case 'info': return b.lines.map((l) => (typeof l === 'string' ? (f[l] ? `${fieldLabel(l)}: ${f[l]}` : '') : `${l.label}: ${l.value}`)).filter(Boolean).join(' · ') || 'no line';
     case 'box': return `${b.label}: ${b.value.replace(/\{(\w+)\}/g, (m, k) => f[k] || m)}`;
@@ -140,7 +140,7 @@ function blockSummary(b) {
     case 'end': return b.text;
     case 'rough': return `${b.pages} page${b.pages === 1 ? '' : 's'}: ${b.text}`;
     case 'id_grid': return `${b.label}: ${d.student.id_digits} digits, ${b.orientation === 'v' ? 'vertical' : 'horizontal'}`;
-    case 'class_grid': return `${b.label}: ${d.student.class_digits} digits`;
+    case 'class_grid': return d.student.klass ? `${b.label}: ${d.student.class_digits} digits` : `${b.label}: the class is off in Details, prints nothing`;
     case 'signatures': return b.lines.join(', ');
     case 'numeric_answers': return `${b.columns} grid${b.columns === 1 ? '' : 's'} per line, number on top${b.heading ? ': ' + b.heading : ''}`;
     case 'choice_answers': case 'all_answers': return `${b.columns} column${b.columns === 1 ? '' : 's'}${b.heading ? ': ' + b.heading : ''}`;
@@ -202,8 +202,8 @@ function renderBlockForm(b, where, L) {
       return `<div class="form-grid">
         <label class="check"><input type="checkbox" data-pbb="name" data-type="bool" ${b.name ? 'checked' : ''} ${dis}><span>Name line</span></label><label class="field"><span class="field-label">Label</span><input class="input" data-pbb="name_label" value="${esc(b.name_label)}" ${dis}></label>
         <label class="check"><input type="checkbox" data-pbb="id" data-type="bool" ${b.id ? 'checked' : ''} ${dis}><span>Registration number in boxes<br><span class="subtle">${esc(d.student.id_prefix)}${'□'.repeat(d.student.id_digits)}: the prefix and digits are in Details.</span></span></label><label class="field"><span class="field-label">Label</span><input class="input" data-pbb="id_label" value="${esc(b.id_label)}" ${dis}></label>
-        <label class="check"><input type="checkbox" data-pbb="klass" data-type="bool" ${b.klass ? 'checked' : ''} ${dis}><span>Class in boxes (${d.student.class_digits} digits)</span></label><label class="field"><span class="field-label">Label</span><input class="input" data-pbb="class_label" value="${esc(b.class_label)}" ${dis}></label>
-        <label class="check"><input type="checkbox" data-pbb="level" data-type="bool" ${b.level ? 'checked' : ''} ${dis}><span>Level box${d.fields.level ? ` (${esc(d.fields.level)})` : ' (set the level in Details)'}</span></label><label class="field"><span class="field-label">Label</span><input class="input" data-pbb="level_label" value="${esc(b.level_label)}" ${dis}></label></div>
+        ${d.student.klass ? `<label class="check"><input type="checkbox" data-pbb="klass" data-type="bool" ${b.klass ? 'checked' : ''} ${dis}><span>Class in boxes (${d.student.class_digits} digits)</span></label><label class="field"><span class="field-label">Label</span><input class="input" data-pbb="class_label" value="${esc(b.class_label)}" ${dis}></label>` : '<span class="field-hint">The class is off in Details, so no class boxes here.</span><span></span>'}
+        ${d.student.level ? `<label class="check"><input type="checkbox" data-pbb="level" data-type="bool" ${b.level ? 'checked' : ''} ${dis}><span>Level box${d.fields.level ? ` (${esc(d.fields.level)})` : ' (set the level in Details)'}</span></label><label class="field"><span class="field-label">Label</span><input class="input" data-pbb="level_label" value="${esc(b.level_label)}" ${dis}></label>` : '<span class="field-hint">The level is off in Details, so no level box here.</span><span></span>'}</div>
         <p class="field-hint" style="margin:0">${d.kind === 'separate' ? (where === 'sheet' ? 'On the answer sheet this box is AMC\'s name field: the part of the scan kept as the student\'s name.' : 'With a separate answer sheet, this box is only written in; AMC reads the answer sheet.') : 'This box is AMC\'s name field: the part of the scan kept as the student\'s name.'}</p>`;
     case 'code':
       return `<div class="form-grid"><label class="field"><span class="field-label">Label above the code</span><input class="input" data-pbb="label" value="${esc(b.label)}" ${dis}><span class="field-hint">Empty for the code alone.</span></label><label class="field"><span class="field-label">Size</span><select class="select" data-pbb="size" ${dis}>${bopt(SIZES, b.size)}</select></label></div><p class="field-hint" style="margin:0">Versions and their codes are set in Versions and page${S.builder.codes ? `: ${esc(S.builder.codes.first)}${S.builder.codes.last !== S.builder.codes.first ? ` to ${esc(S.builder.codes.last)}` : ''}` : ''}.</p>`;
@@ -231,7 +231,7 @@ function renderBlockForm(b, where, L) {
     case 'rough':
       return `<div class="form-grid"><label class="field"><span class="field-label">Pages</span><input class="input input-num" type="number" min="0" max="10" data-pbb="pages" data-type="int" value="${b.pages}" ${dis}></label><label class="field"><span class="field-label">Heading on each page</span><input class="input" data-pbb="text" value="${esc(b.text)}" ${dis}></label></div>`;
     case 'id_grid': case 'class_grid':
-      return `<div class="form-grid"><label class="field"><span class="field-label">Label</span><input class="input" data-pbb="label" value="${esc(b.label)}" ${dis}></label><label class="field"><span class="field-label">Digits</span><select class="select" data-pbb="orientation" ${dis}>${bopt([['v', 'In columns (vertical)'], ['h', 'In rows (horizontal)']], b.orientation)}</select></label></div><p class="field-hint" style="margin:0">${b.type === 'id_grid' ? `${d.student.id_digits} digits, as in Details. AMC reads the grid to match each sheet to the class list.` : `${d.student.class_digits} digits, as in Details.`}</p>`;
+      return `<div class="form-grid"><label class="field"><span class="field-label">Label</span><input class="input" data-pbb="label" value="${esc(b.label)}" ${dis}></label><label class="field"><span class="field-label">Digits</span><select class="select" data-pbb="orientation" ${dis}>${bopt([['v', 'In columns (vertical)'], ['h', 'In rows (horizontal)']], b.orientation)}</select></label></div><p class="field-hint" style="margin:0">${b.type === 'id_grid' ? `${d.student.id_digits} digits, as in Details. AMC reads the grid to match each sheet to the class list.` : (d.student.klass ? `${d.student.class_digits} digits, as in Details.` : 'The class is off in Details: this grid prints nothing until it is on again.')}</p>`;
     case 'signatures':
       return `<div class="field-label">Lines</div>${b.lines.map((l, i) => `<div class="b-item row" style="gap:6px"><input class="input" data-pbb="lines.${i}" value="${esc(l)}" ${dis}>${L ? '' : `<button class="btn btn-ghost btn-sm" data-act="pb-list-remove" data-list="lines" data-i="${i}">${ic('trash')}</button>`}</div>`).join('')}${L || b.lines.length >= 4 ? '' : `<button class="btn btn-sm" data-act="pb-list-add" data-list="lines" data-kind="text">${ic('plus')} A line</button>`}`;
     case 'numeric_answers': case 'choice_answers': case 'all_answers':
@@ -268,11 +268,16 @@ function renderDetails(L) {
   const d = bdesign();
   const dis = L ? 'disabled' : '';
   return `<p class="muted" style="margin:0 0 10px">Typed once, printed wherever a block uses them: the title lines, the exam information, the footer ({level}, {date}…).</p>
-    <div class="form-grid">${Object.keys(S.builder.fields).map((k) => `<label class="field"><span class="field-label">${esc(fieldLabel(k))}</span><input class="input" data-pbd="fields.${k}" value="${esc(d.fields[k])}" ${dis}></label>`).join('')}</div>
-    <div class="field-label" style="margin-top:14px">Registration number and class</div>
+    <div class="form-grid">${Object.keys(S.builder.fields).filter((k) => k !== 'level').map((k) => `<label class="field"><span class="field-label">${esc(fieldLabel(k))}</span><input class="input" data-pbd="fields.${k}" value="${esc(d.fields[k])}" ${dis}></label>`).join('')}</div>
+    <div class="field-label" style="margin-top:14px">Level and class</div>
+    <div class="form-grid">
+    <label class="check"><input type="checkbox" data-pbd="student.level" data-type="bool" ${d.student.level ? 'checked' : ''} ${dis}><span>Level<br><span class="subtle">A level box on the student details, {level} in the footer and the title lines. Off: none of them is printed.</span></span></label>
+    <label class="field"><span class="field-label">Level</span><input class="input" data-pbd="fields.level" value="${esc(d.fields.level)}" ${d.student.level ? dis : 'disabled'}></label>
+    <label class="check"><input type="checkbox" data-pbd="student.klass" data-type="bool" ${d.student.klass ? 'checked' : ''} ${dis}><span>Class<br><span class="subtle">Boxes to write the class in on the student details; on the answer sheet, the class grid AMC reads. Off: neither is printed.</span></span></label>
+    <label class="field"><span class="field-label">Class: digits</span><input class="input input-num" type="number" min="1" max="4" data-pbd="student.class_digits" data-type="int" value="${d.student.class_digits}" ${d.student.klass ? dis : 'disabled'}></label></div>
+    <div class="field-label" style="margin-top:14px">Registration number</div>
     <div class="form-grid"><label class="field"><span class="field-label">Fixed prefix</span><input class="input" data-pbd="student.id_prefix" value="${esc(d.student.id_prefix)}" ${dis}><span class="field-hint">Printed in grey boxes before the digits, for example MO26. Empty for none.</span></label>
-    <label class="field"><span class="field-label">Digits</span><input class="input input-num" type="number" min="1" max="10" data-pbd="student.id_digits" data-type="int" value="${d.student.id_digits}" ${dis}><span class="field-hint">Written in boxes and darkened in the ID grid, so AMC matches sheets to the class list.</span></label>
-    <label class="field"><span class="field-label">Class: digits</span><input class="input input-num" type="number" min="1" max="4" data-pbd="student.class_digits" data-type="int" value="${d.student.class_digits}" ${dis}></label></div>
+    <label class="field"><span class="field-label">Digits</span><input class="input input-num" type="number" min="1" max="10" data-pbd="student.id_digits" data-type="int" value="${d.student.id_digits}" ${dis}><span class="field-hint">Written in boxes and darkened in the ID grid, so AMC matches sheets to the class list.</span></label></div>
     <div class="field-label" style="margin-top:14px">Boxes for writing</div>
     <div class="form-grid"><label class="field"><span class="field-label">Box width</span><input class="input" data-pbd="student.box_width" value="${esc(d.student.box_width)}" ${dis}><span class="field-hint">One letter or digit per box, in the registration number, the class and the level. 7mm square suits handwriting.</span></label>
     <label class="field"><span class="field-label">Box height</span><input class="input" data-pbd="student.box_height" value="${esc(d.student.box_height)}" ${dis}></label></div>`;
@@ -561,7 +566,7 @@ async function bUpload(file) {
 function builderWizardOptions(w, t) {
   if (!w.design || w.design.id !== t.id) {
     w.design = { id: t.id, preset: (t.builder.presets[0] || {}).id || 'rj-olympiad', codes: { style: 'letters', same_length: false }, versions: 4,
-      fields: { exam_name: w.name.trim(), organiser: '', level: '', date: fmtIsoDate(w.date), time: '', max_marks: '' } };
+      fields: { exam_name: w.name.trim(), organiser: '', level: '', date: fmtIsoDate(w.date), time: '', max_marks: '' }, student: { level: true, klass: true } };
     if (w.design.preset === 'rj-olympiad') { w.design.fields.level = 'I'; w.design.fields.time = '09:30 to 11:30'; w.design.fields.max_marks = '100'; }
     w.style = 'separate'; // the RJ paper has an OMR sheet
   }
@@ -574,6 +579,10 @@ function builderWizardOptions(w, t) {
       <div class="field-label" style="margin-top:14px">Starting layout</div>
       <div class="b-presets" role="radiogroup" aria-label="Starting layout">${t.builder.presets.map((p) => `<button class="choice" role="radio" aria-checked="${dz.preset === p.id}" data-act="pb-wiz-preset" data-v="${esc(p.id)}"><span><span class="choice-title">${esc(p.title)}</span><br><span class="subtle">${esc(p.text)}</span></span></button>`).join('')}</div>
       <div class="form-grid" style="margin-top:14px">${['exam_name', 'organiser', 'level', 'date', 'time', 'max_marks'].map((k) => `<label class="field"><span class="field-label">${esc({ exam_name: 'Exam name', organiser: 'Organiser', level: 'Level', date: 'Date', time: 'Time', max_marks: 'Maximum marks' }[k])}</span><input class="input" data-bw="fields.${k}" value="${esc(dz.fields[k])}"></label>`).join('')}</div>
+      <div class="field-label" style="margin-top:14px">More on the paper</div>
+      <div class="row" style="gap:16px;flex-wrap:wrap">
+        <label class="check"><input type="checkbox" data-bw="student.level" data-type="bool" ${dz.student.level ? 'checked' : ''}><span>Level<br><span class="subtle">A level box on the student details, the level in the footer.</span></span></label>
+        <label class="check"><input type="checkbox" data-bw="student.klass" data-type="bool" ${dz.student.klass ? 'checked' : ''}><span>Class<br><span class="subtle">Boxes to write the class in; on the answer sheet, a class grid AMC reads.</span></span></label></div>
       <p class="field-hint" style="margin-top:10px">Everything here can be changed later in Questions › Paper builder.</p>
     </div></section>
     <section class="card"><div class="card-header"><h2>Versions and summary</h2></div><div class="card-body">

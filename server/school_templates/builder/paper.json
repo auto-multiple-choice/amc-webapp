@@ -19,7 +19,9 @@
   "id_digits": 3,
   "class_digits": 2,
   "box_width": "7mm",
-  "box_height": "7mm"
+  "box_height": "7mm",
+  "klass": true,
+  "level": true
  },
  "page": {
   "margins": "normal",

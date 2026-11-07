@@ -3537,7 +3537,7 @@ const ACTIONS = {
     if (S.creating) return;
     S.creating = w.name.trim();
     renderMain(true);
-    socket_emit('ui-create-exam', { name: w.name.trim(), class: w.class, subject: w.subject, date: w.date, gid: w.gid, id: w.id, style: w.style, code: w.code ? w.digits : 0, copies: w.copies, design: w.design ? { preset: w.design.preset, codes: w.design.codes, versions: w.design.versions, fields: w.design.fields } : undefined });
+    socket_emit('ui-create-exam', { name: w.name.trim(), class: w.class, subject: w.subject, date: w.date, gid: w.gid, id: w.id, style: w.style, code: w.code ? w.digits : 0, copies: w.copies, design: w.design ? { preset: w.design.preset, codes: w.design.codes, versions: w.design.versions, fields: w.design.fields, student: w.design.student } : undefined });
   },
   'rename-exam': (el) => { S.menu = null; renameExam(el.dataset.name); },
   'clone-exam': (el) => { S.menu = null; socket_emit('project-clone', el.dataset.name); },

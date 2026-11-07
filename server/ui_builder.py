@@ -100,7 +100,7 @@ DEFAULTS = {
     "kind": "separate",
     "codes": {"style": "letters", "same_length": False, "zero_pad": False},
     "fields": {k: "" for k in FIELDS},
-    "student": {"id_prefix": "", "id_digits": 3, "class_digits": 2, "box_width": "7mm", "box_height": "7mm"},
+    "student": {"id_prefix": "", "id_digits": 3, "class_digits": 2, "box_width": "7mm", "box_height": "7mm", "klass": True, "level": True},
     "page": {"margins": "normal", "border": "dashed", "shuffle_answers": False, "question_style": "rj",
              "footer": {"pattern": "Level {level} // Code {code} // Page {page}", "align": "center",
                         "border": "dashed", "mono": True},
@@ -396,7 +396,9 @@ def normalize(raw):
     d["student"] = {"id_prefix": prefix, "id_digits": _int(s.get("id_digits", 3), 1, 10, "ID digits"),
                     "class_digits": _int(s.get("class_digits", 2), 1, 4, "Class digits"),
                     "box_width": _dim(s.get("box_width"), "7mm", "The width of a box"),
-                    "box_height": _dim(s.get("box_height"), "7mm", "The height of a box")}
+                    "box_height": _dim(s.get("box_height"), "7mm", "The height of a box"),
+                    # the class and the level on the paper at all: off, no block prints them
+                    "klass": _bool(s.get("klass", True)), "level": _bool(s.get("level", True))}
     p = raw.get("page") if isinstance(raw.get("page"), dict) else {}
     d["page"]["margins"] = _choice(p.get("margins"), tuple(MARGINS), "normal")
     d["page"]["border"] = _choice(p.get("border"), ("none", "dashed", "solid"), "dashed")
@@ -433,6 +435,7 @@ def _footer(raw, default):
 def check(design, versions, files=()):
     """What the panel shows and what stops a build: [{level, text, sheet,
     row}] with level error, warning or info."""
+    design = _effective(design)
     out = []
     def add(level, text, sheet=None, row=None):
         out.append({"level": level, "text": text, "sheet": sheet, "row": row})
@@ -461,7 +464,9 @@ def check(design, versions, files=()):
                     add("warning", f"Row {i + 1}: the paper code block prints nothing while versions have no code.", where, i)
                 if b["type"] == "text" and not b["latex"].strip():
                     add("info", f"Row {i + 1}: the text block is empty.", where, i)
-                if b["type"] == "student" and not (b["name"] or b["id"] or b["klass"] or (b["level"] and design["fields"]["level"])):
+                if b["type"] == "class_grid" and not design["student"]["klass"]:
+                    add("info", f"Row {i + 1}: the Class grid prints nothing while the class is off in Details.", where, i)
+                if b["type"] == "student" and not (b["name"] or b["id"] or (b["klass"] and design["student"]["klass"]) or (b["level"] and design["fields"]["level"])):
                     add("error", f"Row {i + 1}: the student details block has nothing to print; tick at least the name.", where, i)
     if kind == "paper":
         n = paper.count("student")
@@ -542,6 +547,14 @@ def _prefix_boxes(prefix):
     return "".join(r"\amcuiPrefixBox{%s}" % esc(ch) for ch in prefix)
 
 
+def _effective(design):
+    """The design as printed: with the level off, the level is empty
+    wherever a block or the footer would print it."""
+    if design["student"]["level"]:
+        return design
+    return {**design, "fields": {**design["fields"], "level": ""}}
+
+
 def _block_tex(design, b, where, summary, namefield):
     """The LaTeX of one block. SUMMARY: the instructions lines per section."""
     t = b["type"]
@@ -563,7 +576,7 @@ def _block_tex(design, b, where, summary, namefield):
         parts = []
         if b["id"]:
             parts.append(r"%s: %s%s" % (esc(b["id_label"]), _prefix_boxes(st["id_prefix"]), _digit_boxes(st["id_digits"])))
-        if b["klass"]:
+        if b["klass"] and st["klass"]:
             parts.append(r"%s: %s" % (esc(b["class_label"]), _digit_boxes(st["class_digits"])))
         if b["level"] and f.get("level"):
             parts.append(r"%s: \amcuiCharBox{black}{white}{%s}" % (esc(b["level_label"]), esc(f["level"])))
@@ -627,6 +640,8 @@ def _block_tex(design, b, where, summary, namefield):
         return r"\amcuiCenterRule{%s}" % esc(b["text"]) if b["text"] else ""
     if t == "rough":
         return r"\amcuiRoughWork{%d}{%s}" % (b["pages"], esc(b["text"])) if b["pages"] else ""
+    if t == "class_grid" and not st["klass"]:
+        return ""
     if t in ("id_grid", "class_grid"):
         code, digits = ("student", st["id_digits"]) if t == "id_grid" else ("studclass", st["class_digits"])
         label = (r"{\bfseries %s}\\[1ex]\hrule\vspace{2ex}" % esc(b["label"]) + "\n") if b["label"] else ""
@@ -779,6 +794,7 @@ def _namefield_cell(design):
 def layout(design, versions, summary=()):
     """paper-layout.tex for DESIGN, printed in VERSIONS versions, with the
     instructions' lines per section SUMMARY (ui_structure.summary_lines)."""
+    design = _effective(design)
     design = normalize(design)
     versions = max(1, min(int(versions or 1), 999))
     page = design["page"]
@@ -915,6 +931,23 @@ def sample_codes(design, versions):
     """What the canvas shows as the paper code: the first and last codes."""
     table = codes_table(design["codes"], max(1, min(int(versions or 1), 999)))
     return {"first": table[0], "last": table[-1]}
+
+
+def apply_student(design, student):
+    """The wizard's choice of a level and a class: off, the class grids
+    leave the sheet (a block printing nothing would only puzzle)."""
+    for k in ("klass", "level"):
+        if k in (student or {}):
+            design["student"][k] = _bool(student[k])
+    if not design["student"].get("klass", True):
+        for rows in (design["paper"], design["answer_sheet"]):
+            for r in rows:
+                r["cells"] = [c for c in r["cells"] if c.get("block", {}).get("type") != "class_grid"]
+                for c in r["cells"]:  # the RJ sheet's instruction line
+                    if c["block"].get("type") == "text":
+                        c["block"]["latex"] = c["block"]["latex"].replace("Darken your class and the digits of", "Darken the digits of")
+            rows[:] = [r for r in rows if r["cells"]]
+    return design
 
 
 def apply_fields(design, fields):

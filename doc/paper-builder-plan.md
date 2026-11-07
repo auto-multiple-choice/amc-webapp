@@ -451,6 +451,16 @@ Question banks (phase 9) come after B4, or before B1 (section 14, point 3).
   besides. A section added after others follows their choice, and the
   choice is put back after a move or a removal, unless the sections
   differ (then each keeps its own).
+- **Level and class as one choice** (asked for on 7 November). The
+  wizard asks whether the paper has a level and a class; so does the
+  Details tab (`student.level`, `student.klass`). Off, the level is
+  empty wherever it would print (`_effective`: the student blocks'
+  level box, `{level}` in the footer and the title lines) and the class
+  prints nowhere (the class boxes of the student blocks, the Class grid,
+  which the checks note). At creation the class grids are taken off the
+  sheet; later the blocks stay and print nothing, so turning the class
+  back on brings them back. The per-block boxes (which student block
+  shows the class or the level) stay, hidden while the detail is off.
 - **Numeric answers on the sheet** (reported on 7 November: in narrow
   columns a question number overlapped the previous grid). The block no
   longer uses `multicols`: `\amcuiNumericForm{n}` redefines AMC's form
