@@ -23,4 +23,5 @@ An exam goes through ten steps, in two groups. The sidebar lists them with their
 - **The preview panel** on the right shows the question paper, scanned pages, exported marks and annotated sheets. Drag its edge to resize it, or hide it with the button in the top bar.
 - **Printing locks the exam.** After printing, the questions and layout must stay exactly as printed, or the scans can't be read. The marking scheme and the answer key can still change, in Marking scheme. Unlocking is possible, but removes scans and marks.
 - **Out of date.** If you change the marking scheme or a scan after marking, Mark, Export marks and Annotate say so. Compute the marks again, then export and annotate again.
-- **History.** Each exam keeps a list of what was done and by whom, in Exam settings.
+- **History.** Every save is kept as a version, for good: see what changed, compare, and restore the whole exam, one file or one change (Questions › History). Exam settings lists what was done and by whom.
+- **Trash.** A deleted exam stays in the Trash on the Exams page for 30 days, with its history, and can be restored from there.

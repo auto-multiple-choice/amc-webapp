@@ -32,9 +32,10 @@ import ui_structure as paper_structure
 import ui_builder as paper_builder
 import ui_questions as questions_edit
 import ui_scale as scale
-import ui_source as source_history
+import ui_changes as changes
+import ui_vcs as vcs
 
-HISTORY_DIR = source_history.HISTORY_DIR  # kept out of exam downloads (amc.py)
+HISTORY_DIR = vcs.OLD_HISTORY_DIR  # the old per-file history: kept out of exam downloads until converted (amc.py)
 
 from flask import Blueprint, Response, abort, jsonify, make_response, render_template, request, send_file
 from flask import after_this_request
@@ -372,78 +373,101 @@ def add_activity(pdir, what):
     _update_record(pdir, change)
 
 
-# ---------------------------------------------------------------- source history
+# ---------------------------------------------------------------- version history
 #
-# Every write to a source file goes through ui_source, which keeps the
-# version it replaces (doc/questions-banks-templates-plan.md, section 4).
+# Every write to a source file goes through ui_vcs (doc/question-bank-plan.md,
+# section 6): one git repository per exam, outside the teacher's folder.
+# A save that writes several files is one version: wrap it in
+# history_change(); save_source() calls inside join it.
 
-def _built_digest(rec, filename):
-    return (rec.get("built_sources") or {}).get(filename)
+def _root():
+    return core.projects_dir(root=True)
+
+
+def exam_history(pdir):
+    """The history of the exam at PDIR (started on first use)."""
+    return vcs.Repo(pdir, _root()).open(by=_who())
+
+
+def history_change(pdir, what, kind="save", extra=None):
+    return vcs.change(pdir, _root(), by=_who(), what=what, kind=kind, extra=extra)
 
 
 def save_source(pdir, filename, data, what, based_on=None):
-    """Write a source file of the exam at PDIR, keeping the earlier
-    version. Raises ui_source.Conflict when BASED_ON isn't the digest of
-    the file as it is on disk."""
-    return source_history.write_source(pdir, filename, data, by=_who(), what=what, based_on=based_on,
-                                       built_digest=_built_digest(read_record(pdir), filename))
+    """Write a source file of the exam at PDIR as a version. Raises
+    ui_vcs.Conflict when BASED_ON isn't the digest of the file on disk."""
+    return vcs.write(pdir, _root(), filename, data, by=_who(), what=what, based_on=based_on)
 
 
 def store_upload(path, upload, what):
-    """Save an uploaded file (/upload, /fs): through the history when it
-    is a source file in an exam folder, plainly otherwise."""
+    """Save an uploaded file (/upload, /fs): as a version when it is a
+    file of an exam that history keeps, plainly otherwise."""
     pdir, fn = os.path.split(path)
-    if _is_exam(pdir) and source_history.tracked(fn):
+    if _is_exam(pdir) and vcs.tracked(fn):
         upload.stream.seek(0)
-        save_source(pdir, fn, upload.stream.read(), what)
+        save_source(pdir, fn, upload.stream.read(), f"{what}: {fn}" if what in ("Uploaded", "Saved") else what)
     else:
         upload.save(path)
 
 
 def delete_file(path):
-    """Delete a project file (project-delete-file): a source file of an
-    exam goes into the history instead of being lost."""
+    """Delete a project file (project-delete-file): a file history keeps
+    stays in it and can be restored."""
     pdir, fn = os.path.split(path)
-    if _is_exam(pdir) and source_history.tracked(fn):
-        source_history.delete_source(pdir, fn, by=_who(), built_digest=_built_digest(read_record(pdir), fn))
+    if _is_exam(pdir) and vcs.tracked(fn):
+        vcs.delete(pdir, _root(), fn, by=_who())
         add_activity(pdir, f"File deleted: {fn} (kept in History)")
     else:
         os.unlink(path)
 
 
-_building = {}  # exam folder -> the sources' digests when its build started
-
-
-def _source_digests(pdir):
-    digests = {}
-    for f in _source_files(pdir):
-        try:
-            with open(os.path.join(pdir, f), "rb") as fh:
-                digests[f] = source_history.digest(fh.read())
-        except OSError:
-            pass
-    return digests
+_building = {}  # exam folder -> the version its build started from
 
 
 def note_building():
-    """Before the question paper is built: the sources as they are now,
-    which is what the build reads (a save during the build mustn't be
-    taken for the version that built)."""
+    """Before the question paper is built: the files as they are now
+    become a version (if they changed), which is what the build reads (a
+    save during the build mustn't be taken for the version that built)."""
     pdir = core.project_dir()
-    _building[pdir] = _source_digests(pdir)
+    try:
+        _building[pdir] = vcs.snapshot(pdir, _root(), by=_who())
+    except (vcs.HistoryError, OSError) as e:
+        core.app.logger.error(f"History: {pdir}: {e}")
 
 
 def note_built():
-    """After the question paper built: remember which version of each
-    source it was built from, so History can show "built OK"."""
+    """After the question paper built: mark the version it was built from,
+    so History can show "built OK"."""
     pdir = core.project_dir()
-    digests = _building.pop(pdir, None)
-    if digests is None:
-        digests = _source_digests(pdir)
-    if not _is_exam(pdir):
+    cid = _building.pop(pdir, None)
+    if not cid or not _is_exam(pdir):
         return
-    _update_record(pdir, lambda rec: rec.__setitem__("built_sources", digests))
-    source_history.mark_built(pdir, digests)
+    try:
+        exam_history(pdir).mark_built(cid)
+    except (vcs.HistoryError, OSError) as e:
+        core.app.logger.error(f"History: {pdir}: {e}")
+
+
+def audit(action, pdir=None, **fields):
+    """A line in the owner's audit log (and the server log)."""
+    try:
+        home = vcs.amcweb_dir(pdir or os.path.join(core.projects_dir(), "x"), _root())
+    except vcs.HistoryError:
+        return
+    entry = vcs.audit(home, _who(), action, **fields)
+    core.app.logger.info(f"Audit: {json.dumps(entry, ensure_ascii=False)}")
+
+
+def name_printed_version(pdir, how):
+    """Printing names the version the papers were built from."""
+    try:
+        repo = exam_history(pdir)
+        cid = repo.last_built() or repo.head()
+        if cid:
+            repo.name_version(cid, f"Printed {time.strftime('%d %b %Y')}" if how != "manual"
+                              else f"Marked as printed {time.strftime('%d %b %Y')}", by=_who(), auto=True)
+    except (vcs.HistoryError, OSError) as e:
+        core.app.logger.error(f"History: {pdir}: {e}")
 
 
 def _build_stamp(pdir):
@@ -796,6 +820,7 @@ def on_mark_printed():
     lock = {"since": int(time.time()), "by": _who(), "how": "manual"}
     _update_record(pdir, lambda rec: rec.setdefault("lock", lock))
     add_activity(pdir, "Marked as printed: the exam is locked")
+    name_printed_version(pdir, "manual")
     core.emit_msg("ui-changed", "lock")
 
 
@@ -814,6 +839,7 @@ def on_printed(data):
         return
     lock = {"since": int(time.time()), "by": _who(), "how": how}
     _update_record(pdir, lambda rec: rec.setdefault("lock", lock))
+    name_printed_version(pdir, how)
     add_activity(pdir, ("Printed on the shared machine" if how == "printer"
                         else "Papers saved for printing")
                  + (f" (copies {copies})" if copies else ""))
@@ -846,6 +872,7 @@ def on_unlock(data):
             rec.pop(k, None)
     _update_record(pdir, change)
     add_activity(pdir, "Unlocked: layout, scans, marks, matches, exported marks and annotated sheets removed")
+    audit("exam unlocked", pdir, exam=flask_g.project_name)
     core.emit_msg("ui-changed", "unlock")
 
 
@@ -872,8 +899,8 @@ def on_scoring_defaults(data):
                 + "; multiple " + (values["M"] or "AMC default"))
         try:
             save_source(core.project_dir(), os.path.basename(path), new.encode("utf-8"), what,
-                        based_on=source_history.digest(text.encode("utf-8")))
-        except (source_history.Conflict, OSError):
+                        based_on=vcs.digest(text.encode("utf-8")))
+        except (vcs.Conflict, OSError):
             core.dialog_msg(warn=CHANGED_MEANWHILE)
             return
         add_activity(core.project_dir(), what)
@@ -2017,8 +2044,8 @@ def on_question_edit(data):
         core.dialog_msg(warn=ONLY_SCORING)
         return
     try:
-        save_source(pdir, q["file"], new.encode("utf-8"), what, based_on=source_history.digest(old.encode("utf-8")))
-    except (source_history.Conflict, OSError):
+        save_source(pdir, q["file"], new.encode("utf-8"), what, based_on=vcs.digest(old.encode("utf-8")))
+    except (vcs.Conflict, OSError):
         core.dialog_msg(warn=CHANGED_MEANWHILE)
         return
     _update_record(pdir, lambda r: r.__setitem__("neutral", neutral))
@@ -2059,8 +2086,8 @@ def api_source():
     except UnicodeDecodeError:
         text = data.decode("utf-8", "replace")
         problem = "The file isn't UTF-8 text, so it is shown read-only."
-    return jsonify(project=name, file=fn, text=text, digest=source_history.digest(data),
-                   problem=problem, tracked=source_history.tracked(fn))
+    return jsonify(project=name, file=fn, text=text, digest=vcs.digest(data),
+                   problem=problem, tracked=vcs.tracked(fn))
 
 
 @bp.route("/ui/api/source", methods=["POST"])
@@ -2081,7 +2108,7 @@ def api_source_save():
     if refusal := write_refusal_bytes(path, raw):
         return jsonify(error=refusal)
     try:
-        if source_history.tracked(fn):
+        if vcs.tracked(fn):
             dg = save_source(pdir, fn, raw, "Saved in the editor",
                              based_on=str(data.get("based_on") or "") or None)
         else:
@@ -2089,8 +2116,8 @@ def api_source_save():
             with open(tmp, "wb") as f:
                 f.write(raw)
             os.replace(tmp, path)
-            dg = source_history.digest(raw)
-    except source_history.Conflict as c:
+            dg = vcs.digest(raw)
+    except vcs.Conflict as c:
         return jsonify(error="This file was changed since you opened it.", conflict=True, digest=str(c))
     except OSError:
         return jsonify(error="This exam doesn't exist any more.")
@@ -2098,78 +2125,329 @@ def api_source_save():
     return jsonify(ok=True, digest=dg)
 
 
+HISTORY_PAGE = 100
+IMAGE_TYPES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif"}
+RESTORE_MODES = ("exam", "file", "undo")
+MAX_DIFF_FILES = 40
+
+
+def _history_error(name, e):
+    core.app.logger.error(f"History of {name}: {e}")
+    return jsonify(project=name, error="The history can't be read just now. The server log has the details."), 500
+
+
+def _version_label(e, label=None):
+    """The version's time for a title: as the teacher's browser showed it
+    (LABEL), else in UTC, saying so (the server doesn't know their time zone)."""
+    label = re.sub(r"[^\w ,.:/\-]", "", str(label or ""), flags=re.UNICODE).strip()[:40]
+    return label or time.strftime("%d %b %Y %H:%M UTC", time.gmtime((e or {}).get("at") or 0))
+
+
 @bp.route("/ui/api/history")
 def api_history():
-    """The versions kept of one file (or of every file), and which files
-    have a history, including deleted ones."""
+    """The exam's versions, newest first (or one file's), and the files
+    that have a history, deleted ones included. Changes made outside the
+    app are recorded first, so the list starts from the files as they are."""
     name = _open_project()
     if not name:
         return jsonify(project=None)
     pdir = core.project_dir()
     fn = request.args.get("file") or None
-    if fn is not None and not source_history.tracked(fn):
+    if fn is not None and not vcs.tracked(fn):
         return jsonify(project=name, error="No history is kept for this file."), 400
-    out = {"project": name, "file": fn, "versions": source_history.versions(pdir, fn),
-           "files": source_history.files_with_history(pdir), "current": None,
-           "keep_days": source_history.KEEP_DAYS, "keep_at_least": source_history.KEEP_AT_LEAST}
-    if fn:
-        cur = source_history.current_info(pdir, fn)
-        if cur:
-            cur["built"] = cur["digest"] == _built_digest(read_record(pdir), fn)
-            out["current"] = cur
-    return jsonify(out)
+    try:
+        skip = max(0, int(request.args.get("skip") or 0))
+        limit = max(1, min(int(request.args.get("limit") or HISTORY_PAGE), 500))
+    except ValueError:
+        skip, limit = 0, HISTORY_PAGE
+    try:
+        repo = exam_history(pdir)
+        repo.record_outside()
+        versions, total = repo.log(fn, limit=limit, skip=skip)
+        files = repo.files()
+    except (vcs.HistoryError, OSError) as e:
+        return _history_error(name, e)
+    return jsonify(project=name, file=fn, versions=versions, total=total, skip=skip, files=files,
+                   head=repo.head(), lock=bool(exam_lock(pdir)))
 
 
-@bp.route("/ui/api/history/<vid>")
-def api_history_version(vid):
+def _design_or_none(data):
+    try:
+        return paper_builder.normalize(json.loads(data.decode("utf-8"))) if data else None
+    except (ValueError, UnicodeDecodeError, questions_edit.EditError):
+        return None
+
+
+@bp.route("/ui/api/history/<cid>")
+def api_history_version(cid):
+    """One version: what it changed (against=parent, the default), what
+    changed since (against=now), or the differences with another version
+    (against=<id>), in words and line by line. raw=1&file=F gives the file
+    as it was (inline=1: an image to show)."""
     name = _open_project()
     if not name:
         return jsonify(project=None)
     pdir = core.project_dir()
-    fn = request.args.get("file", "")
-    data = source_history.read_version(pdir, fn, vid)
-    if data is None:
-        return jsonify(project=name, error="This version doesn't exist."), 404
-    if request.args.get("raw"):  # the version as a file to download
-        stem, ext = fn.rsplit(".", 1)
-        return send_file(io.BytesIO(data), mimetype="text/plain", as_attachment=True,
-                         download_name=f"{stem}.{vid}.{ext}")
-    return jsonify(project=name, file=fn, id=vid, text=data.decode("utf-8", "replace"),
-                   entry=source_history.entry(pdir, fn, vid))
-
-
-def on_history_restore(data):
-    """Make a kept version the file again; the file as it is now is kept.
-    A deleted file comes back."""
-    data = data if isinstance(data, dict) else {}
-    fn, vid = str(data.get("file") or ""), str(data.get("id") or "")
-    pdir = core.project_dir()
-    e = source_history.entry(pdir, fn, vid)
-    text = source_history.read_version(pdir, fn, vid) if e else None
-    if text is None:
-        core.dialog_msg(warn="This version doesn't exist any more.")
-        return
-    path = os.path.join(pdir, fn)
-    existed = os.path.isfile(path)
-    if not existed and exam_lock(pdir) and fn.rsplit(".", 1)[-1].lower() in SOURCE_EXTENSIONS:
-        core.dialog_msg(warn=LOCKED.format(what="A source file that comes back could change the printed papers."))
-        return
-    if refusal := write_refusal_bytes(path, text):
-        core.dialog_msg(warn=refusal)
-        return
-    label = time.strftime("%d %b %Y %H:%M", time.localtime(e.get("at") or 0))
+    fn = request.args.get("file") or None
     try:
-        source_history.restore(pdir, fn, vid, by=_who(), what=f"Restored the version of {label}",
-                               built_digest=_built_digest(read_record(pdir), fn))
-    except OSError:
-        core.dialog_msg(warn="This exam doesn't exist any more.")
-        return
-    add_activity(pdir, f"{fn}: the version of {label} restored" + ("" if existed else " (the file had been deleted)"))
-    if not existed:
+        repo = exam_history(pdir)
+        if not repo.check_commit(cid):
+            return jsonify(project=name, error="This version doesn't exist."), 404
+        if request.args.get("raw"):
+            data = repo.read(cid, fn or "")
+            if data is None:
+                return jsonify(project=name, error="This file isn't in this version."), 404
+            ext = fn.rsplit(".", 1)[-1].lower()
+            if request.args.get("inline") and ext in IMAGE_TYPES:
+                return send_file(io.BytesIO(data), mimetype=IMAGE_TYPES[ext])
+            stem = fn.rsplit(".", 1)[0]
+            return send_file(io.BytesIO(data), mimetype="application/octet-stream", as_attachment=True,
+                             download_name=f"{stem}.{time.strftime('%Y%m%d-%H%M', time.localtime(repo.entry(cid)['at']))}.{ext}")
+        e = repo.entry(cid)
+        against = request.args.get("against") or "parent"
+        if against == "parent":
+            base, target = e["parent"], cid
+        elif against == "now":
+            repo.record_outside()
+            base, target = cid, repo.head()
+        else:
+            other = repo.check_commit(against)
+            if not other:
+                return jsonify(project=name, error="The version to compare with doesn't exist."), 404
+            base, target = (other, cid) if repo.is_ancestor(other, cid) else (cid, other)
+        bt = repo.tree_at(base) if base else {}
+        tt = repo.tree_at(target)
+        paths = sorted(p for p in set(bt) | set(tt) if bt.get(p) != tt.get(p) and (not fn or p == fn))
+        old = {p: repo.blob(bt.get(p)) for p in paths}
+        new = {p: repo.blob(tt.get(p)) for p in paths}
+        out = {"project": name, "entry": e, "against": against, "base": base, "target": target,
+               "base_entry": repo.entry(base) if base and base not in (cid,) else None,
+               "target_entry": repo.entry(target) if target != cid else None, "file": fn,
+               "files": [vcs.file_diff(p, old[p], new[p]) for p in paths[:MAX_DIFF_FILES]],
+               "more_files": max(0, len(paths) - MAX_DIFF_FILES), "summary": changes.describe(old, new),
+               "in_version": sorted(repo.tree_at(cid)), "head": repo.head()}
+        df = paper_builder.DESIGN_FILE
+        if df in paths or (fn == df and df in tt):
+            out["design"] = {"base": _design_or_none(repo.blob(bt.get(df))), "target": _design_or_none(repo.blob(tt.get(df))),
+                             "blocks": {t: {"title": b[0]} for t, b in paper_builder.BLOCKS.items()},
+                             "fields": paper_builder.FIELD_LABELS}
+    except (vcs.HistoryError, OSError) as err:
+        return _history_error(name, err)
+    return jsonify(out)
+
+
+def _restore_plan(repo, cid, mode, fn):
+    """(the writes, why it can't be done or None, the version's entry)."""
+    e = repo.entry(cid)
+    if mode == "exam":
+        return repo.plan_exam(cid), None, e
+    if mode == "file":
+        if not vcs.tracked(fn or ""):
+            return {}, "Choose a file to restore.", e
+        return repo.plan_file(cid, fn), None, e
+    if not e["parent"]:
+        return {}, "This is the first version, so there is no earlier state to go back to. Restore a version instead.", e
+    plan, problems = repo.plan_undo(cid)
+    if problems:
+        return plan, ("This change can't be undone on its own: " + "; ".join(f"{p} ({why})" for p, why in problems)
+                      + ". Restore the exam, or one file, to a version instead."), e
+    return plan, None, e
+
+
+def _plan_refusal(pdir, plan):
+    """Why a restore can't be written to a printed exam, or None."""
+    if not plan or not exam_lock(pdir):
+        return None
+    for path, data in plan.items():
+        full = os.path.join(pdir, path)
+        ext = path.rsplit(".", 1)[-1].lower()
+        if path == paper_builder.DESIGN_FILE:
+            return LOCKED.format(what="The paper's design can't change once it is printed.")
+        if ext not in SOURCE_EXTENSIONS:
+            continue
+        if data is None:
+            return LOCKED.format(what=f"{path} is used by the printed papers, so it can't be removed.")
+        if not os.path.isfile(full):
+            return LOCKED.format(what="A source file that comes back could change the printed papers.")
+        if refusal := write_refusal_bytes(full, data):
+            return refusal
+    return None
+
+
+def _restore_what(mode, e, fn, label=None):
+    label = _version_label(e, label)
+    if mode == "exam":
+        return f"Restored the exam to the version of {label}"
+    if mode == "file":
+        return f"{fn}: restored the version of {label}"
+    if e.get("kind") in ("restore", "undo"):
+        return f"Undid: {e['what']}"[:200]
+    return f"Undid the change of {label} ({e['what']})"[:200]
+
+
+@bp.route("/ui/api/history/<cid>/plan")
+def api_history_plan(cid):
+    """What a restore would do, for its confirmation: the files, the
+    changes in words, and why it can't be done (a change made again
+    since, a printed exam)."""
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    mode = request.args.get("mode")
+    if mode not in RESTORE_MODES:
+        return jsonify(project=name, error="Unknown kind of restore."), 400
+    fn = request.args.get("file") or None
+    try:
+        repo = exam_history(pdir)
+        if not repo.check_commit(cid):
+            return jsonify(project=name, error="This version doesn't exist."), 404
+        plan, problem, e = _restore_plan(repo, cid, mode, fn)
+        now = repo.tree_at(repo.head())
+        old = {p: repo.blob(now.get(p)) for p in plan}
+    except (vcs.HistoryError, OSError) as err:
+        return _history_error(name, err)
+    return jsonify(project=name, mode=mode, id=cid, file=fn, head=repo.head(), entry=e, what=_restore_what(mode, e, fn),
+                   files=[{"file": p, "action": "removed" if d is None else "added" if p not in now else "changed"}
+                          for p, d in sorted(plan.items())],
+                   summary=changes.describe(old, plan), problem=problem, refused=None if problem else _plan_refusal(pdir, plan))
+
+
+@bp.route("/ui/api/history/restore", methods=["POST"])
+def api_history_restore():
+    """Restore: the whole exam to a version (mode exam), one file (file),
+    or take back one change (undo). One new version, which can itself be
+    undone. HEAD is the version the confirmation was shown for: if the
+    exam changed since, nothing is written."""
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    pdir = core.project_dir()
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+    mode, cid, fn = data.get("mode"), str(data.get("id") or ""), str(data.get("file") or "") or None
+    if mode not in RESTORE_MODES:
+        return jsonify(error="Unknown kind of restore.")
+    try:
+        repo = exam_history(pdir)
+        if not repo.check_commit(cid):
+            return jsonify(error="This version doesn't exist.")
+        plan, problem, e = _restore_plan(repo, cid, mode, fn)
+        if problem:
+            return jsonify(error=problem)
+        if data.get("head") and data["head"] != repo.head():
+            return jsonify(error="The exam was changed since you looked at this version. Look at it again before restoring.", conflict=True)
+        if not plan:
+            return jsonify(ok=True, nothing=True, what="Nothing to restore: the files are already as in that version.")
+        if refusal := _plan_refusal(pdir, plan):
+            return jsonify(error=refusal, locked=True)
+        what = _restore_what(mode, e, fn, data.get("label"))
+        existed = {p: os.path.isfile(os.path.join(pdir, p)) for p in plan}
+        with history_change(pdir, what, kind="undo" if mode == "undo" else "restore",
+                            extra={"Undoes" if mode == "undo" else "Restores": cid}) as cs:
+            for path, d in plan.items():
+                if d is None:
+                    cs.delete(path)
+                else:
+                    cs.write(path, d)
+            if any(p == paper_builder.DESIGN_FILE or (p.endswith((".tex", ".latex")) and p != paper_builder.LAYOUT_FILE) for p in plan):
+                refresh_layout(pdir, force=True)  # a builder exam: the layout follows the restored design and sections
+        new = cs.commit_id
+        if not new:
+            return jsonify(ok=True, nothing=True, what="Nothing changed: the files are already as in that version.")
+    except vcs.Conflict:
+        return jsonify(error="The exam was changed while restoring. Look at the version again.", conflict=True)
+    except (vcs.HistoryError, OSError) as err:
+        return _history_error(name, err)
+    audit("version restored", pdir, exam=name, mode=mode, version=cid, file=fn, new=new)
+    add_activity(pdir, what)
+    if any(d is None or not existed[p] for p, d in plan.items()):
         core.emit_msg("project-files-list")
-    refresh_layout(pdir)  # a builder exam: the layout follows a restored paper.json or exam.tex
-    core.emit_msg("ui-history-restored", {"file": fn, "id": vid})
+    core.emit_msg("ui-history-restored", {"mode": mode, "id": cid, "files": sorted(plan)})
     core.emit_msg("ui-changed", "questions")
+    return jsonify(ok=True, what=what, id=new, files=sorted(plan))
+
+
+@bp.route("/ui/api/history/name", methods=["POST"])
+def api_history_name():
+    """Name a version ("Checked by the head of department"), or remove a name."""
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+    label = re.sub(r"[\x00-\x1f\x7f]", "", str(data.get("name") or "")).strip()[:80]
+    if not label:
+        return jsonify(error="Give the version a name.")
+    try:
+        repo = exam_history(core.project_dir())
+        cid = repo.check_commit(str(data.get("id") or ""))
+        if not cid:
+            return jsonify(error="This version doesn't exist.")
+        if data.get("remove"):
+            repo.unname_version(cid, label)
+        else:
+            repo.name_version(cid, label, by=_who())
+    except (vcs.HistoryError, OSError) as err:
+        return _history_error(name, err)
+    return jsonify(ok=True)
+
+
+# ---------------------------------------------------------------- trash
+
+def _owner_home():
+    """The server-only folder of the signed-in teacher (or the one user)."""
+    core.headers_info()  # who is signed in (shared machine)
+    return vcs.amcweb_dir(os.path.join(core.projects_dir(), "x"), _root())
+
+
+def trash_exam(pdir):
+    """Called by upstream's project-delete: the exam goes to the trash."""
+    info = vcs.trash_exam(pdir, _root(), by=_who())
+    core.app.logger.info(f"Exam \"{info['name']}\" moved to the trash ({info['id']})")
+    return info
+
+
+def exam_renamed(pdir, old, new):
+    """Called by upstream's project-rename: the history follows (it is
+    keyed by the exam's uid), and the audit log says so."""
+    try:
+        exam_history(pdir)
+    except (vcs.HistoryError, OSError) as e:
+        core.app.logger.error(f"History: {pdir}: {e}")
+    audit("exam renamed", pdir, exam=new, old=old)
+
+
+@bp.route("/ui/api/trash")
+def api_trash():
+    try:
+        items = vcs.list_trash(_owner_home())
+    except (vcs.HistoryError, OSError) as e:
+        core.app.logger.error(f"Trash: {e}")
+        return jsonify(error="The trash can't be read just now."), 500
+    return jsonify(items=items, days=vcs.TRASH_DAYS)
+
+
+@bp.route("/ui/api/trash/<action>", methods=["POST"])
+def api_trash_action(action):
+    """restore: put an exam back (under a free name); delete: remove it for good."""
+    data = request.get_json(silent=True)
+    tid = str((data or {}).get("id") or "") if isinstance(data, dict) else ""
+    try:
+        home = _owner_home()
+        if action == "restore":
+            name = vcs.restore_trash(home, tid, core.projects_dir(), by=_who())
+            add_activity(core.project_dir(p=name), "Restored from the trash")
+            return jsonify(ok=True, name=name)
+        if action == "delete":
+            vcs.delete_trash(home, tid, by=_who())
+            return jsonify(ok=True)
+    except vcs.HistoryError as e:
+        return jsonify(error=str(e))
+    except OSError as e:
+        core.app.logger.error(f"Trash: {e}")
+        return jsonify(error="This can't be done just now. The server log has the details.")
+    return jsonify(error="Unknown action."), 400
 
 
 # ---------------------------------------------------------------- the question editor
@@ -2179,7 +2457,7 @@ def _editor_file(pdir, fn):
     order, with what each form field edits."""
     with open(os.path.join(pdir, fn), "rb") as f:
         raw = f.read()
-    out = {"file": fn, "digest": source_history.digest(raw), "problem": None, "questions": [], "groups": []}
+    out = {"file": fn, "digest": vcs.digest(raw), "problem": None, "questions": [], "groups": []}
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -2244,7 +2522,7 @@ def api_editor_edit():
     except (OSError, UnicodeDecodeError):
         return jsonify(error="This file isn't UTF-8 text, so it can't be changed here.")
     based_on = str(data.get("based_on") or "") or None
-    if based_on and based_on != source_history.digest(raw):
+    if based_on and based_on != vcs.digest(raw):
         return jsonify(error="This file was changed since the questions were read. Reload to see the changes.", conflict=True)
     try:
         new, what = questions_edit.apply(text, data.get("ops"))
@@ -2255,7 +2533,7 @@ def api_editor_edit():
         return jsonify(error=refusal, locked=True)
     try:
         dg = save_source(pdir, fn, out, what, based_on=based_on)
-    except source_history.Conflict:
+    except vcs.Conflict:
         return jsonify(error="This file was changed since the questions were read. Reload to see the changes.", conflict=True)
     ops = data.get("ops") or []
     if any(isinstance(o, dict) and o.get("op") in ("answer_correct", "scoring", "add", "delete", "rename") for o in ops):
@@ -2292,7 +2570,7 @@ def _structure(pdir):
         return None
     files = _source_files(pdir)
     out = paper_structure.read(text, main, _all_questions(pdir, files))
-    out.update(file=main, digest=source_history.digest(raw), files=[fn for fn in files if fn != main])
+    out.update(file=main, digest=vcs.digest(raw), files=[fn for fn in files if fn != main])
     return out
 
 
@@ -2336,7 +2614,7 @@ def api_structure_edit():
     except UnicodeDecodeError:
         return jsonify(error="The main source isn't UTF-8 text, so it can't be changed here.")
     based_on = str(data.get("based_on") or "") or None
-    if based_on and based_on != source_history.digest(raw):
+    if based_on and based_on != vcs.digest(raw):
         return jsonify(error="The paper was changed since it was read. Reload to see the changes.", conflict=True)
     files = _source_files(pdir)
     ops = data.get("ops") if isinstance(data.get("ops"), list) else []
@@ -2371,17 +2649,18 @@ def api_structure_edit():
                 return jsonify(error=refusal, locked=True)
             updates.append((fn, t3.encode("utf-8")))
     try:
-        dg = save_source(pdir, main, out, what, based_on=based_on)
-    except source_history.Conflict:
+        with history_change(pdir, what):  # the main source, renamed groups in other files and the layout: one version
+            dg = save_source(pdir, main, out, what, based_on=based_on)
+            for fn, data2 in updates:
+                try:
+                    save_source(pdir, fn, data2, what)
+                except OSError:
+                    core.app.logger.error(f"{fn}: the renamed groups couldn't be written")
+            if copies:
+                core.change_option("nombre_copies", int(copies[-1]))  # the app's copies follow the versions
+            refresh_layout(pdir)
+    except vcs.Conflict:
         return jsonify(error="The paper was changed since it was read. Reload to see the changes.", conflict=True)
-    for fn, data2 in updates:
-        try:
-            save_source(pdir, fn, data2, what)
-        except OSError:
-            core.app.logger.error(f"{fn}: the renamed groups couldn't be written")
-    if copies:
-        core.change_option("nombre_copies", int(copies[-1]))  # the app's copies follow the versions
-    refresh_layout(pdir)
     add_activity(pdir, what)
     core.emit_msg("ui-changed", "questions")
     return jsonify(ok=True, digest=dg, what=what, structure=_structure(pdir))
@@ -2398,9 +2677,9 @@ def _builder_design(pdir):
     with open(path, "rb") as f:
         raw = f.read()
     try:
-        return source_history.digest(raw), json.loads(raw.decode("utf-8"))
+        return vcs.digest(raw), json.loads(raw.decode("utf-8"))
     except (ValueError, UnicodeDecodeError):
-        return source_history.digest(raw), None
+        return vcs.digest(raw), None
 
 
 def _builder_inputs(pdir):
@@ -2427,7 +2706,7 @@ def _layout_state(pdir, rec):
     if not os.path.isfile(path):
         return {"exists": False, "edited": False}
     with open(path, "rb") as f:
-        dg = source_history.digest(f.read())
+        dg = vcs.digest(f.read())
     return {"exists": True, "edited": bool(info.get("layout_digest")) and info["layout_digest"] != dg}
 
 
@@ -2449,7 +2728,7 @@ def write_layout(pdir, design, what="Paper builder: layout rewritten", force=Fal
     if os.path.isfile(path):
         with open(path, "rb") as f:
             if f.read() == tex:
-                dg = source_history.digest(tex)
+                dg = vcs.digest(tex)
                 if info.get("layout_digest") != dg or info.get("detached"):  # the file is the design's again
                     _update_record(pdir, lambda r: r.setdefault("builder", {}).update({"layout_digest": dg, "detached": False}))
                 return dg
@@ -2460,14 +2739,16 @@ def write_layout(pdir, design, what="Paper builder: layout rewritten", force=Fal
     return dg
 
 
-def refresh_layout(pdir):
+def refresh_layout(pdir, force=False):
     """After a change elsewhere (sections, versions, a restored file): the
-    layout file follows paper.json when the exam has one."""
+    layout file follows paper.json when the exam has one. FORCE: also when
+    the file differs from what the builder last wrote (a restore brought
+    back an earlier layout), unless the teacher keeps hand edits to it."""
     _, raw = _builder_design(pdir)
     if raw is None:
         return
     try:
-        write_layout(pdir, paper_builder.normalize(raw), "Paper builder: layout updated from the sections")
+        write_layout(pdir, paper_builder.normalize(raw), "Paper builder: layout updated from the sections", force=force)
     except questions_edit.EditError:
         pass
 
@@ -2559,11 +2840,12 @@ def api_builder_save():
     what = re.sub(r"[^\w ,.:;()'\-’]", "", str(data.get("what") or "changed"))[:80]
     based_on = str(data.get("based_on") or "") or None
     try:
-        dg = save_source(pdir, paper_builder.DESIGN_FILE, paper_builder.to_json(design).encode("utf-8"),
-                         f"Paper builder: {what}", based_on=based_on)
-    except source_history.Conflict:
+        with history_change(pdir, f"Paper builder: {what}"):  # paper.json and paper-layout.tex: one version
+            dg = save_source(pdir, paper_builder.DESIGN_FILE, paper_builder.to_json(design).encode("utf-8"),
+                             f"Paper builder: {what}", based_on=based_on)
+            write_layout(pdir, design, f"Paper builder: {what}")
+    except vcs.Conflict:
         return jsonify(error="The design was changed since it was read. Reload to see the changes.", conflict=True)
-    write_layout(pdir, design, f"Paper builder: {what}")
     add_activity(pdir, f"Paper builder: {what}")
     core.emit_msg("ui-changed", "questions")
     return jsonify(ok=True, **_builder_payload(pdir))
@@ -2916,7 +3198,7 @@ def _install_builder(rep, style, design, logo):
     tex = paper_builder.layout(d, versions, paper_builder.summary_for(text, questions))
     with open(os.path.join(rep, paper_builder.LAYOUT_FILE), "w", encoding="utf-8") as f:
         f.write(tex)
-    return (versions, source_history.digest(tex.encode("utf-8")),
+    return (versions, vcs.digest(tex.encode("utf-8")),
             any(c["block"]["type"] == "id_grid" for r in d["answer_sheet"] for c in r["cells"]),
             gallery.needs_unicode_engine(paper_builder.to_json(d)))
 
@@ -3008,8 +3290,11 @@ def on_create_exam(data):
         if built[2]:
             core.change_option("assoc_code", "student")  # the ID grid matches sheets to the class list
     add_activity(rep, f"Exam created from the template \"{title}\"")
-    if core.main_source_file():
-        source_history.note_current(rep, core.main_source_file(), by=_who(), what=f"Created from the template \"{title}\"")
+    try:
+        vcs.snapshot(rep, _root(), by=_who(), what=f"Created from the template \"{title}\"", kind="create")
+    except (vcs.HistoryError, OSError) as e:
+        core.app.logger.error(f"History: {rep}: {e}")
+    audit("exam created", rep, exam=name, template=title)
     core.emit_msg("project-open", [name, True])
 
 
@@ -3166,6 +3451,10 @@ def record_cloned(dest, source_name):
     except OSError:
         pass
     add_activity(dest, f"Copied from \"{source_name}\"")
+    try:
+        vcs.start_copy(dest, _root(), _who(), source_name)
+    except (vcs.HistoryError, OSError) as e:
+        core.app.logger.error(f"History: {dest}: {e}")
 
 
 # Events that name their exam in their data rather than working on the open one.
@@ -3223,5 +3512,4 @@ SOCKET_EVENTS = {
     "ui-create-exam": on_create_exam,
     "ui-exam-meta": on_exam_meta,
     "ui-exam-archive": on_exam_archive,
-    "ui-history-restore": on_history_restore,
 }

@@ -80,9 +80,17 @@ Once the exam is printed, the questions are read-only: only the correct answers 
 
 ## Earlier versions
 
-Every time a source file is saved, the version it replaces is kept. **History** (in the bar above the editor) lists them with who saved them and when; the version the question paper was last built from is marked **built OK**. Click a version to see what changed since, and **Restore this version** to make it the file again (the file as it is now is kept too).
+Every save is kept as a version of the exam, for good: who saved it, when, and what changed. A save that touches several files (the Paper builder writes the design and its layout) is one version. **History** (in the bar above the editor, in Paper design and in the Paper builder) lists the versions; saves made close together by the same person are grouped into one editing session, which opens with a click. The version the question paper was last built from is marked **built OK**, and printing names the version that was printed.
 
-A file deleted with **Delete** also goes to History and can be restored from there. The exam's main source file can't be deleted. Versions from the last 7 days are kept; a file that hasn't changed for longer keeps its last 12 versions.
+Click a version to see what it changed, in words ("q3: answer B made correct", "Question paper: row 2 removed") and line by line, with the changed words highlighted. The list above the changes can show instead what changed since that version, or the differences with any other version. For the Paper builder's design, **Picture of the design** draws it as the builder does.
+
+Three ways to go back, each asking first and saying what will change:
+
+- **Restore the exam to this version**: every file comes back as it was, so files that belong together (the design and its layout, the questions and the paper) come back together.
+- **Restore only this file**: one file comes back; the others stay as they are.
+- **Undo this change**: only what that version changed is taken back; later changes stay. If the same lines were changed again later, the app says so and changes nothing.
+
+Each restore is itself a new version, so it can be undone the same way. **Name this version** gives a version a name ("Checked by the head of department") to find and compare with later. A file deleted with **Delete** stays in History and can be restored from there; the exam's main source file can't be deleted. A file changed outside the app (by the desktop app, or copied in) is kept as a version "Changed outside the app" before the next change.
 
 Text typed but not saved is kept in your browser: if the page is closed by accident, the editor offers it back the next time the file is opened.
 
@@ -94,6 +102,8 @@ Text typed but not saved is kept in your browser: if the page is closed by accid
 
 **"Leave without saving?"** You changed the source without saving. Save first, or leave and lose the changes (the unsaved text is still offered back the next time you open the file).
 
-**A file was broken or deleted.** Open **History**: pick the version marked **built OK**, or the one from before the change, and restore it.
+**A file was broken or deleted.** Open **History**: pick the version marked **built OK**, or the one from before the change, and restore the file or the whole exam. A restore can be undone.
+
+**An exam was deleted by mistake.** Deleted exams go to the **Trash** (on the Exams page) for 30 days, with their history. Restore it from there.
 
 **"This file was changed since you opened it."** The same file was saved from another tab or by another teacher. Keep your version (theirs stays in History), or load theirs (your text is kept as unsaved text).

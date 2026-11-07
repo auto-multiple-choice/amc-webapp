@@ -399,6 +399,9 @@ def fs_path_to_local(path, with_fs=True, current_project=False):
     base = os.path.realpath(base)
     path = os.path.realpath(os.path.join(base, path))
     if path == base or path.startswith(base + "/"):
+        if path[len(base):].lstrip("/").split("/")[0] == ui.vcs.AMCWEB_DIR:
+            app.logger.error(f"The server's own folder: {path}")
+            return None  # history, trash and audit log (single-user mode: inside the projects folder)
         return path
     else:
         app.logger.error(f"Outside base [{base}]: {path}")
@@ -552,7 +555,13 @@ def io_project_clone(name):
 @socketio_name('project-delete')
 def io_project_clone(name):
     rep = project_dir(p=name)
-    shutil.rmtree(rep)
+    try:
+        ui.trash_exam(rep)  # kept in the trash for 30 days, with its history (ui.py)
+    except Exception:
+        app.logger.exception(f"Can't move {rep} to the trash")
+        dialog_msg(err="The exam couldn't be moved to the trash, so it wasn't deleted. The server log has the details.")
+        emit_msg("u-projects-list")
+        return
     if flask_g.project_name == name:
         set_project("")
         emit_msg("project-open", ["", False])
@@ -579,6 +588,7 @@ def io_project_rename(data):
     else:
         app.logger.info(f'Project "{old}" renamed to "{new}"')
         os.rename(src, dst)
+        ui.exam_renamed(dst, old, new)  # history and audit log (ui.py)
 
         if old == flask_g.project_name:
             new, chg = set_project(new)

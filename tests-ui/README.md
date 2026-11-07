@@ -19,7 +19,7 @@ The app's icon file only keeps icons named in `server/templates/*.html`, so icon
 - the results helpers: match states, student names from the class list, which files can be uploaded as a class list, and the fingerprint that tells when marks are out of date;
 - the marking scheme panel (`server/ui_scale.py`): question maximums the way AMC computes them, reading questions from LaTeX and AMC-TXT, and answer key and scoring edits;
 - branding: the contrast-checked palette, logo file types, and the starters' school header.
-- the source history (`server/ui_source.py`): versions kept and read back, the "changed meanwhile" check, deleted files, "built OK", restore and pruning.
+- the version history (`server/ui_vcs.py`): a git repository per exam outside the teacher's folder, change sets (a builder save is one version), the "changed meanwhile" check, changes made outside the app, restoring one file, the whole exam or one change (with a three-way merge, refused when changes overlap), undoing a restore, built and named versions, a planted `.gitattributes` or `.git` config that does nothing, copies (in and outside the app) and renames, the conversion of the old `.history/` folders, a damaged repository started again, the trash (restore under a free name, removal after 30 days) and the audit log; and the changes in words (`server/ui_changes.py`) for questions, the paper design and other files.
 - the question editor (`server/ui_questions.py`): the spans the parser finds (text, answers, choices, numeric, explanation, figure, `\element` groups) and every edit operation, including where new questions go;
 - the annotated sheets' symbols and key (`server/ui_legend.py`): AMC's settings read back as a preset, the default and custom choices, refused schemes, and the key stamped once on each file, with a file whose key failed left for the next run.
 
@@ -105,9 +105,9 @@ node tests-ui/e2e-results.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 
 With `AMC_E2E_KEEP=1`, the test exam is kept afterwards, to look at it.
 
-### Source history
+### Version history and trash
 
-`e2e-history.mjs` tests the Questions step's History: versions kept on each save, the History panel with its line diff, restoring a version, "built OK" after a build, a save that conflicts with another tab (keep mine, load theirs), the unsaved text kept in the browser across a reload, deleting a file into the history and restoring it, the main source that can't be deleted, and the exam zip without the history folder.
+`e2e-history.mjs` tests History and the Trash: versions kept on each save and grouped into editing sessions, what a version changed (in words and line by line), what changed since and the differences between any two versions, restoring one file and undoing that restore, naming a version, "built OK" after a build, a save that conflicts with another tab (keep mine, load theirs), the unsaved text kept in the browser across a reload, a deleted file brought back, the whole exam restored to its first version, the main source that can't be deleted, the exam zip without any history, `/fs` refusing the server's own folder, and an exam deleted to the Trash and restored with its history. It ends with issue #15: a Paper builder design emptied, seen as a picture, restored with its layout in one version, and the restore undone. `deleteExam()` in `cdp.mjs` also removes the test's exam from the Trash.
 
 ```
 node tests-ui/e2e-history.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
