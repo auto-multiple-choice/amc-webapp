@@ -32,7 +32,7 @@ MAX_VERSIONS = 100
 # include, and class lists. Images and PDFs are not.
 EXTENSIONS = ("tex", "latex", "txt", "sty", "cls", "yml", "yaml", "csv")
 MAX_SIZE = 4 * 1024 * 1024  # bigger than any source; images stay out
-_ID = re.compile(r"^\d{8}T\d{6}Z(-\d+)?$")
+_ID = re.compile(r"^\d{8}T\d{6}Z(-\d+)?\Z")
 
 
 class Conflict(Exception):
@@ -57,6 +57,8 @@ def _dir(pdir, filename):
 
 
 def _lock(pdir, filename):
+    if not os.path.isdir(pdir):
+        raise FileNotFoundError(f"{pdir}: the exam doesn't exist any more")  # don't bring a deleted exam's folder back
     os.makedirs(os.path.join(pdir, HISTORY_DIR), exist_ok=True)
     return FileLock(os.path.join(pdir, HISTORY_DIR, filename + ".lock"))
 
@@ -142,9 +144,15 @@ def keep_version(pdir, filename, built_digest=None, deleted=False):
     else:  # written by something else (the desktop app, a file copy)
         at, by, what = int(os.stat(path).st_mtime), None, "Changed outside the app"
     vid = _new_id(d)
-    entry = {"id": vid, "file": filename, "at": at, "by": by, "what": what,
+    now = int(time.time())
+    # "at" is when this text was written (shown to the teacher); "kept_at"
+    # is when it went into the history, which is what pruning goes by, so
+    # a file copied in with an old date isn't dropped at once.
+    entry = {"id": vid, "file": filename, "at": at, "kept_at": now, "by": by, "what": what,
              "size": len(data), "digest": dg,
              "built": bool(built_digest) and dg == built_digest, "deleted": bool(deleted)}
+    if deleted:
+        entry["deleted_at"] = now
     with open(os.path.join(d, vid + "." + filename.rsplit(".", 1)[-1].lower()), "wb") as f:
         f.write(data)
     _write_json(os.path.join(d, vid + ".json"), entry)
@@ -228,7 +236,7 @@ def files_with_history(pdir):
             continue
         exists = os.path.isfile(os.path.join(pdir, name))
         out.append({"file": name, "exists": exists, "versions": len(vs),
-                    "deleted_at": None if exists else next((v["at"] for v in vs if v.get("deleted")), None)})
+                    "deleted_at": None if exists else next((v.get("deleted_at") or v["at"] for v in vs if v.get("deleted")), None)})
     return out
 
 
@@ -277,15 +285,17 @@ def mark_built(pdir, digests):
 def prune(pdir, filename, now=None):
     """Drop versions older than KEEP_DAYS beyond the newest KEEP_AT_LEAST,
     and any beyond MAX_VERSIONS. The newest version that built, and the
-    version of a deleted file, are always kept."""
+    newest version of a deleted file, are always kept."""
     now = time.time() if now is None else now
     vs = versions(pdir, filename)
     newest_built = next((e["id"] for e in vs if e.get("built")), None)
+    newest_deleted = next((e["id"] for e in vs if e.get("deleted")), None)
     d = _dir(pdir, filename)
     for i, e in enumerate(vs):
-        if e["id"] == newest_built or e.get("deleted"):
+        if e["id"] in (newest_built, newest_deleted):
             continue
-        if i >= MAX_VERSIONS or (i >= KEEP_AT_LEAST and e.get("at", 0) < now - KEEP_DAYS * 86400):
+        kept = e.get("kept_at") or e.get("at", 0)
+        if i >= MAX_VERSIONS or (i >= KEEP_AT_LEAST and kept < now - KEEP_DAYS * 86400):
             for suffix in (".json", "." + filename.rsplit(".", 1)[-1].lower()):
                 try:
                     os.unlink(os.path.join(d, e["id"] + suffix))

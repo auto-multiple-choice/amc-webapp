@@ -384,6 +384,31 @@ try:
     fake(os.path.join(exam, hist.HISTORY_DIR, "d.tex"), "d.tex", "tex", hist.MAX_VERSIONS + 20, lambda i: (hist.MAX_VERSIONS + 20 - i) / 1000.0, -1)
     hist.prune(exam, "d.tex", now=now)
     check("history: versions from the last days are kept, but never more than MAX_VERSIONS", len(hist.versions(exam, "d.tex")) == hist.MAX_VERSIONS)
+    # a file copied in with an old date: pruning goes by when the version was kept, not by that date
+    hist.write_source(exam, "old.tex", b"a\n", what="Saved")
+    fake(os.path.join(exam, hist.HISTORY_DIR, "old.tex"), "old.tex", "tex", 20, lambda i: 0.001 * (20 - i), -1)
+    with open(os.path.join(exam, "old.tex"), "wb") as f: f.write(b"copied in\n")
+    os.utime(os.path.join(exam, "old.tex"), (now - 400 * 86400, now - 400 * 86400))
+    hist.write_source(exam, "old.tex", b"b\n", what="Saved")
+    check("history: a version with an old date is kept when it was just replaced",
+          any(v["digest"] == hist.digest(b"copied in\n") for v in hist.versions(exam, "old.tex")))
+    # only the newest deleted version is kept for ever
+    for i in range(3):
+        time.sleep(1.1)
+        hist.write_source(exam, "del.tex", b"d%d\n" % i, what="Saved"); hist.delete_source(exam, "del.tex")
+    for v in hist.versions(exam, "del.tex"):
+        e = json.load(open(os.path.join(exam, hist.HISTORY_DIR, "del.tex", v["id"] + ".json"))); e["kept_at"] = int(now - 30 * 86400); e["at"] = e["kept_at"]
+        json.dump(e, open(os.path.join(exam, hist.HISTORY_DIR, "del.tex", v["id"] + ".json"), "w"))
+    fake(os.path.join(exam, hist.HISTORY_DIR, "del.tex"), "del.tex", "tex", hist.KEEP_AT_LEAST, lambda i: 0.001 * i, -1)
+    hist.prune(exam, "del.tex", now=now)
+    dels = [v for v in hist.versions(exam, "del.tex") if v["deleted"]]
+    check("history: of a file deleted several times, the newest deleted version is kept", len(dels) == 1 and dels[0]["digest"] == hist.digest(b"d2\n") and dels[0].get("deleted_at"))
+    # a deleted exam's folder isn't brought back by a late save
+    gone = os.path.join(tmp, "gone"); os.makedirs(gone); hist.write_source(gone, "exam.tex", b"x\n"); shutil.rmtree(gone)
+    try:
+        hist.write_source(gone, "exam.tex", b"y\n"); check("history: a save into a deleted exam is refused", False)
+    except OSError:
+        check("history: a save into a deleted exam is refused, and the folder stays gone", not os.path.exists(gone))
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
@@ -536,6 +561,54 @@ fr_src = inline_src.replace("\\onecopy{10}{", "\\exemplaire{10}{")
 t4b, _, _ = st.apply(fr_src, [{"op": "convert"}, {"op": "copies", "n": 3}])
 check("structure: AMC's French \\exemplaire works like \\onecopy", st.read(fr_src, "exam.tex", sc.read_latex(fr_src, "exam.tex"))["inline"] == 2 and "\\exemplaire{3}{" in t4b and t4b.index("\\element{main}{") < t4b.index("\\exemplaire"))
 
+
+# question editor: inputs that must not break the file (review of !11)
+_shared = r"""\documentclass{article}
+\begin{document}
+\element{g}{
+  \begin{question}{a}
+    Text % \end{question} not the end
+    \begin{choices}
+      \correctchoice{yes}
+      \wrongchoice{no}
+    \end{choices}
+  \end{question}
+  \begin{questionmult}{b}
+    T2
+    \begin{choices}
+      \correctchoice{x}
+      \correctchoice{y}
+      \wrongchoice{z}
+    \end{choices}
+  \end{questionmult}
+}
+\end{document}
+"""
+_qs = sc.read_latex(_shared)
+check("editor: an \\end{question} in a comment isn't the end of the question", len(_qs) == 2 and len(_qs[0]["answers"]) == 2)
+check("editor: questions sharing one \\element{}{} belong to its group", [(q["group"], q.get("element")) for q in _qs] == [("g", "shared"), ("g", "shared")])
+_t, _ = qe.apply(_shared, [{"op": "add", "after": "b"}])
+check("editor: a question added inside a shared \\element goes in bare, in the group", _t.count("\\element") == 1 and [q["group"] for q in sc.read_latex(_t)] == ["g", "g", "g"])
+_t, _ = qe.apply(_shared, [{"op": "answer_text", "id": "a", "i": 0, "latex": "50% sure"}])
+check("editor: a bare % in a field is escaped, so it can't comment out the closing brace", "\\correctchoice{50\\% sure}" in _t)
+_t, _ = qe.apply(_shared, [{"op": "text", "id": "a", "latex": "ok $\\{1,2\\}$ 100\\% \\textbf{b}"}])
+check("editor: escaped braces and \\% pass as typed", "ok $\\{1,2\\}$ 100\\% \\textbf{b}" in _t)
+def _refused(ops):
+    try:
+        qe.apply(_shared, ops)
+        return False
+    except qe.EditError:
+        return True
+check("editor: question structure typed in a field is refused",
+      all(_refused([{"op": "text", "id": "a", "latex": v}]) for v in ("hi \\end{question} x", "\\begin{choices}", "\\correctchoice{y}", "\\explain{e}", "\\scoring{b=1}")))
+check("editor: braces closing before opening are refused", _refused([{"op": "text", "id": "a", "latex": "a } b {"}]))
+check("editor: bad indices and a refused answer key are errors in words, not crashes",
+      _refused([{"op": "answer_correct", "id": "a", "i": None}]) and _refused([{"op": "answer_move", "id": "a", "i": None, "j": 0}])
+      and _refused([{"op": "answer_correct", "id": "a", "i": 0, "correct": False}]) and _refused([{"op": "numeric", "id": "a", "value": "-", "options": ""}]))
+_t, _ = qe.apply(_shared, [{"op": "type", "id": "b", "kind": "single"}])
+check("editor: multiple -> single keeps the first correct answer only", [a["correct"] for a in sc.read_latex(_t)[1]["answers"]] == [True, False, False])
+_t, _ = qe.apply(_shared, [{"op": "answer_correct", "id": "a", "i": 1, "correct": "true"}, {"op": "answer_correct", "id": "a", "i": 0, "correct": "false"}])
+check("editor: correct is read as a real boolean", [a["correct"] for a in sc.read_latex(_t)[0]["answers"]] == [False, True])
 
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

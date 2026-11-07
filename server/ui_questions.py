@@ -39,13 +39,43 @@ def _answer(q, i):
         raise EditError("No such answer.") from None
 
 
+# LaTeX that belongs to a question's structure, not inside one of its fields
+_STRUCTURE = re.compile(r"\\(?:begin|end)\s*\{(?:question|questionmult|questionmultx|choices|choiceshoriz|choicescustom"
+                        r"|reponses|reponseshoriz|element)\}"
+                        r"|\\(?:correctchoice|wrongchoice|bonne|mauvaise|explain|AMCnumericChoices|scoring|bareme|element)(?![A-Za-z])")
+
+
 def _latex(value):
+    """A field's LaTeX, checked so that it can't break out of the span it
+    is written into: braces balance (a % comment would hide the closing
+    one, so a bare % is escaped), and no question structure inside."""
     s = str(value if value is not None else "").replace("\r\n", "\n").strip()
     if len(s) > MAX_LATEX:
         raise EditError("This text is too long.")
-    if s.count("{") != s.count("}"):
+    s = re.sub(r"(?<!\\)((?:\\\\)*)%", r"\1\\%", s)  # 50% -> 50\%; \% stays
+    depth, i = 0, 0
+    while i < len(s):
+        c = s[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth < 0:
+                break
+        i += 1
+    if depth != 0:
         raise EditError("The braces { } don't match up.")
+    if m := _STRUCTURE.search(s):
+        raise EditError(f"{m.group(0)} can't go in this field: it is part of the question's structure. "
+                        "Use the form's own fields, or the LaTeX tab.")
     return s
+
+
+def _bool(v):
+    return v is True or v == 1 or (isinstance(v, str) and v.lower() == "true")
 
 
 def _replace(text, span, new):
@@ -172,10 +202,21 @@ def set_type(text, q, kind):
     new_env = ENVS[kind]
     # the environment's name, end first so the begin's position holds
     em = re.compile(r"\\end\s*\{" + q["env"] + r"\}").match(out, q["end_start"])
-    out = out[:em.start()] + "\\end{" + new_env + "}" + out[em.end():]
     bm = re.compile(r"\\begin\s*\{" + q["env"] + r"\}").match(out, q["span"][0])
+    if not em or not bm:
+        raise EditError("This question's \\begin and \\end can't be found. Edit it in the LaTeX tab.")
+    out = out[:em.start()] + "\\end{" + new_env + "}" + out[em.end():]
     out = out[:bm.start()] + "\\begin{" + new_env + "}" + out[bm.end():]
     q2, _ = _find(out, q["id"])
+    if kind == "single" and q2["answers"]:
+        # a single-answer question has exactly one correct answer: the first one stays
+        correct = [a for a in q2["answers"] if a["correct"]]
+        for a in reversed(correct[1:]):
+            out = _replace(out, a["at"], scale._SWAP[(a["cmd"], False)])
+        if not correct:
+            a = q2["answers"][0]
+            out = _replace(out, a["at"], scale._SWAP[(a["cmd"], True)])
+        q2, _ = _find(out, q["id"])
     ind, ind2 = q2["indent"] + "  ", q2["indent"] + "    "
     if kind == "numeric" and q2["choices"]:
         out = _replace(out, q2["choices"]["span"], "\\AMCnumericChoices{0}{" + NUMERIC_DEFAULT + "}")
@@ -252,8 +293,10 @@ def add_question(text, qs, kind="single", after=None, group=None, qid=None):
     if ref:
         at = text.find("\n", ref["block_span"][1])
         at = len(text) if at < 0 else at
-        indent = _line_indent(text, ref["block_span"][0]) if group else ref["indent"]
-        return text[:at] + "\n\n" + new_block(kind, qid, indent, group) + text[at:], qid
+        # inside an \element{}{} holding several questions, the new one goes in bare, not in a wrapper of its own
+        shared = ref["group"] == group and ref.get("element") == "shared"
+        indent = _line_indent(text, ref["block_span"][0]) if group and not shared else ref["indent"]
+        return text[:at] + "\n\n" + new_block(kind, qid, indent, None if shared else group) + text[at:], qid
     m = re.search(r"^[ \t]*%%% end of the header[^\n]*$", text, re.M)
     if m:
         return text[:m.end()] + "\n\n" + new_block(kind, qid, _line_indent(text, m.start()), group) + text[m.end():], qid
@@ -309,51 +352,14 @@ def apply(text, ops):
                                         qid=op.get("qid") or None)
             done.setdefault(new_id, []).append("added")
             continue
-        q, qs = _find(text, qid)
-        if kind == "text":
-            text = set_text(text, q, op.get("latex", ""))
-            what = "text"
-        elif kind == "answer_text":
-            text = set_answer_text(text, q, op.get("i"), op.get("latex", ""))
-            what = "answers"
-        elif kind == "answer_correct":
-            text = scale.set_correct(text, q, int(op.get("i", -1)) + 1, bool(op.get("correct")))
-            what = "answer key"
-        elif kind == "answer_add":
-            text = add_answer(text, q, op.get("latex", "Answer"), bool(op.get("correct")))
-            what = "answers"
-        elif kind == "answer_remove":
-            text = remove_answer(text, q, op.get("i"))
-            what = "answers"
-        elif kind == "answer_move":
-            text = move_answer(text, q, op.get("i"), op.get("j"))
-            what = "answers"
-        elif kind == "numeric":
-            text = set_numeric(text, q, op.get("value", "0"), op.get("options", NUMERIC_DEFAULT))
-            what = "numeric answer"
-        elif kind == "explain":
-            text = set_explain(text, q, op.get("latex", ""))
-            what = "explanation"
-        elif kind == "type":
-            text = set_type(text, q, str(op.get("kind") or ""))
-            what = "type"
-        elif kind == "scoring":
-            rule = str(op.get("rule") or "").strip()
-            if rule and not re.fullmatch(r"[A-Za-z0-9=.,+\-*/() \\]{1,200}", rule):
-                raise EditError("The scoring rule contains characters AMC doesn't accept here.")
-            text = scale.set_scoring(text, q, rule)
-            what = "scoring"
-        elif kind == "rename":
-            text = rename(text, q, qs, op.get("new_id"))
-            what = f"renamed to {str(op.get('new_id')).strip()}"
-        elif kind == "delete":
-            text = delete_question(text, q)
-            what = "deleted"
-        elif kind == "move":
-            text = move_question(text, q, op.get("before") or None)
-            what = "moved"
-        else:
-            raise EditError("Unknown change.")
+        try:
+            text, what = _apply_one(text, kind, qid, op)
+        except EditError:
+            raise
+        except ValueError as e:  # scale.set_correct's and set_scoring's reasons, in words
+            raise EditError(str(e) or "This change can't be made.") from None
+        except (TypeError, AttributeError, IndexError, KeyError):
+            raise EditError("This change can't be made.") from None
         done.setdefault(qid, []).append(what)
     parts = []
     for qid, whats in done.items():
@@ -363,3 +369,52 @@ def apply(text, ops):
                 seen.append(w)
         parts.append(f"{qid}: " + ", ".join(seen))
     return text, "Question " + "; ".join(parts)
+
+
+def _apply_one(text, kind, qid, op):
+    q, qs = _find(text, qid)
+    if kind == "text":
+        text = set_text(text, q, op.get("latex", ""))
+        what = "text"
+    elif kind == "answer_text":
+        text = set_answer_text(text, q, op.get("i"), op.get("latex", ""))
+        what = "answers"
+    elif kind == "answer_correct":
+        text = scale.set_correct(text, q, int(op.get("i", -1)) + 1, _bool(op.get("correct")))
+        what = "answer key"
+    elif kind == "answer_add":
+        text = add_answer(text, q, op.get("latex", "Answer"), _bool(op.get("correct")))
+        what = "answers"
+    elif kind == "answer_remove":
+        text = remove_answer(text, q, op.get("i"))
+        what = "answers"
+    elif kind == "answer_move":
+        text = move_answer(text, q, op.get("i"), op.get("j"))
+        what = "answers"
+    elif kind == "numeric":
+        text = set_numeric(text, q, op.get("value", "0"), op.get("options", NUMERIC_DEFAULT))
+        what = "numeric answer"
+    elif kind == "explain":
+        text = set_explain(text, q, op.get("latex", ""))
+        what = "explanation"
+    elif kind == "type":
+        text = set_type(text, q, str(op.get("kind") or ""))
+        what = "type"
+    elif kind == "scoring":
+        rule = str(op.get("rule") or "").strip()
+        if rule and not re.fullmatch(r"[A-Za-z0-9=.,+\-*/() \\]{1,200}", rule):
+            raise EditError("The scoring rule contains characters AMC doesn't accept here.")
+        text = scale.set_scoring(text, q, rule)
+        what = "scoring"
+    elif kind == "rename":
+        text = rename(text, q, qs, op.get("new_id"))
+        what = f"renamed to {str(op.get('new_id')).strip()}"
+    elif kind == "delete":
+        text = delete_question(text, q)
+        what = "deleted"
+    elif kind == "move":
+        text = move_question(text, q, op.get("before") or None)
+        what = "moved"
+    else:
+        raise EditError("Unknown change.")
+    return text, what
