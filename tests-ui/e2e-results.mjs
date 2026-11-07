@@ -15,6 +15,7 @@
  * AMC_E2E_KEEP=1: keep the test exam afterwards, to look at it.
  * Use a test copy of the app, never your real exams.
  */
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,6 +29,18 @@ const EXAM = 'Results test exam';
 const COPIES = 4;
 const b = await startBrowser({ base: BASE, user: USER, pass: process.env.AMC_E2E_PASS || '', shots: process.argv[3] || null });
 const J = JSON.stringify;
+// Inside the app's container: the exam's files and AMC's databases.
+const projectDir = `/amc-web/files/MC-Projects${USER ? '/' + USER : ''}/${EXAM}`;
+const inApp = (...args) => execFileSync('docker', ['exec', CONTAINER, ...args], { encoding: 'utf8' });
+const assocSql = (q) => inApp('sqlite3', `${projectDir}/data/association.sqlite`, q).trim();
+const matchKey = () => assocSql("SELECT value FROM association_variables WHERE name='key_in_list'");
+// As in exams matched by hand before the fix: AMC can't find names for the header.
+const dropMatchKey = () => assocSql("DELETE FROM association_variables WHERE name='key_in_list'");
+const pdfText = (rel) => inApp('pdftotext', `${projectDir}/${rel}`, '-');
+const pdfPages = (rel) => +(inApp('pdfinfo', `${projectDir}/${rel}`).match(/Pages:\s+(\d+)/) || [0, 0])[1];
+// AMC keeps the symbols' shapes and colours in the teacher's settings, not the exam's options.
+const settingsFile = USER ? `/amc-web/files/MC-Projects/${USER}/_config/cf.default.xml` : '/amc-web/files/.AMC.d/cf.default.xml';
+const option = (name) => (inApp('cat', settingsFile).match(new RegExp(`<${name}>([^<]*)</${name}>`)) || [])[1];
 const sheet = (s, c = 0) => `S.students.sheets.find(x => x.student === ${s} && x.copy === ${c})`;
 const typeSearch = async (text) => {
   await b.js(`(() => { const f = document.querySelector('#match-search'); f.focus(); f.value = ${J(text)}; f.dispatchEvent(new Event('input', {bubbles: true})); return true; })()`);
@@ -127,8 +140,10 @@ async function main() {
   await typeSearch('hop');
   b.check('Typing finds the student', await b.waitFor(`(document.querySelector('#match-results .match-item.is-current') || {}).textContent.includes('Hopper')`, 3000));
   await b.shot('r4-match-manual');
+  dropMatchKey();
   await enterInSearch();
   b.check('Enter matches the sheet: every sheet is matched', await b.waitFor(`S.status.unmatched === 0 && ${sheet(4)}.state === 'manual' && ${sheet(4)}.id === '150'`, 10000));
+  b.check('Matching by hand records the class list column AMC finds names by', matchKey() === 'id', matchKey());
   b.check('...and the page says so', await b.waitFor(`document.querySelector('#main').textContent.includes('Every sheet is matched')`, 5000));
 
   // A student matched to another sheet moves; the first sheet goes back to the list
@@ -178,11 +193,23 @@ async function main() {
   // ---- Annotate
   await b.click('.step[href$="/annotate"]');
   b.check('Annotate shows its settings', await b.waitFor(`!!S.annotateInfo && !!document.querySelector('[data-option="annote_position"]') && document.querySelectorAll('#annot-copy option').length === ${COPIES}`, 10000));
+  b.check('Symbols are "Clear in black and white" by default, with the key in the right margin', await b.js(`S.annotateInfo.style.preset === 'clear' && S.annotateInfo.style.legend === 'right' && !!document.querySelector('[data-act="astyle-preset"][data-v="clear"][aria-pressed="true"]')`));
+  b.check('...each case shown with its greyscale look', await b.js(`document.querySelectorAll('td[style*="grayscale"] svg').length === 4`));
+  b.check('Both margins with the key on the right: a warning says so', await b.js(`document.querySelector('#main').textContent.includes('also written in both margins')`));
+  await b.js(`(() => { const s = document.querySelector('[data-option="annote_position"]'); s.value = 'marge'; s.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`);
+  await b.js(`(() => { const t = document.querySelector('#verdict'); t.value = '%(name) %(surname)\\nMark: %s/%m'; t.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`);
+  b.check('...which goes with "In one margin"', await b.waitFor(`!document.querySelector('#main').textContent.includes('also written in both margins')`, 5000));
+  dropMatchKey();
   await b.click('[data-act="annotate-preview"]');
   b.check('"Preview" shows one student\'s annotated sheet', await b.waitFor(`S.previewFile && S.previewFile.name.endsWith('ui-preview.pdf') && !!document.querySelector('#preview iframe')`, 120000));
   await dismissServerDialog();
   const prev = await fetchInfo(await b.js(`fsUrl(S.previewFile.name)`));
   b.check('...as a PDF', prev.status === 200 && prev.type.includes('pdf') && prev.size > 1000, J(prev));
+  const prevText = pdfText('cr/corrections/ui-preview.pdf');
+  b.check('The header has the student\'s name, also for an exam matched before the fix', prevText.includes('Marie Curie') && matchKey() === 'id', prevText.slice(0, 160));
+  const prevKeys = (prevText.match(/Key:/g) || []).length;
+  b.check('The preview carries the key, once on each page', prevKeys > 0 && prevKeys === pdfPages('cr/corrections/ui-preview.pdf') && prevText.includes('Correct, not ticked'), prevKeys);
+  b.check('AMC draws the clear symbols', option('symbole_0_1_type') === 'mark' && option('symbole_1_1_type') === 'box' && option('annote_color') === '#1a237e', J([option('symbole_0_1_type'), option('symbole_1_1_type'), option('annote_color')]));
   b.check('The preview doesn\'t make annotated sheets', await b.js('S.status.annotated === 0 && S.annotateInfo.files.length === 0'));
   await b.shot('r6-annotate-preview');
   await b.click('[data-act="annotate"]');
@@ -195,8 +222,28 @@ async function main() {
   b.check('"Next" shows the next student', await b.js(`S.previewList.i === 1 && S.previewFile.name === S.previewList.items[1].path`));
   const zip = await fetchInfo(await b.js(`document.querySelector('a[href*="annotated.zip"]').getAttribute('href')`));
   b.check('"Download all" gives a zip', zip.status === 200 && zip.type.includes('zip') && zip.size > 1000, J(zip));
+  const first = await b.js('S.annotateInfo.files[0].file');
+  const keys = () => (pdfText(`cr/corrections/pdf/${first}`).match(/Key:/g) || []).length;
+  const pages = pdfPages(`cr/corrections/pdf/${first}`);
+  b.check('Annotated sheets carry the key, once on each page', pages > 0 && keys() === pages, `${keys()} keys, ${pages} pages`);
+  await b.click('[data-act="annotate"]');
+  await b.waitFor(`!document.querySelector('#work')`, 120000);
+  await dismissServerDialog();
+  b.check('...still once on each page after annotating again', keys() === pages, `${keys()} keys, ${pages} pages`);
   await b.shot('r7-annotated');
   b.check('Annotated sheets are up to date', await b.js('S.status.annotated_stale === false'));
+  await b.click('[data-act="astyle-preset"][data-v="amc"]');
+  b.check('"AMC\'s colours" writes AMC\'s symbols', await b.waitFor(`S.annotateInfo.style.preset === 'amc'`, 5000) && await (async () => { await sleep(800); return option('symbole_1_1_color') === '#0000ff' && option('symbole_0_1_type') === 'circle'; })(), J([option('symbole_1_1_color'), option('symbole_0_1_type')]));
+  b.check('...and makes the annotated sheets out of date', await b.waitFor(`S.status.annotated_stale === true`, 10000));
+  await b.click('[data-act="astyle-preset"][data-v="custom"]');
+  b.check('"Custom" shows a shape and a colour for each case', await b.waitFor(`document.querySelectorAll('select[data-astyle]').length === 4 && document.querySelectorAll('input[type="color"][data-astyle]').length === 5`, 5000));
+  await b.js(`(() => { const s = document.querySelector('select[data-astyle="1_1:0"]'); s.value = 'circle'; s.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`);
+  b.check('...and saves a changed shape', await b.waitFor(`S.annotateInfo.style.preset === 'custom' && S.annotateInfo.style.scheme['1_1'][0] === 'circle'`, 5000) && await (async () => { await sleep(800); return option('symbole_1_1_type') === 'circle'; })(), option('symbole_1_1_type'));
+  await b.click('[data-act="astyle-preset"][data-v="clear"]');
+  await b.waitFor(`S.annotateInfo.style.preset === 'clear'`, 5000);
+  await b.click('[data-act="annotate"]');
+  await b.waitFor(`!document.querySelector('#work') && S.status.annotated_stale === false`, 120000);
+  await dismissServerDialog();
   await b.js(`(() => { const s = document.querySelector('[data-option="annote_position"]'); s.value = 'case'; s.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`);
   b.check('Changing a setting makes them out of date', await b.waitFor(`S.status.annotated_stale === true && document.querySelector('#main').textContent.includes('older than')`, 10000));
 

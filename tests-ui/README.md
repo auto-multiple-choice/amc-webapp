@@ -95,7 +95,7 @@ docker compose exec -T amc-auth python - amc.example.org < tests-ui/check_public
 - **Mark:** "Mark anyway" past the missing page, the rule-breaking answer and its link to the page, "out of date" after a final mark change, and recomputing;
 - **Match students:** loading a class list, automatic matching, matching by hand with the keyboard, moving a student to another sheet, "Not in the class list" and "Back to automatic";
 - **Export marks:** the table, histogram, sorting and search, CSV (previewed) and ODS files, and the shareable link;
-- **Annotate:** previewing one student, annotating all sheets, previous/next in the preview, the zip download, and "out of date" after a settings change;
+- **Annotate:** previewing one student, annotating all sheets, previous/next in the preview, the zip download, and "out of date" after a settings change: the student's name in the header (`%(name) %(surname)`), also for an exam matched by hand before that was fixed (it removes AMC's `key_in_list` to check); "Clear in black and white" symbols by default, written to the teacher's AMC settings; the key on each page, once, also after annotating again; "AMC's colours" and a custom shape;
 - the exam's history.
 
 ```
