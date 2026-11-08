@@ -1,6 +1,6 @@
 """
 The paper's structure: the sections of a LaTeX exam
-(doc/questions-banks-templates-plan.md, section 6).
+(doc/features.md, Writing questions).
 
 A *section* is an AMC group: questions wrapped in \\element{name}{...}
 and printed by \\insertgroup[n]{name} in the \\onecopy body. The panel

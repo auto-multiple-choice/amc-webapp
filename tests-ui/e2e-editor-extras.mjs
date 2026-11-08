@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
- * End-to-end test of the editor extras (doc/question-bank-plan.md, section 12.1:
- * left from questions-banks-templates-plan.md): Duplicate a question (a new name,
+ * End-to-end test of the editor extras (doc/features.md, Writing
+ * questions): Duplicate a question (a new name,
  * right after it, one version); drag and drop of questions in the list, of
  * sections in Paper design and of a bank's question into another group; the
  * selected question's page in the preview; "copies differ" in Papers when a

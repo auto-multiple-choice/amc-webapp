@@ -18,7 +18,7 @@ source (`server/ui.py`, `starter_source()`):
 
 ## The paper builder's starter (`builder/`)
 
-The RJ Style Paper Builder (`server/ui_builder.py`, `doc/paper-builder-plan.md`)
+The RJ Style Paper Builder (`server/ui_builder.py`, `doc/features.md`)
 keeps the paper's design in `paper.json` and writes `paper-layout.tex` from
 it: the packages, the page and footer, the version code and the macros
 `\amcuiPaperFront` and `\amcuiPaperBack` that `exam.tex` calls inside

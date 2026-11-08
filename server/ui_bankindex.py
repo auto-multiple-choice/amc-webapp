@@ -1,6 +1,6 @@
 """
 The search index of a teacher's question banks, and the usage of their
-items (doc/question-bank-plan.md, sections 7.2 and 7.7).
+items (doc/features.md, Question banks).
 
   _amcweb/<user>/bank-index.sqlite   full-text search (SQLite FTS5) on the
                                      items' text, titles and tags, with their

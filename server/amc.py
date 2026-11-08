@@ -2437,7 +2437,7 @@ def x_manifest():
         "background_color": "#ffffff",
     }
 
-# The new interface (doc/ui-redesign-plan.md)
+# The new interface (doc/features.md)
 import ui
 ui.init_app(app, sys.modules[__name__])
 

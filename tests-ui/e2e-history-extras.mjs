@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
- * End-to-end test of the history extras (doc/question-bank-plan.md, section 12.1,
- * left from P0): who changed each line of a file; changes side by side; a file
+ * End-to-end test of the history extras (doc/features.md, Version
+ * history): who changed each line of a file; changes side by side; a file
  * of a version downloaded from a plain link; "Build this version" (compiled in a
  * scratch folder, the version's text in the PDF); the history of one section;
  * "With history": the exam as a zip with its history, imported again from the

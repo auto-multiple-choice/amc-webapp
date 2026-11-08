@@ -1,5 +1,5 @@
 """
-Question statistics after marking (doc/question-bank-plan.md, P3; issue #6):
+Question statistics after marking (doc/features.md, Question banks; issue #6):
 for each question, the share of copies that got it right, how well it
 separates strong from weak students, and which answers were chosen, with
 what to look at in words. Kept per bank item across exams.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-The new-exam wizard's template gallery (doc/ui-redesign-plan.md, section 9).
+The new-exam wizard's template gallery (doc/features.md, Interface).
 
 Run when the Docker image is built, to compile each template once:
 

@@ -1,5 +1,5 @@
 /*
- * Question banks (doc/question-bank-plan.md, section 7; server: ui_bankapi.py).
+ * Question banks (doc/features.md, Question banks; server: ui_bankapi.py).
  * Each instructor's own banks, in groups of items. A bank's page reuses the
  * question editor of app.js (list, form, LaTeX view, History) with the
  * bank's endpoints (qApi, histApi). In an exam: "From a bank…" adds a whole

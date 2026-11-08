@@ -1,6 +1,6 @@
 """
-The question editor's edits to a LaTeX source (doc/questions-banks-templates-plan.md,
-section 5). Each edit replaces one span found by ui_scale.read_latex(),
+The question editor's edits to a LaTeX source (doc/features.md,
+Writing questions). Each edit replaces one span found by ui_scale.read_latex(),
 so everything else in the file stays as the teacher wrote it. The file
 is parsed again after every edit, because positions move.
 

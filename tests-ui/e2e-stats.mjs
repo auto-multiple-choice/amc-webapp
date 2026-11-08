@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /*
  * End-to-end test of blueprints and question statistics (server/ui_stats.py,
- * the blueprint part of ui_bankapi.py, static/ui/stats.js; doc/question-bank-plan.md,
- * P3): a bank of five questions; an exam whose section is filled by a blueprint
+ * the blueprint part of ui_bankapi.py, static/ui/stats.js; doc/features.md,
+ * Question banks): a bank of five questions; an exam whose section is filled by a blueprint
  * in "From a bank" (rows by difficulty, picked once and shown, then added, the
  * blueprint kept for the section); 12 copies printed and scanned with chosen
  * answers (copies 7-12 strong, 1-6 weak; q3's key looks wrong); marked; then

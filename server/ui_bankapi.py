@@ -1,5 +1,5 @@
 """
-Question banks: the routes (doc/question-bank-plan.md, section 7). The
+Question banks: the routes (doc/features.md, Question banks). The
 model is ui_banks.py, histories are ui_vcs.py (target "bank"); the exam
 side uses ui.py's helpers. Registered by ui.py on its blueprint.
 
