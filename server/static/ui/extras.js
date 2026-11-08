@@ -1,5 +1,5 @@
 /*
- * Editor extras (doc/question-bank-plan.md, section 12.1: left from questions-banks-templates-plan.md):
+ * Editor extras (doc/features.md, Writing questions):
  * drag and drop ordering of an exam's questions, a bank's questions and Paper design's sections (the
  * buttons stay, for the keyboard); the selected question's page in the preview; "copies differ" in
  * Papers; Duplicate a question; the teacher's own templates. Loaded after app.js and banks.js.

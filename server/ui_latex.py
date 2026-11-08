@@ -1,5 +1,5 @@
 """
-LaTeX for those who want it (doc/question-bank-plan.md, section 5).
+LaTeX for those who want it (doc/features.md, Writing questions).
 
 - problems(): why some LaTeX won't build, found without running LaTeX
   (braces and environments that don't balance), with the line, so a save

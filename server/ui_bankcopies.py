@@ -1,6 +1,6 @@
 """
-Copies of bank items in exams (doc/question-bank-plan.md, sections 7.2 and
-7.4): their status, the comparison, updates either way, and a section's
+Copies of bank items in exams (doc/features.md, Question
+banks): their status, the comparison, updates either way, and a section's
 follow-up of the group it was made from. The model is ui_banks.py
 (way_in, way_back, status); registered by ui_bankapi.init().
 

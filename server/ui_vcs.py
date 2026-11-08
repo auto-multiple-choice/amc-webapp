@@ -1,6 +1,6 @@
 """
 Version history of exams, on git, with the trash and the audit log
-(doc/question-bank-plan.md, section 6).
+(doc/features.md, Version history).
 
 One bare git repository per exam, in a folder only the server writes to,
 outside the teacher's own folder:

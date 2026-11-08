@@ -2,7 +2,7 @@
 /*
  * End-to-end test of finding questions in banks and moving banks
  * (server/ui_bankindex.py, ui_bankzip.py, the search parts of static/ui/banks.js;
- * doc/question-bank-plan.md, sections 7.2, 7.6 to 7.8): the bank page's filters
+ * doc/features.md, Question banks): the bank page's filters
  * (words as prefixes, difficulty, tag), an item archived (hidden from "From a
  * bank", left out of a whole group); in the picker, filters and "Archived too";
  * usage recorded when the exam is printed, shown on the item and used by "Never

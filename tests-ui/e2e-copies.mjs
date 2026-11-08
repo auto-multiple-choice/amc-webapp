@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
  * End-to-end test of copies of bank questions in an exam (server/ui_bankcopies.py,
- * the copies part of static/ui/banks.js; doc/question-bank-plan.md, section 7.4):
+ * the copies part of static/ui/banks.js; doc/features.md, Question banks):
  * a group with a default scoring added as a section; the status of each copy
  * (Up to date, Bank updated, Edited here, Both changed, Bank's newer version set aside, Not in the bank any
  * more); taking the bank's version, updating the bank's copy (the scoring

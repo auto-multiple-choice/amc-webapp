@@ -1,5 +1,5 @@
 """
-The new interface (doc/ui-redesign-plan.md).
+The new interface (doc/features.md).
 
 It replaces upstream's page at "/". Screens are drawn in the browser by
 static/ui/app.js; actions go through the server's existing Socket.IO events
@@ -383,8 +383,8 @@ def add_activity(pdir, what):
 
 # ---------------------------------------------------------------- version history
 #
-# Every write to a source file goes through ui_vcs (doc/question-bank-plan.md,
-# section 6): one git repository per exam, outside the teacher's folder.
+# Every write to a source file goes through ui_vcs (doc/features.md,
+# Version history): one git repository per exam, outside the teacher's folder.
 # A save that writes several files is one version: wrap it in
 # history_change(); save_source() calls inside join it.
 
@@ -4447,7 +4447,7 @@ def on_create_exam(data):
     if gid == MY_GROUP:
         core.change_option("listeetudiants", "")  # the template carries no class list; the option mustn't point at the old exam's
     if gid == STARTER_GROUP and not tid.endswith("-txt"):
-        try:  # the app's own starters keep their questions in items (doc/question-bank-plan.md, section 4)
+        try:  # the app's own starters keep their questions in items (doc/features.md, Writing questions)
             def _write(rel, data, based_on=None):  # the split writes pools.tex with its digest; a new exam has none to check
                 full = os.path.join(rep, rel)
                 os.makedirs(os.path.dirname(full), exist_ok=True)

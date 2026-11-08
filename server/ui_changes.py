@@ -1,7 +1,7 @@
 """
 What changed between two versions of an exam's files, in words, for the
-History panel and the restore confirmation (doc/question-bank-plan.md,
-6.3): "q3: text edited; answer 2 made correct", "Question paper: row 2
+History panel and the restore confirmation (doc/features.md,
+Version history): "q3: text edited; answer 2 made correct", "Question paper: row 2
 added (Logo, Title lines)", "class.csv added".
 
 describe(old, new) takes {path: bytes or None} for the files that differ

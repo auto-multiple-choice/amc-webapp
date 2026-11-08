@@ -1,5 +1,5 @@
 /*
- * Question statistics after marking (doc/question-bank-plan.md, P3; server: ui_stats.py):
+ * Question statistics after marking (doc/features.md, Question banks; server: ui_stats.py):
  * in the Mark step, how each question did: the share of copies that got it right, how well
  * it separates strong from weak students, which answers were chosen, and what to look at.
  * Loaded after app.js and uses its helpers.

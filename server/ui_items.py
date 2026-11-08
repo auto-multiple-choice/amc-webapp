@@ -1,5 +1,5 @@
 """
-Questions kept in their own files (doc/question-bank-plan.md, section 4).
+Questions kept in their own files (doc/features.md, Writing questions).
 
   <exam>/pools.tex                 which items each section draws from, in order
   <exam>/items/<name>/item.tex     what goes inside \\element{G}{...}: one

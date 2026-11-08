@@ -1,5 +1,5 @@
 """
-Question banks (doc/question-bank-plan.md, section 7): each instructor's
+Question banks (doc/features.md): each instructor's
 own banks, organised in groups of items, as an exam is organised in
 sections. No school banks: a bank belongs to one instructor.
 

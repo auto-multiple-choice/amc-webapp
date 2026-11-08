@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-./amc doctor (doc/question-bank-plan.md, section 8): a look at the app's
+./amc doctor (doc/features.md, Maintenance): a look at the app's
 server-only folder, MC-Projects/_amcweb, for every teacher.
 
   - each history (exams and banks): git fsck, and whether its exam or bank

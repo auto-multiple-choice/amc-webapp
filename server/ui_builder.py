@@ -1,5 +1,5 @@
 """
-The RJ Style Paper Builder (doc/paper-builder-plan.md): the question
+The RJ Style Paper Builder (doc/features.md): the question
 paper and the answer sheet composed from rows of blocks on a 12-column
 grid, the way Bootstrap lays out a web page.
 

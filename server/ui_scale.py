@@ -1,6 +1,6 @@
 """
 The marking scheme panel's view of an exam's questions
-(doc/ui-redesign-plan.md, section 8).
+(doc/features.md, Interface).
 
 Plain functions, no Flask, so they can be tested on their own:
 - question_max(): a question's maximum score from AMC's scoring rules,

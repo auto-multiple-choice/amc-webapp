@@ -1,5 +1,5 @@
 /*
- * AMC new interface (doc/ui-redesign-plan.md).
+ * AMC new interface (doc/features.md).
  *
  * One page; every screen is drawn here. Actions use the server's existing
  * Socket.IO events (create-project-template, doc-update, ...), so AMC's

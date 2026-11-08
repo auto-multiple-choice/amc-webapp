@@ -1,5 +1,5 @@
 """
-A question bank as a zip (doc/question-bank-plan.md, section 7.8): to move
+A question bank as a zip (doc/features.md, Question banks): to move
 it between the Mac and a server, or to give a colleague a copy that then
 becomes their own bank.
 

@@ -1,5 +1,5 @@
 /*
- * Questions > Paper builder (doc/paper-builder-plan.md): the question
+ * Questions > Paper builder (doc/features.md): the question
  * paper and the answer sheet composed from rows of blocks on a 12-column
  * grid. Loaded after app.js and uses its helpers (S, $, esc, ic, getJSON,
  * toast, banner, store, locked...). The design is paper.json on the
