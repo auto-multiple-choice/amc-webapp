@@ -27,8 +27,10 @@ is in the in-app Guide (`server/guide/en/`), the launcher's commands in
   key by clicking, neutralising, the final mark; totals come from AMC's
   own scale.
 - **Results.** Mark ("Mark anyway" behind a warning), match students
-  (automatically, then by hand), export CSV or ODS, annotate (preview one
-  student first). A change after marking flags the results out of date.
+  (automatically, then by hand), export CSV (decimal point or comma, the
+  separator, class list columns such as a roll number) or ODS, annotate
+  (preview one student first). A change after marking flags the results
+  out of date.
 - **Dashboard and new-exam wizard.** Exam cards with their state and next
   step, search, filters, archive. The wizard's gallery holds AMC's
   templates and our starters, with previews compiled when the image is

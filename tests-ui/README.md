@@ -16,7 +16,7 @@ The app's icon file only keeps icons named in `server/templates/*.html`, so icon
 `test_ui_logic.py` checks the parts of `server/ui.py` that don't need a running app:
 - the lock's "does this change move anything on the printed paper?" comparison;
 - writing the default scoring into LaTeX and AMC-TXT sources;
-- the results helpers: match states, student names from the class list, which files can be uploaded as a class list, and the fingerprint that tells when marks are out of date;
+- the results helpers: match states, student names from the class list, which files can be uploaded as a class list, the fingerprint that tells when marks are out of date, and the CSV export's settings passed to AMC (decimal mark, separator, class list columns);
 - the marking scheme panel (`server/ui_scale.py`): question maximums the way AMC computes them, reading questions from LaTeX and AMC-TXT, and answer key and scoring edits;
 - branding: the contrast-checked palette, logo file types, and the starters' school header.
 - the version history (`server/ui_vcs.py`): a git repository per exam outside the teacher's folder, change sets (a builder save is one version), the "changed meanwhile" check, changes made outside the app, restoring one file, the whole exam or one change (with a three-way merge, refused when changes overlap), undoing a restore, built and named versions, a planted `.gitattributes` or `.git` config that does nothing, copies (in and outside the app) and renames, the conversion of the old `.history/` folders, a damaged repository started again, the trash (restore under a free name, removal after 30 days) and the audit log; and the changes in words (`server/ui_changes.py`) for questions, the paper design and other files.
@@ -107,7 +107,7 @@ docker compose exec -T amc-auth python - amc.example.org < tests-ui/check_public
 - it makes a 4-copy exam with student code boxes (`\AMCcodeGridInt`), and scans with the codes filled in, one page left out and two boxes ticked on a single-answer question;
 - **Mark:** "Mark anyway" past the missing page, the rule-breaking answer and its link to the page, "out of date" after a final mark change, and recomputing;
 - **Match students:** loading a class list, automatic matching, matching by hand with the keyboard, moving a student to another sheet, "Not in the class list" and "Back to automatic";
-- **Export marks:** the table, histogram, sorting and search, CSV (previewed) and ODS files, and the shareable link;
+- **Export marks:** the table, histogram, sorting and search, CSV (previewed) and ODS files, and the shareable link; the CSV's decimal point and commas by default with the class list's columns (roll number, email), then a decimal comma with semicolons and a column left out;
 - **Annotate:** previewing one student, annotating all sheets, previous/next in the preview, the zip download, and "out of date" after a settings change: the student's name in the header (`%(name) %(surname)`), also for an exam matched by hand before that was fixed (it removes AMC's `key_in_list` to check); "Clear in black and white" symbols by default, written to the teacher's AMC settings; the key on each page, once, also after annotating again; "AMC's colours" and a custom shape;
 - the exam's history.
 

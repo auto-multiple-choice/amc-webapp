@@ -584,3 +584,7 @@ button.bl-who:hover { color: var(--brand); }
 /* where a drop lands after the last question of a file, or the last section (extras.js) */
 .q-drop-end, .d-drop-end { height: 12px; margin: 0 8px; border-radius: 4px; }
 .q-drop-end.drop-before, .d-drop-end.drop-before { background: var(--brand-soft, rgba(0, 120, 212, .15)); }
+
+/* a row of checkboxes that wraps (Export marks: class list columns) */
+.check-row { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 4px 0 6px; }
+.check-row .check + .check { margin-top: 0; }
