@@ -25,6 +25,7 @@ The app's icon file only keeps icons named in `server/templates/*.html`, so icon
 - question banks (`server/ui_banks.py`): where banks live and which names they can have, `bank.json` read tidied, items placed and ordered in groups, free group names, the bank list, a second bank of the same name refused, question names changed where they clash (and swapped), fingerprints, the random pick, tags, the macros and packages an item needs found and added to an exam once, and a bank's own history and trash; copies (the way in and back exactly, every status, merges, names a newer version adds, macros defined differently); the search index (`server/ui_bankindex.py`: prefixes, accents, filters, a file changed by hand read again, archived items, a damaged index rebuilt, what is typed can't break the query), usage (an exam printed again counts once, "not printed since"), the exams holding a copy; bank zips (`server/ui_bankzip.py`: only a bank's kind of files, names climbing out, absolute names and links refused, a folder at the top, size limits unpacked), a bank's history in a git bundle (a broken one refused), and the names of imported banks; question statistics (`server/ui_stats.py`: share right, separation, answers chosen by the strongest and weakest, the notes, too few copies, a summary over exams, an exam marked again replacing its figures) and blueprints (rows checked, drawn without repeats, rows short of questions in words); who changed each line (blame), a log over several files, and `./amc doctor` (sound histories, a damaged one, one whose bank is gone).
 - the question editor (`server/ui_questions.py`): the spans the parser finds (text, answers, choices, numeric, explanation, figure, `\element` groups) and every edit operation, including where new questions go;
 - saving the papers (`server/ui_print.py`): a separate answer sheet found in the sources (LaTeX package option, AMC-TXT, comments ignored), each copy's question pages and answer sheet pages, the copies cut with qpdf into two folders (a copy named by its student, one that can't be cut left whole, no half-made files), and the zip with its folders;
+- emailing results (`server/ui_mail.py`): addresses and class list cells, finding the email column, AMC's codes in the message, one-line headers whatever is typed, the PDF attached, the admin's settings checked (password kept, removed, never sent back; mode 600), each teacher's daily count, and sending through a small SMTP server (signing in, a refused address and a wrong password in words);
 - the annotated sheets' symbols and key (`server/ui_legend.py`): AMC's settings read back as a preset, the default and custom choices, refused schemes, and the key stamped once on each file, with a file whose key failed left for the next run.
 
 It runs with the app's image:
@@ -109,10 +110,17 @@ docker compose exec -T amc-auth python - amc.example.org < tests-ui/check_public
 - **Match students:** loading a class list, automatic matching, matching by hand with the keyboard, moving a student to another sheet, "Not in the class list" and "Back to automatic";
 - **Export marks:** the table, histogram, sorting and search, CSV (previewed) and ODS files, and the shareable link; the CSV's decimal point and commas by default with the class list's columns (roll number, email), then a decimal comma with semicolons and a column left out;
 - **Annotate:** previewing one student, annotating all sheets, previous/next in the preview, the zip download, and "out of date" after a settings change: the student's name in the header (`%(name) %(surname)`), also for an exam matched by hand before that was fixed (it removes AMC's `key_in_list` to check); "Clear in black and white" symbols by default, written to the teacher's AMC settings; the key on each page, once, also after annotating again; "AMC's colours" and a custom shape;
+- **Email results** (with `AMC_E2E_SMTP` and `AMC_E2E_MAILPIT`, a [Mailpit](https://mailpit.axllent.org) SMTP sink the app can reach): setting up Email sending with a test email before saving, the password never sent back, the email column found, who can and can't get an email, the old annotated sheets flagged, the preview with the codes filled in as the text is typed, a test to the teacher that records nothing, sending to each student (sender, reply-to, subject and the PDF checked in Mailpit), the statuses, and the daily limit stopping a round;
 - the exam's history.
 
 ```
 node tests-ui/e2e-results.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
+```
+
+For the email checks, add a Mailpit container to the test copy's compose project (image `axllent/mailpit`, its web port published, say, on 8027) and point the test at it:
+
+```
+AMC_E2E_SMTP=mailpit:1025 AMC_E2E_MAILPIT=http://127.0.0.1:8027 node tests-ui/e2e-results.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 ```
 
 With `AMC_E2E_KEEP=1`, the test exam is kept afterwards, to look at it.

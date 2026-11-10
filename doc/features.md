@@ -38,6 +38,14 @@ is in the in-app Guide (`server/guide/en/`), the launcher's commands in
 - **Guide and tour.** One page per step, and a first-run tour.
 - **Branding.** Admins set the school's name, logo and colours
   (contrast-checked) on the Appearance page; the sign-in page follows.
+- **Email results.** Admins set the mail server once (Email sending:
+  SMTP, sender, a daily limit per teacher, a test email). From Annotate,
+  a teacher emails each student their annotated sheet and mark: the
+  class list's email column, a message with AMC's codes (`%s`, `%(ID)`,
+  any class list column), a preview per student, a test to themselves,
+  progress with Stop, and each student's status kept (sent or why not).
+  Sent from the server with smtplib, not AMC's mailing (the SMTP password
+  stays out of AMC's sandbox).
 - Light and dark themes. English only.
 
 ## Writing questions
@@ -123,6 +131,7 @@ is in the in-app Guide (`server/guide/en/`), the launcher's commands in
 | My templates | `<projects>/_templates/<name>/` |
 | History, trash, audit log, search index, usage, statistics | `MC-Projects/_amcweb/<user>/` (`_local` on a single-user machine) |
 | Branding | `MC-Projects/_branding/` |
+| Email sending (SMTP settings, mode 600; emails sent today per teacher) | `MC-Projects/_amcweb/_mail/` |
 
 Folders starting with `_` aren't exams, and account names can't start
 with `_`, so `_amcweb` is out of every teacher's reach. `./amc backup`
@@ -157,8 +166,9 @@ stay in place, unused.
 
 ## Not built
 
-- Tablets, other languages, emailing results (#7), a print queue with
-  cancel, templates published by admins.
+- Tablets, other languages, a print queue with cancel, templates
+  published by admins. Emailing results: HTML messages, extra
+  attachments, scheduling.
 - Paper builder: paper and font size (edit `\documentclass` in LaTeX),
   dragging a column's edge, starting the builder on an exam not made
   with it, saving rows or layouts for reuse.

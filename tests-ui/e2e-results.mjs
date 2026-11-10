@@ -13,6 +13,8 @@
  * AMC_E2E_CONTAINER: the app's container (default amc-uitest).
  * AMC_E2E_USER / AMC_E2E_PASS: sign in first (shared-machine mode).
  * AMC_E2E_KEEP=1: keep the test exam afterwards, to look at it.
+ * AMC_E2E_SMTP=mailpit:1025 and AMC_E2E_MAILPIT=http://127.0.0.1:8025: test Email results
+ *   with a Mailpit SMTP sink (the address as the app reaches it, and Mailpit's API from here).
  * Use a test copy of the app, never your real exams.
  */
 import { execFileSync } from 'node:child_process';
@@ -291,9 +293,76 @@ async function main() {
   await b.js(`(() => { const s = document.querySelector('[data-option="annote_position"]'); s.value = 'case'; s.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`);
   b.check('Changing a setting makes them out of date', await b.waitFor(`S.status.annotated_stale === true && document.querySelector('#main').textContent.includes('older than')`, 10000));
 
+  // ---- Email results (issue #7): with a Mailpit SMTP sink, AMC_E2E_SMTP=host:port as the app sees it, AMC_E2E_MAILPIT=its API
+  const SMTP = process.env.AMC_E2E_SMTP || '';
+  const MAILPIT = process.env.AMC_E2E_MAILPIT || '';
+  let emailed = false;
+  if (SMTP && MAILPIT) {
+    const mp = (path, opts = {}) => fetch(MAILPIT + path, opts).then((r) => (r.status === 200 ? r.json().catch(() => ({})) : {}));
+    const inbox = async () => (await mp('/api/v1/messages?limit=50')).messages || [];
+    const message = (id) => mp(`/api/v1/message/${id}`);
+    await mp('/api/v1/messages', { method: 'DELETE' });
+    b.check('Annotate offers emailing the sheets', await b.waitFor(`!!document.querySelector('a[href$="/email"]')`, 5000));
+    await b.js(`navigate('/email'); true`);
+    b.check('Email sending is off until an administrator sets it up', await b.waitFor(`!!S.mailSetup && !!S.mailSetup.s && document.querySelector('#main').textContent.includes('Email sending is off')`, 10000));
+    const [host, port] = SMTP.split(':');
+    await b.click('[data-act="mail-security"][data-v="none"]');
+    for (const [k, v] of [['host', host], ['port', port], ['from_address', 'exams@school.example'], ['from_name', 'Test School'], ['delay', '0']]) await b.setValue(`[data-mail="${k}"]`, v);
+    await b.setValue('#mail-test-to', 'admin@school.example');
+    await b.click('[data-act="mail-test"]');
+    b.check('A test email goes out with the settings on the page, before saving', await b.waitFor(`!S.mailSetup.busy`, 30000)
+      && (await (async () => { for (let i = 0; i < 20; i += 1) { const m = await inbox(); if (m.some((x) => x.Subject === 'Test email from AMC' && x.To[0].Address === 'admin@school.example')) return true; await sleep(300); } return false; })()), J(await inbox()));
+    await b.shot('r8-email-setup');
+    await b.click('[data-act="mail-save"]');
+    b.check('Saved: email sending is on', await b.waitFor(`S.mailSetup.s.configured === true && document.querySelector('#main').textContent.includes('Email sending is on')`, 10000));
+    b.check('The password and settings never come back to the page', !(await b.js(`fetch('/ui/api/mail/settings', {headers: headers()}).then(r => r.text())`)).includes('"password":'));
+    await b.js(`navigate(examPath(${J(EXAM)}, 'email')); true`);
+    b.check('Email results lists the sheets, with the class list\'s email column found', await b.waitFor(`!!S.email && S.email.rows.length === ${COPIES} && S.email.column === 'email' && S.email.configured`, 15000), J(await b.js('S.email && {column: S.email.column, rows: S.email.rows.length}')));
+    b.check('...three can get an email; the sheet not in the class list can\'t', await b.js(`S.email.rows.filter(r => !r.problem).length === 3 && S.email.rows.find(r => r.student === 4).problem === 'unmatched'`), J(await b.js('S.email.rows.map(r => [r.student, r.problem, r.to])')));
+    b.check('...all three chosen, and the old annotated sheets flagged', await b.js(`S.email.sel.size === 3 && S.email.stale === true && document.querySelector('#main').textContent.includes('annotated sheets are out of date')`));
+    b.check('The preview fills in the codes', await b.waitFor(`!!S.email.preview && S.email.preview.to && S.email.preview.body.includes('Dear Curie Marie') && !S.email.preview.body.includes('%') && S.email.preview.subject === 'Results test exam: your marked answer sheet'`, 10000), J(await b.js('S.email.preview')));
+    await b.setValue('#em-subject', 'Mark for %(name) %(surname) (%(roll_no)): %s/%m');
+    await b.setValue('#em-reply', 'teacher@school.example');
+    b.check('...as the text is typed, class list columns included', await b.waitFor(`S.email.preview && S.email.preview.subject.startsWith('Mark for Marie Curie (24MA00101): ')`, 10000), J(await b.js('S.email.preview && S.email.preview.subject')));
+    await b.shot('r9-email');
+    await b.setValue('#em-test', 'teacher@school.example');
+    await b.click('[data-act="email-test"]');
+    const testMail = async () => { for (let i = 0; i < 40; i += 1) { const m = (await inbox()).find((x) => x.Subject.startsWith('[Test] Mark for Marie Curie')); if (m) return m; await sleep(300); } return null; };
+    const t = await testMail();
+    b.check('"Send me this as a test" sends that student\'s email to the teacher', !!t && t.To[0].Address === 'teacher@school.example' && t.Attachments === 1, J(t));
+    await b.waitFor(`!S.email.progress`, 10000);
+    b.check('...and records nothing for the student', await b.js(`S.email.rows.every(r => !r.log)`));
+    await b.click('[data-act="email-send"]');
+    b.check('Sending asks first, warning about the old sheets', await b.waitFor(`document.querySelector('#layer').textContent.includes('Send 3 emails?') && document.querySelector('#layer').textContent.includes('out of date')`, 5000));
+    await b.click('[data-act="dialog-ok"]');
+    b.check('Each student is sent their email', await b.waitFor(`!S.email.progress && S.email.rows.filter(r => r.log && r.log.ok).length === 3`, 60000), J(await b.js('S.email.rows.map(r => r.log)')));
+    const sent = (await inbox()).filter((x) => !x.Subject.startsWith('[Test]') && x.Subject.startsWith('Mark for'));
+    b.check('...three emails, one to each address', J(sent.map((x) => x.To.map((a) => a.Address).join()).sort()) === J(['ada.lovelace@example.org', 'emmy.noether@example.org', 'marie.curie@example.org']), J(sent.map((x) => [x.To, x.Subject])));
+    const one = await message(sent.find((x) => x.To[0].Address === 'emmy.noether@example.org').ID);
+    b.check('...from the sender, replies to the teacher, the sheet attached as a PDF', one.From && one.From.Address === 'exams@school.example' && one.From.Name === 'Test School'
+      && (one.ReplyTo || [])[0] && one.ReplyTo[0].Address === 'teacher@school.example' && one.Subject.startsWith('Mark for Emmy Noether (24MA00102): ')
+      && (one.Attachments || []).length === 1 && one.Attachments[0].ContentType === 'application/pdf' && one.Attachments[0].Size > 1000, J({ From: one.From, ReplyTo: one.ReplyTo, Subject: one.Subject, Attachments: one.Attachments }));
+    b.check('The students show as sent, and nobody is chosen for a second round', await b.waitFor(`S.email.sel.size === 0 && document.querySelectorAll('#em-table .chip-success').length === 3`, 5000));
+    await b.js(`document.querySelector('#em-table').scrollIntoView(); true`);
+    await b.shot('r10-email-sent');
+    emailed = true;
+    await b.js(`postJSON('/ui/api/mail/settings', {host: ${J(host)}, port: ${J(port)}, security: 'none', from_address: 'exams@school.example', from_name: 'Test School', daily_limit: 4, delay: 0}); true`);
+    await sleep(500);
+    await b.click('[data-act="email-filter"][data-v="sent"]');
+    await b.js(`(() => { const a = document.querySelector('[data-email-all]'); a.checked = true; a.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`);
+    b.check('Students sent an email can be chosen again', await b.js(`S.email.sel.size === 3`));
+    await b.click('[data-act="email-send"]');
+    await b.click('[data-act="dialog-ok"]');
+    b.check('The daily limit per teacher stops a round that goes past it', await b.waitFor(`!!document.querySelector('.server-dialog') && document.querySelector('.server-dialog').textContent.includes('emails a day')`, 10000)
+      && (await inbox()).length === 5);
+    await b.js('warn_ok(); true');
+    await b.js(`postJSON('/ui/api/mail/settings', {host: '', from_address: ''}); true`);
+    await sleep(500);
+  } else console.log('  (email not tested: set AMC_E2E_SMTP and AMC_E2E_MAILPIT)');
+
   // ---- History
   const activity = (await b.js('S.status.activity.map(a => a.what)')).join(' | ');
-  b.check('The history records each step', ['Marks computed', 'Class list loaded', 'Automatic matching', 'Marks exported (CSV)', 'Annotated sheets made'].every((w) => activity.includes(w)), activity);
+  b.check('The history records each step', ['Marks computed', 'Class list loaded', 'Automatic matching', 'Marks exported (CSV)', 'Annotated sheets made'].concat(emailed ? ['Annotated sheets emailed: 3 sent'] : []).every((w) => activity.includes(w)), activity);
 
   if (process.env.AMC_E2E_KEEP) b.created.delete(EXAM);
   else b.check('The test exam is deleted', await b.deleteExam(EXAM));

@@ -588,3 +588,12 @@ button.bl-who:hover { color: var(--brand); }
 /* a row of checkboxes that wraps (Export marks: class list columns) */
 .check-row { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 4px 0 6px; }
 .check-row .check + .check { margin-top: 0; }
+
+/* ---------- Email results (email.js) ---------- */
+
+.mail-head { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0 0 10px; }
+.mail-head dt { color: var(--text-2); }
+.mail-head dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.mail-body { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; margin: 0; padding: 10px 12px; max-height: 280px; overflow: auto;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
+.input[aria-invalid="true"] { border-color: var(--danger); }

@@ -16,7 +16,7 @@ An exam goes through ten steps, in two groups. The sidebar lists them with their
 7. [Mark](guide:mark): compute the marks.
 8. [Match students](guide:match-students): link each sheet to a student in the class list.
 9. [Export marks](guide:export-marks): get the marks out as CSV or ODS.
-10. [Annotate](guide:annotate): make marked answer sheets to give back.
+10. [Annotate](guide:annotate): make marked answer sheets to give back, and [email them](guide:email) to the students.
 
 ## Good to know
 
