@@ -21,14 +21,14 @@ async function main() {
   await b.goto('/');
   b.check('The app opens', await b.waitFor('S.online === true && S.projects !== null'));
   await b.preflight({ exams: [EXAM] });
-  b.check('The guide is loaded', await b.waitFor('Array.isArray(S.guidePages) && S.guidePages.length === 11', 10000), J(await b.js('S.guidePages && S.guidePages.map(p => p.id)')));
+  b.check('The guide is loaded', await b.waitFor('Array.isArray(S.guidePages) && S.guidePages.length === 12', 10000), J(await b.js('S.guidePages && S.guidePages.map(p => p.id)')));
   b.check('No tour on the dashboard by itself', await b.js('!document.querySelector("#tour")'));
 
   // ---- The guide, from the dashboard
   await b.click('#topbar [data-menu="guide"]');
   await b.click('#topbar [data-act="guide-open"][data-page="index"]');
   b.check('The full guide opens in the preview panel', await b.waitFor(`!document.querySelector('#app').classList.contains('preview-closed') && document.querySelector('#preview .guide-page h2') && document.querySelector('#preview .guide-page h2').textContent === 'Guide'`, 5000));
-  b.check('...with its contents', await b.js(`document.querySelectorAll('#guide-select option').length === 11`));
+  b.check('...with its contents', await b.js(`document.querySelectorAll('#guide-select option').length === 12`));
   await b.click('#preview .guide-page [data-act="guide-open"][data-page="questions"]');
   b.check('A link opens another page', await b.waitFor(`document.querySelector('#preview .guide-page h2').textContent === 'Questions' && !!document.querySelector('#preview .guide-code')`, 3000));
   await b.click('#preview [data-act="guide-open"][data-page="marking-scheme"]');

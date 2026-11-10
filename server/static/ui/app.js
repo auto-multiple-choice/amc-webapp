@@ -58,6 +58,7 @@ const GUIDES = {
   'match-students': ['Load the class list: a CSV file with column names on the first line and one student per line.', 'Choose the column with the student code, then match automatically if the papers have code boxes.', 'Match the other sheets by hand: type part of the name written on the sheet, then press Enter.'],
   'export-marks': ['Check the marks and how they are spread.', 'Export to CSV (spreadsheets, school systems) or ODS (LibreOffice, with statistics).', 'Export again after changing marks or matches.'],
   annotate: ['Choose where marks appear on the sheets and the header text.', 'Choose how the files are saved, then preview one student to check.', 'Annotate all sheets and download them.'],
+  email: ['Check the email column, where replies go, and the message.', 'Look at a student\'s email in the preview, and send yourself a test.', 'Choose the students, then send. Each one gets their annotated sheet and mark.'],
 };
 const DOC_LABELS = { sujet: 'Question paper', corrige: 'Answer key', catalog: 'Catalogue', 'indiv-solution': 'Corrected copies' };
 const STATE_CHIPS = {
@@ -377,10 +378,12 @@ function parsePath(path) {
   const parts = path.split('/').filter(Boolean).map((p) => { try { return decodeURIComponent(p); } catch { return p; } });
   if (parts[0] === 'new' && parts.length === 1) return { kind: 'new' };
   if (parts[0] === 'appearance' && parts.length === 1) return { kind: 'appearance' };
+  if (parts[0] === 'email' && parts.length === 1) return { kind: 'email' };
   if (parts[0] === 'banks' && parts.length === 1) return { kind: 'banks' };
   if (parts[0] === 'bank' && parts[1]) return { kind: 'bank', name: parts[1] };
   if (parts[0] === 'exam' && parts[1]) {
-    const step = STEPS.some((s) => s.id === parts[2]) || parts[2] === 'settings' ? parts[2] : null;
+    // Email results (email.js) opens from Annotate; it isn't one of the ten steps.
+    const step = STEPS.some((s) => s.id === parts[2]) || parts[2] === 'settings' || parts[2] === 'email' ? parts[2] : null;
     return { kind: 'exam', name: parts[1], step };
   }
   return { kind: 'exams' };
@@ -430,10 +433,11 @@ function onRoute() {
     if (r.kind === 'banks') loadBanks(); else loadBank();
     return;
   }
-  if (r.kind === 'exams' || r.kind === 'new' || r.kind === 'appearance') {
+  if (r.kind === 'exams' || r.kind === 'new' || r.kind === 'appearance' || r.kind === 'email') {
     S.project = null; S.status = null; S.files = null;
-    document.title = `${{ new: 'New exam', appearance: 'Appearance' }[r.kind] || 'Exams'} · ${BRAND}`;
+    document.title = `${{ new: 'New exam', appearance: 'Appearance', email: 'Email sending' }[r.kind] || 'Exams'} · ${BRAND}`;
     if (r.kind === 'appearance') loadLook();
+    if (r.kind === 'email') loadMailSetup();
     if (r.kind === 'new' && !S.wizard) S.wizard = newWizard();
     render();
     loadProjects();
@@ -443,7 +447,7 @@ function onRoute() {
   if (r.name !== S.project) {
     S.previewPage = null; // the page found for a question of another exam
     S.status = null; S.files = null; S.config = null; S.scans = null;
-    S.marks = null; S.students = null; S.exportInfo = null; S.annotateInfo = null; S.matchSheet = null; S.questions = null; S.printInfo = null;
+    S.marks = null; S.students = null; S.exportInfo = null; S.annotateInfo = null; S.matchSheet = null; S.questions = null; S.printInfo = null; S.email = null;
     render();
     openProject(r.name);
     return;
@@ -505,6 +509,7 @@ function enterStep() {
   if (S.route.step === 'marking-scheme') { loadScoring(); loadQuestions({ refresh: true }); }
   if (S.route.step === 'print') { loadPrinters(); loadPrintInfo(); }
   if (S.route.step === 'upload-scans') loadScans();
+  if (S.route.step === 'email') loadEmail();
   if (S.route.step === 'check-scans') {
     loadScans().then(() => {
       if (S.pendingReview) { const k = S.pendingReview; S.pendingReview = null; openReview(k); } else if (!S.review) openNextReview();
@@ -648,6 +653,7 @@ function renderTop() {
   if (r.kind === 'exam') crumbs.push(`<span class="current">${esc(r.name)}</span>`);
   if (r.kind === 'new') crumbs.push('<span class="current">New exam</span>');
   if (r.kind === 'appearance') crumbs.push('<span class="current">Appearance</span>');
+  if (r.kind === 'email') crumbs.push('<span class="current">Email sending</span>');
   if (r.kind === 'banks' || r.kind === 'bank') { crumbs[0] = '<a href="/banks" data-nav>Question banks</a>'; if (r.kind === 'bank') crumbs.push(`<span class="current">${esc(r.name)}</span>`); }
   const hasPreview = r.kind === 'exam';
   $('#topbar').innerHTML = `
@@ -670,7 +676,7 @@ function renderTop() {
           <span class="avatar">${esc(USER[0].toUpperCase())}</span><span>${esc(USER)}</span>${ic('nav-arrow-down')}</button>
         ${S.menu === 'account' ? `<div class="menu" role="menu">
           <div class="menu-label">Signed in as ${esc(USER)}</div>
-          ${CAN_BRAND ? `<a class="menu-item" role="menuitem" href="/appearance" data-nav>${ic('color-filter')} Appearance</a>` : ''}
+          ${CAN_BRAND ? `<a class="menu-item" role="menuitem" href="/appearance" data-nav>${ic('color-filter')} Appearance</a><a class="menu-item" role="menuitem" href="/email" data-nav>${ic('mail')} Email sending</a>` : ''}
           <a class="menu-item" role="menuitem" href="/auth/account">${ic('user-circle')} Account, password and sign out</a></div>` : ''}
       </div>` : ''}
     </div>`;
@@ -685,7 +691,7 @@ function renderSide() {
     ${STEPS.filter((s) => s.group === g).map((s) => {
     const st = stepStatus(s.id);
     const dot = st.cls === 'is-done' ? ic('check') : st.cls === 'is-locked' ? ic('lock') : s.n;
-    const cur = S.route.step === s.id;
+    const cur = S.route.step === s.id || (s.id === 'annotate' && S.route.step === 'email');
     return `<a class="step ${st.cls}" href="${examPath(name, s.id)}" data-nav ${cur ? 'aria-current="page"' : ''} ${st.title ? `title="${esc(st.title)}"` : ''}>
       <span class="step-dot">${dot}</span><span class="step-label">${s.label}</span>${st.count !== null ? `<span class="step-count">${st.count}</span>` : ''}</a>`;
   }).join('')}</div>`;
@@ -701,6 +707,7 @@ function renderMain(keepScroll = false) {
   if (r.kind === 'exams') html = viewExams();
   else if (r.kind === 'new') html = viewNew();
   else if (r.kind === 'appearance') html = viewAppearance();
+  else if (r.kind === 'email') html = viewMailSetup();
   else if (r.kind === 'banks') html = viewBanks();
   else if (r.kind === 'bank') {
     if ($('#q-editor') && $('#bank-head') && S.qdata) { $('#bank-head').innerHTML = bankHead(); renderQList(); return; }
@@ -716,6 +723,7 @@ function renderMain(keepScroll = false) {
   else if (r.step === 'match-students') html = viewMatch();
   else if (r.step === 'export-marks') html = viewExport();
   else if (r.step === 'annotate') html = viewAnnotate();
+  else if (r.step === 'email') html = viewEmail();
   else html = viewSettings();
   main.classList.toggle('fill', r.kind === 'exam' && r.step === 'questions' && !useForm() && !useDesign());
   if (r.step === 'questions' && useForm() && $('#q-editor')) { // keep the form and what is being typed in it
@@ -3682,6 +3690,7 @@ function viewAnnotate() {
       <p class="field-hint" style="margin-top:8px">Makes this student's sheet with the settings above and shows it on the right. The real annotated sheets aren't touched.</p>
     </div></section>
     ${annotatedCard(a)}
+    ${typeof emailCard === 'function' ? emailCard() : ''}
   </div>`;
 }
 
@@ -4443,13 +4452,14 @@ document.addEventListener('click', (e) => {
   const act = el.dataset.act;
   if (act === 'dialog-backdrop') { if (e.target === el && !el.querySelector('.sticky')) closeDialog(false); return; }
   const fn = ACTIONS[act] || (typeof BUILDER_ACTIONS !== 'undefined' ? BUILDER_ACTIONS[act] : null) || (typeof BANK_ACTIONS !== 'undefined' ? BANK_ACTIONS[act] : null)
-    || (typeof EXTRA_ACTIONS !== 'undefined' ? EXTRA_ACTIONS[act] : null);
+    || (typeof EXTRA_ACTIONS !== 'undefined' ? EXTRA_ACTIONS[act] : null) || (typeof EMAIL_ACTIONS !== 'undefined' ? EMAIL_ACTIONS[act] : null);
   if (fn) { e.preventDefault(); fn(el); }
 });
 
 document.addEventListener('change', async (e) => {
   const t = e.target;
   if (typeof bankChange === 'function' && bankChange(t)) return;
+  if (typeof emailChange === 'function' && emailChange(t)) return;
   if (t.id === 'file-select' && t.value !== S.source.name) {
     if (S.source.dirty && !(await confirmLeave())) { t.value = S.source.name; return; }
     saveDraft(); S.source.loaded = false; S.source.dirty = false; loadSource(t.value);
@@ -4550,6 +4560,7 @@ document.addEventListener('change', async (e) => {
 document.addEventListener('input', (e) => {
   const t = e.target;
   if (typeof bankInput === 'function' && bankInput(t)) return;
+  if (typeof emailInput === 'function' && emailInput(t)) return;
   if (t.id === 'qf-text' && S.qform) { qop({ op: 'text', latex: t.value }); scheduleQPreview(); }
   if (t.dataset.df && S.dform && (t.dataset.df === 'heading' || t.dataset.df === 'text')) dop({ op: 'section_set', name: t.dataset.name, [t.dataset.df]: t.value });
   if (t.id === 'qf-explain' && S.qform) qop({ op: 'explain', latex: t.value });

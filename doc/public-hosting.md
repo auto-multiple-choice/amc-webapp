@@ -77,6 +77,8 @@ Sign in at `https://amc.example.org` with the admin account. Open the user menu 
 
 There is no "forgot password" email: an admin resets it. On the server, `./amc user add NAME --temporary`, `./amc user passwd NAME` and `./amc user list` do the same.
 
+**Emailing results.** For teachers to email annotated sheets to their students, an admin fills in **Email sending** (user menu): the mail server, its security and port, the account and password, the sender address, and a daily limit per teacher. **Send a test email** before saving. Many VPS providers block outgoing port 25; use 587 (STARTTLS) or 465 (SSL/TLS). With Gmail or Google Workspace: `smtp.gmail.com`, port 587, STARTTLS, and an app password. The password is kept on the server in `MC-Projects/_amcweb/_mail/settings.json` (mode 600, outside every teacher's folder), so backups hold it too.
+
 ## 4. Cloudflare Access (optional)
 
 To keep everyone but your teachers away from the sign-in page, put Cloudflare Access in front. Bots and scanners then never reach the app. Teachers sign in twice: Cloudflare first (a one-time code sent by email), then the app.

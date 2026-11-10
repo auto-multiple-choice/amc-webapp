@@ -1527,5 +1527,154 @@ _e = tempfile.mkdtemp(); shutil.copy(os.path.join(_d, "0002.pdf"), os.path.join(
 check("print: nothing cut, no empty folders", pr.split_copies(_e, [(os.path.join(_e, "0001.pdf"), None)]) == (0, 1) and os.listdir(_e) == ["0001.pdf"])
 shutil.rmtree(_d); shutil.rmtree(_e)
 
+# ---- emailing results (ui_mail.py)
+import base64, smtplib, socket, socketserver, stat, threading
+import ui_mail as ml
+check("mail: an address", ml.valid_address("marie.curie@example.org") and ml.valid_address("a+b@sub.example.co.in"))
+check("mail: not addresses", not any(ml.valid_address(a) for a in ("", "marie", "a@b", "a@@b.org", "a b@c.org", "a@b.org\r\nBcc: x@y.org", "<a@b.org>", None)))
+check("mail: several addresses in a cell", ml.split_addresses(" a@b.org; c@d.org,e@f.org ") == (["a@b.org", "c@d.org", "e@f.org"], None))
+check("mail: the first bad address is named", ml.split_addresses("a@b.org, oops") == (["a@b.org", "oops"], "oops") and ml.split_addresses("") == ([], None))
+check("mail: the email column by its name", ml.guess_email_column(["id", "name", "E-mail"], []) == "E-mail" and ml.guess_email_column(["id", "Email"], []) == "Email")
+check("mail: ...or by what it holds", ml.guess_email_column(["id", "contact"], [{"id": "1", "contact": "a@b.org"}, {"id": "2", "contact": ""}, {"id": "3", "contact": "c@d.org"}]) == "contact")
+check("mail: no email column", ml.guess_email_column(["id", "name"], [{"id": "1", "name": "Ada"}]) is None)
+v = {"mark": 3.25, "max": "10", "total": 6.5, "points": 20.0, "exam": "MA39209 Test", "name": "Curie Marie",
+     "columns": {"name": "Marie", "roll_no": "24MA00101"}}
+check("mail: AMC's codes", ml.substitute("%n: %(ID) (%(roll_no)) got %s/%m, %S of %M points", v) == "MA39209 Test: Curie Marie (24MA00101) got 3.25/10, 6.5 of 20 points")
+check("mail: a class list column by name", ml.substitute("Dear %(name),", v) == "Dear Marie,")
+check("mail: an unknown column stays as typed", ml.substitute("%(surname) %q 100%", v) == "%(surname) %q 100%")
+check("mail: marks as AMC writes them", ml.format_number(12.375) == "12.38" and ml.format_number(10.0) == "10" and ml.format_number(-1.5) == "-1.5" and ml.format_number(None) == "")
+st = dict(ml.DEFAULTS, host="smtp.example.org", from_address="exams@school.example", from_name="Riverside\r\nBcc: x@y.org")
+m = ml.build_message(st, ["a@b.org", "c@d.org"], "Mark\r\nBcc: evil@x.org", "Hello\r\nthere\n", ("0001-Curie.pdf", b"%PDF-1.4 x"), reply_to="teacher@school.example")
+raw = m.as_bytes()
+check("mail: one line headers, whatever is typed", m["Subject"] == "Mark Bcc: evil@x.org" and b"\nBcc:" not in raw and "Riverside Bcc" in m["From"])
+check("mail: to, reply-to and the PDF attached", m["To"] == "a@b.org, c@d.org" and m["Reply-To"] == "teacher@school.example"
+      and [p.get_filename() for p in m.iter_attachments()] == ["0001-Curie.pdf"] and next(m.iter_attachments()).get_content() == b"%PDF-1.4 x")
+check("mail: a bad reply-to is left out", "Reply-To" not in ml.build_message(st, ["a@b.org"], "s", "b", reply_to="nope"))
+_seps = "\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029\x00\x7f"
+check("mail: one line also without the other line breaks and control characters", ml.one_line(f"Mark{_seps}for\u00a0Ada ") == "Mark for\u00a0Ada")
+try:  # Python's email library refuses a header holding any of them
+    m2 = ml.build_message(dict(st, from_name="Riverside\u2028School"), ["a@b.org"], "Mark for Ada\u2028Lovelace\x0c(pasted)", "b", ("0003-Ada\u2028Lovelace.pdf", b"%PDF"))
+    check("mail: a subject, sender name or file name with a pasted line separator still makes an email",
+          m2["Subject"] == "Mark for Ada Lovelace (pasted)" and b"Subject: Mark for Ada Lovelace (pasted)" in m2.as_bytes()
+          and next(m2.iter_attachments()).get_filename() == "0003-Ada Lovelace.pdf")
+except ValueError as e:
+    check("mail: a subject, sender name or file name with a pasted line separator still makes an email", False)
+check("mail: sent to the same addresses, whatever the order or capitals", ml.same_addresses("A@b.org, c@d.org", ["c@D.org", "a@b.org"])
+      and not ml.same_addresses("a@b.org", ["a@b.org", "c@d.org"]) and not ml.same_addresses("old@b.org", ["new@b.org"]) and not ml.same_addresses(None, ["a@b.org"]))
+check("mail: a sender name with accents and commas", ml.build_message(dict(st, from_name="École Saint-Jean, exams"), ["a@b.org"], "s", "b")["From"].addresses[0].display_name == "École Saint-Jean, exams"
+      and ml.sender_text(dict(st, from_name="École")) == "École <exams@school.example>" and ml.sender_text(dict(st, from_name="")) == "exams@school.example")
+old = dict(ml.DEFAULTS, password="secret")
+try:
+    ml.check_settings({"host": "smtp.gmail.com", "security": "starttls", "from_address": "x"}, old); check("mail: a bad sender is refused", False)
+except ValueError as e:
+    check("mail: a bad sender is refused", "sender" in str(e))
+for bad in ({"host": "smtp.x.org; rm", "from_address": "a@b.org"}, {"host": "smtp.x.org", "from_address": "a@b.org", "port": "99999"},
+            {"host": "smtp.x.org", "from_address": "a@b.org", "security": "tls13"}):
+    try:
+        ml.check_settings(bad, old); check("mail: bad settings are refused", False)
+    except ValueError:
+        check("mail: bad settings are refused", True)
+gm = dict(old, host="smtp.gmail.com", user="exams@school.example")
+n = ml.check_settings({"host": "SMTP.gmail.com", "user": "exams@school.example", "security": "ssl", "from_address": "a@b.org", "daily_limit": "999999", "delay": "-3"}, gm)
+check("mail: the port follows the security, the password is kept, limits are bounded",
+      n["port"] == 465 and n["password"] == "secret" and n["daily_limit"] == ml.LIMIT_MAX and n["delay"] == 0)
+check("mail: a new password replaces it, and it can be removed",
+      ml.check_settings({"host": "h.org", "from_address": "a@b.org", "password": "new"}, old)["password"] == "new"
+      and ml.check_settings({"host": "h.org", "from_address": "a@b.org", "clear_password": True}, old)["password"] == "")
+check("mail: a password typed after \"Remove the saved password\" is the one kept",
+      ml.check_settings({"host": "smtp.gmail.com", "from_address": "a@b.org", "password": "typed", "clear_password": True}, gm)["password"] == "typed")
+try:
+    ml.check_settings({"host": "smtp.other.example", "user": "exams@school.example", "from_address": "a@b.org"}, gm)
+    check("mail: the saved password doesn't follow a change of server: it is asked again", False)
+except ValueError as e:
+    check("mail: the saved password doesn't follow a change of server: it is asked again", "password again" in str(e))
+check("mail: ...typed again, the new server gets the new one; without a user name or a server, it is dropped",
+      ml.check_settings({"host": "smtp.other.example", "user": "u", "from_address": "a@b.org", "password": "p2"}, gm)["password"] == "p2"
+      and ml.check_settings({"host": "smtp.other.example", "user": "", "from_address": "a@b.org"}, gm)["password"] == ""
+      and ml.check_settings({"host": "", "user": "exams@school.example", "from_address": ""}, gm)["password"] == "")
+for _odd in (float("inf"), float("nan"), "1e999"):
+    try:
+        ml.check_settings({"host": "", "daily_limit": _odd, "delay": _odd}, old); _r = "taken"
+    except ValueError as e:
+        _r = str(e)
+    except Exception as e:
+        _r = None
+    check("mail: a limit or pause that isn't a number is refused in words, or bounded", _r is not None)
+check("mail: an empty server turns email off", not ml.configured(ml.check_settings({"host": "", "from_address": ""}, old)))
+_md = tempfile.mkdtemp()
+ml.save_settings(_md, n)
+check("mail: settings saved for the server only, password and all", stat.S_IMODE(os.stat(os.path.join(_md, "settings.json")).st_mode) == 0o600
+      and ml.load_settings(_md)["password"] == "secret")
+check("mail: the admin's page never gets the password", "password" not in ml.public_settings(n) and ml.public_settings(n)["password_set"] is True)
+check("mail: a teacher's count starts at the limit", ml.remaining(_md, "amc_rakesh", 5) == 5)
+ml.update_teacher(_md, "amc_rakesh", sent=3, reply_to="t@school.example")
+check("mail: emails sent today count", ml.remaining(_md, "amc_rakesh", 5) == 2 and ml.teacher(_md, "amc_rakesh")["reply_to"] == "t@school.example")
+check("mail: another teacher has their own count", ml.remaining(_md, "teacher2", 5) == 5)
+_tf = ml._teacher_file(_md, "amc_rakesh")
+_t = json.load(open(_tf)); _t["date"] = "2000-01-01"; json.dump(_t, open(_tf, "w"))
+check("mail: a new day starts again, addresses kept", ml.remaining(_md, "amc_rakesh", 5) == 5 and ml.teacher(_md, "amc_rakesh")["reply_to"] == "t@school.example")
+check("mail: an odd account name stays in its folder", os.path.dirname(ml._teacher_file(_md, "../x")) == os.path.join(_md, "teachers"))
+
+# A small SMTP server: AUTH PLAIN with one password, messages kept.
+class _Smtp(socketserver.StreamRequestHandler):
+    got = []
+    def handle(self):
+        w = lambda line: self.wfile.write(line.encode() + b"\r\n")
+        w("220 test ESMTP"); frm, rcpt = None, []
+        while True:
+            line = self.rfile.readline().decode().rstrip("\r\n")
+            if not line:
+                return
+            cmd = line.split(" ", 1)[0].upper()
+            if cmd in ("EHLO", "HELO"):
+                w("250-test"); w("250 AUTH PLAIN")
+            elif cmd == "AUTH":
+                user_pw = base64.b64decode(line.split()[2]).split(b"\0")
+                w("235 ok" if user_pw[1:] == [b"exams", b"right"] else "535 5.7.8 Username and Password not accepted")
+            elif cmd == "MAIL":
+                frm = line
+            elif cmd == "RCPT":
+                if "refuse@" in line:
+                    w("550 5.1.1 No such user"); continue
+                rcpt.append(line)
+                w("250 ok"); continue
+            elif cmd == "DATA":
+                w("354 go"); body = b""
+                while True:
+                    l = self.rfile.readline()
+                    if l in (b".\r\n", b""):
+                        break
+                    body += l
+                _Smtp.got.append((rcpt, body)); rcpt = []
+            elif cmd == "QUIT":
+                w("221 bye"); return
+            if cmd in ("MAIL", "DATA", "RSET", "NOOP"):
+                w("250 ok")
+socketserver.ThreadingTCPServer.daemon_threads = True  # a failed check never leaves the run waiting on a connection
+_srv = socketserver.ThreadingTCPServer(("127.0.0.1", 0), _Smtp)
+threading.Thread(target=_srv.serve_forever, daemon=True).start()
+_ss = dict(ml.DEFAULTS, host="127.0.0.1", port=_srv.server_address[1], security="none", user="exams", password="right", from_address="exams@school.example")
+_c = ml.connect(_ss)
+_c.send_message(ml.build_message(_ss, ["marie.curie@example.org"], "Your mark", "3.25", ("s.pdf", b"%PDF")), to_addrs=["marie.curie@example.org"])
+try:
+    _c.send_message(ml.build_message(_ss, ["refuse@example.org"], "x", "y"), to_addrs=["refuse@example.org"]); _why = ""
+except smtplib.SMTPException as e:
+    _why = ml.explain(e)
+_c.quit()
+check("mail: signs in and sends", len(_Smtp.got) == 1 and b"Subject: Your mark" in _Smtp.got[0][1] and "marie.curie" in _Smtp.got[0][0][0])
+check("mail: a refused address in words", "refused the address" in _why and "No such user" in _why)
+try:
+    ml.connect(dict(_ss, password="wrong")); _why = ""
+except smtplib.SMTPException as e:
+    _why = ml.explain(e)
+check("mail: a wrong password in words", "user name or password" in _why)
+_free = socket.socket(); _free.bind(("127.0.0.1", 0)); _port = _free.getsockname()[1]; _free.close()
+try:
+    ml.connect(dict(_ss, port=_port), timeout=3); _why = ""
+except OSError as e:
+    _why = ml.explain(e)
+check("mail: a server that doesn't answer in words", _why.startswith("Can't reach the mail server"))
+_srv.shutdown(); shutil.rmtree(_md)
+
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

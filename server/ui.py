@@ -20,6 +20,7 @@ import json
 import os
 import re
 import shutil
+import smtplib
 import sqlite3
 import subprocess
 import tarfile
@@ -30,6 +31,7 @@ import uuid
 
 import ui_gallery as gallery
 import ui_print as printing
+import ui_mail as mail
 import ui_legend as legend
 import ui_structure as paper_structure
 import ui_builder as paper_builder
@@ -79,6 +81,7 @@ def init_app(app, server_module):
 @bp.route("/exams")
 @bp.route("/new")
 @bp.route("/appearance")
+@bp.route("/email")
 @bp.route("/banks")
 @bp.route("/bank/<name>")
 @bp.route("/exam/<name>")
@@ -1036,7 +1039,9 @@ def on_unlock(data):
                 pass
 
     def change(rec):
-        for k in ("lock", "layout_ok", "marks"):
+        # email_log: who was sent which sheet. The sheets are gone, and the
+        # next scans' numbers belong to other students.
+        for k in ("lock", "layout_ok", "marks", "email_log"):
             rec.pop(k, None)
     _update_record(pdir, change)
     add_activity(pdir, "Unlocked: layout, scans, marks, matches, exported marks and annotated sheets removed")
@@ -2146,6 +2151,364 @@ def on_annotate_preview(data):
         core.show_messages(messages)
     core.emit_msg("ui-annotate-preview", {"file": f"{PREVIEW_DIR}/{PREVIEW_FILE}" if ok else None,
                                           "student": student, "copy": copy})
+
+
+# ---- email results (ui_mail.py, issue #7)
+#
+# The administrator sets the mail server (Email sending); a teacher sends
+# each student their annotated sheet from the exam's Email results screen.
+# What was sent to whom is kept in amcweb.json ("email_log", per copy), so
+# a second round only goes to those not reached yet.
+
+_mail_jobs = {}  # exam folder -> {"stop": bool}: one sending at a time per exam
+MAIL_LOG_MAX_ERROR = 300
+
+
+def _mail_dir():
+    return mail.mail_dir(os.path.join(_root(), vcs.AMCWEB_DIR))
+
+
+def _mail_owner():
+    return core.username(ifnone="") or vcs.LOCAL_OWNER
+
+
+def _marks_for_mail(pdir):
+    """{(student, copy): (points, max points, mark)} and what the mark is out of."""
+    db = _db_for(pdir, "scoring")
+    if not db:
+        return {}, None
+    marks = {(s, c): (t, mx, m) for s, c, t, mx, m in _query(lambda: db.db.execute(
+        "SELECT student, copy, total, max, mark FROM scoring.scoring_mark").fetchall(), [])}
+    row = _query(lambda: db.db.execute(
+        "SELECT value FROM scoring.scoring_variables WHERE name='mark_max'").fetchone())
+    return marks, (row[0] if row else None)
+
+
+def email_rows(pdir, rec):
+    """Every scanned sheet with what an email to its student needs: the
+    addresses from the class list's email column, the annotated sheet, the
+    mark, the values for the message text, and why it can't be sent
+    (problem: unmatched, no-sheet, no-email, bad-email; None when it can)."""
+    cl = class_list()
+    usable = bool(cl and not cl.get("error") and cl.get("key"))
+    names = student_names(cl) if usable else {}
+    by_id = {r.get(cl["key"], ""): r for r in cl["rows"]} if usable else {}
+    column = core.get_option("email_col") or ""
+    if usable and column not in cl["columns"]:
+        column = mail.guess_email_column(cl["columns"], cl["rows"]) or ""
+    files = {(f["student"], f["copy"]): f["file"] for f in _annotated_files(pdir, {}) if f["student"] is not None}
+    marks, out_of = _marks_for_mail(pdir)
+    log = rec.get("email_log") or {}
+    exam = os.path.basename(pdir)
+    rows = []
+    for sh in _query(lambda: sheet_rows(pdir), []):
+        key = (sh["student"], sh["copy"])
+        student = by_id.get(sh["id"]) if sh["id"] else None
+        to, bad = mail.split_addresses(student.get(column, "") if student and column else "")
+        problem = ("unmatched" if student is None else "no-sheet" if key not in files
+                   else "no-email" if not to else "bad-email" if bad else None)
+        t, mx, m = marks.get(key, (None, None, None))
+        entry = log.get(f"{key[0]}:{key[1]}")
+        if entry and not mail.same_addresses(entry.get("to"), to):
+            # The log is kept per sheet. An email that went to other
+            # addresses (the sheet was matched to another student then, or
+            # the class list's address has changed) hasn't reached this
+            # student: the page says so and counts the sheet as to send.
+            entry = dict(entry, elsewhere=True)
+        rows.append({"student": key[0], "copy": key[1], "id": sh["id"], "name": names.get(sh["id"]),
+                     "to": to, "bad": bad, "file": files.get(key), "mark": m, "problem": problem,
+                     "log": entry,
+                     "values": {"mark": m, "max": out_of, "total": t, "points": mx, "exam": exam,
+                                "name": names.get(sh["id"]) or "", "columns": student or {}}})
+    return {"rows": rows, "column": column, "columns": cl["columns"] if usable else []}
+
+
+def _email_text(cfg):
+    return (cfg.get("subject") or mail.DEFAULT_SUBJECT), (cfg.get("body") or mail.DEFAULT_BODY)
+
+
+def _annotated_pdf(pdir, file):
+    """The bytes of an annotated sheet of this exam, or None."""
+    adir = os.path.realpath(_annotated_dir(pdir))
+    path = os.path.realpath(os.path.join(adir, file or ""))
+    if not path.startswith(adir + os.sep) or not os.path.isfile(path):
+        return None
+    with open(path, "rb") as f:
+        return f.read()
+
+
+@bp.route("/ui/api/email")
+def api_email():
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    rec = read_record(pdir)
+    s = mail.load_settings(_mail_dir())
+    info = email_rows(pdir, rec)
+    cfg = rec.get("email") or {}
+    who = mail.teacher(_mail_dir(), _mail_owner())
+    subject, body = _email_text(cfg)
+    stale = False
+    if _has_db(pdir, "scoring") and _query(core.Amcdb(pdir).n_graded_students, 0):
+        stale = results_freshness(pdir, rec, {"exports": _files(f"{pdir}/exports")})["annotated_stale"]
+    rows = [{k: r[k] for k in ("student", "copy", "id", "name", "to", "bad", "file", "mark", "problem", "log")}
+            for r in info["rows"]]
+    return jsonify(project=name, configured=mail.configured(s), can_setup=can_brand(),
+                   sender=mail.sender_text(s) if mail.configured(s) else None,
+                   columns=info["columns"], column=info["column"], subject=subject, body=body,
+                   defaults={"subject": mail.DEFAULT_SUBJECT, "body": mail.DEFAULT_BODY},
+                   reply_to=cfg.get("reply_to") or who.get("reply_to") or "",
+                   test_to=cfg.get("test_to") or who.get("test_to") or "",
+                   rows=rows, single=core.get_option("regroupement_type") == "ALL", stale=stale,
+                   remaining=mail.remaining(_mail_dir(), _mail_owner(), s["daily_limit"]), limit=s["daily_limit"],
+                   sending=pdir in _mail_jobs)
+
+
+@bp.route("/ui/api/email/settings", methods=["POST"])
+def api_email_settings():
+    """The exam's message: the class list's email column, subject, text,
+    where replies go, and the address for tests."""
+    name = _open_project()
+    if not name:
+        return jsonify(error="This exam doesn't exist any more.")
+    data = request.get_json(silent=True) or {}
+    pdir = core.project_dir()
+    for k in ("reply_to", "test_to"):
+        v = str(data.get(k) or "").strip()
+        if v and not mail.valid_address(v):
+            return jsonify(error=f"{'Replies go to' if k == 'reply_to' else 'The test address'}: “{v[:80]}” isn't an email address.")
+    cl = class_list()
+    column = str(data.get("column") or "")
+    if column and not (cl and column in cl.get("columns", [])):
+        return jsonify(error="That column isn't in the class list.")
+    core.change_option("email_col", column)
+    cfg = {"subject": mail.one_line(str(data.get("subject") or ""), 300),
+           "body": str(data.get("body") or "")[:20000],
+           "reply_to": str(data.get("reply_to") or "").strip(), "test_to": str(data.get("test_to") or "").strip()}
+    _update_record(pdir, lambda rec: rec.__setitem__("email", cfg))
+    mail.update_teacher(_mail_dir(), _mail_owner(), reply_to=cfg["reply_to"], test_to=cfg["test_to"])
+    return jsonify(ok=True)
+
+
+@bp.route("/ui/api/email/preview", methods=["POST"])
+def api_email_preview():
+    """One student's email, as it would be sent with the text being typed."""
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    data = request.get_json(silent=True) or {}
+    pdir = core.project_dir()
+    rec = read_record(pdir)
+    try:
+        key = (int(data.get("student")), int(data.get("copy") or 0))
+    except (TypeError, ValueError):
+        return jsonify(error="Choose a sheet.")
+    r = next((x for x in email_rows(pdir, rec)["rows"] if (x["student"], x["copy"]) == key), None)
+    if not r:
+        return jsonify(error="No such sheet.")
+    cfg = rec.get("email") or {}
+    subject, body = _email_text({"subject": data.get("subject", cfg.get("subject")), "body": data.get("body", cfg.get("body"))})
+    size = None
+    if r["file"]:
+        p = os.path.join(_annotated_dir(pdir), r["file"])
+        size = os.path.getsize(p) if os.path.isfile(p) else None
+    return jsonify(project=name, to=r["to"], problem=r["problem"], subject=mail.one_line(mail.substitute(subject, r["values"])),
+                   body=mail.substitute(body, r["values"]),
+                   attachment={"name": r["file"], "size": size, "path": f"{PREVIEW_DIR}/pdf/{r['file']}"} if r["file"] else None)
+
+
+def on_email_send(data):
+    """Send the chosen sheets' emails, or one test (test_to: the first
+    chosen sheet's email, to that address). Progress goes to the page as
+    it happens; each student's result is recorded at once, so a stop or a
+    crash never makes a second round send twice."""
+    data = data if isinstance(data, dict) else {}
+    pdir = core.project_dir()
+    d = _mail_dir()
+    s = mail.load_settings(d)
+    if not mail.configured(s):
+        core.dialog_msg(warn="Email sending isn't set up on this server yet.")
+        return
+    test_to = str(data.get("test_to") or "").strip()
+    if test_to and not mail.valid_address(test_to):
+        core.dialog_msg(warn="The test address isn't an email address.")
+        return
+    want = []
+    for x in (data.get("copies") or [])[:5000] if isinstance(data.get("copies"), list) else []:
+        try:
+            want.append((int(x[0]), int(x[1])))
+        except (TypeError, ValueError, IndexError):
+            pass
+    rec = read_record(pdir)
+    cfg = rec.get("email") or {}
+    rows = {(r["student"], r["copy"]): r for r in email_rows(pdir, rec)["rows"] if not r["problem"]}
+    todo = [rows[k] for k in dict.fromkeys(want) if k in rows]
+    if test_to:
+        todo = todo[:1] or list(rows.values())[:1]
+    if not todo:
+        core.dialog_msg(warn="None of the chosen students can get an email: check their email address and annotated sheet.")
+        return
+    owner = _mail_owner()
+    left = mail.remaining(d, owner, s["daily_limit"])
+    if len(todo) > left:
+        core.dialog_msg(warn=f"This server sends at most {s['daily_limit']} emails a day per teacher, and {left} are left for today. "
+                             "Choose fewer students, or send the rest tomorrow.")
+        return
+    if pdir in _mail_jobs:
+        core.dialog_msg(warn="Emails for this exam are being sent already.")
+        return
+    job = _mail_jobs[pdir] = {"stop": False}
+    subject, body = _email_text(cfg)
+    reply_to = cfg.get("reply_to") or None
+    sent = failed = 0
+    stopped, error, conn = False, None, None
+    total = len(todo)
+    core.emit_msg("ui-email-progress", {"done": 0, "total": total, "sent": 0, "failed": 0, "test": bool(test_to)})
+    try:
+        conn = mail.connect(s)
+        for i, r in enumerate(todo):
+            if job["stop"]:
+                stopped = True
+                break
+            to = [test_to] if test_to else r["to"]
+            pdf = _annotated_pdf(pdir, r["file"])
+            ok, err = False, None
+            if pdf is None:
+                err = "The annotated sheet is missing: annotate again."
+            else:
+                try:
+                    msg = mail.build_message(s, to, ("[Test] " if test_to else "") + mail.substitute(subject, r["values"]),
+                                             mail.substitute(body, r["values"]), (r["file"], pdf), reply_to)
+                    conn.send_message(msg, to_addrs=to)
+                    ok = True
+                except smtplib.SMTPServerDisconnected:
+                    # The server hung up between two emails: connect again once.
+                    # If that fails, the round stops (the outer handler) rather
+                    # than every remaining student waiting for a timeout.
+                    conn = mail.connect(s)
+                    try:
+                        conn.send_message(msg, to_addrs=to)
+                        ok = True
+                    except smtplib.SMTPAuthenticationError:
+                        raise
+                    except (smtplib.SMTPException, OSError) as e:
+                        err = mail.explain(e)
+                except smtplib.SMTPAuthenticationError:
+                    raise
+                except (smtplib.SMTPException, OSError) as e:
+                    err = mail.explain(e)
+                except Exception:
+                    # Something the mail library won't take in this one
+                    # email: the student's, not a reason to leave the
+                    # others without theirs.
+                    core.app.logger.exception(f"Email for <{os.path.basename(pdir)}>, sheet {r['student']}:{r['copy']}")
+                    err = "This email couldn't be written. Check the subject and this student's line in the class list."
+            sent, failed = sent + ok, failed + (not ok)
+            if ok:
+                mail.update_teacher(d, owner, sent=1)
+            if not test_to:
+                _log_email(pdir, r, to, ok, err)
+            core.emit_msg("ui-email-progress", {"done": i + 1, "total": total, "sent": sent, "failed": failed,
+                                                "student": r["student"], "copy": r["copy"], "ok": ok, "error": err,
+                                                "test": bool(test_to)})
+            if s["delay"] and i < total - 1:
+                core.socketio.sleep(s["delay"])
+    except (smtplib.SMTPException, OSError) as e:
+        error = mail.explain(e)
+    except Exception:
+        # The page waits for "ui-email-done": it gets it, with what is in the log.
+        core.app.logger.exception(f"Email for <{os.path.basename(pdir)}>")
+        error = "Something went wrong on the server. The server log has the details."
+    finally:
+        _mail_jobs.pop(pdir, None)
+        if conn:
+            try:
+                conn.quit()
+            except (smtplib.SMTPException, OSError):
+                pass
+    if test_to:
+        mail.update_teacher(d, owner, test_to=test_to)
+    elif sent or failed:
+        add_activity(pdir, f"Annotated sheets emailed: {sent} sent" + (f", {failed} failed" if failed else "")
+                     + (" (stopped)" if stopped else ""))
+    core.app.logger.info(f"Email for <{os.path.basename(pdir)}> by {_who()}: {sent} sent, {failed} failed"
+                         + (f", test to {test_to}" if test_to else "") + (f", error: {error}" if error else ""))
+    core.emit_msg("ui-email-done", {"sent": sent, "failed": failed, "stopped": stopped, "error": error,
+                                    "test": test_to or None, "total": total})
+    core.emit_msg("ui-changed", "email")
+
+
+def _log_email(pdir, r, to, ok, err):
+    k = f"{r['student']}:{r['copy']}"
+    now = int(time.time())
+
+    def change(rec):
+        log = rec.setdefault("email_log", {})
+        old = log.get(k) or {}
+        log[k] = {"at": now, "to": ", ".join(to), "ok": ok, "error": (err or "")[:MAIL_LOG_MAX_ERROR] or None,
+                  "by": _who(), "sent": now if ok else old.get("sent")}
+    _update_record(pdir, change)
+
+
+def on_email_stop(data=None):
+    job = _mail_jobs.get(core.project_dir())
+    if job:
+        job["stop"] = True
+
+
+# The administrator's settings (Email sending page)
+
+@bp.route("/ui/api/mail/settings", methods=["GET", "POST"])
+def api_mail_settings():
+    core.headers_info()
+    if not can_brand():
+        return jsonify(can_edit=False, error="Only administrators can set up email sending."), 403
+    d = _mail_dir()
+    s = mail.load_settings(d)
+    if request.method == "GET":
+        return jsonify(can_edit=True, settings=mail.public_settings(s), ports=mail.DEFAULT_PORTS)
+    if not request.headers.get("AMC-sid"):
+        return jsonify(error="Only administrators can set up email sending."), 403
+    try:
+        new = mail.check_settings(request.get_json(silent=True), s)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    mail.save_settings(d, new)
+    core.app.logger.info(f"Email settings changed by {_who()}: {new['host']}:{new['port']} {new['security']}, "
+                         f"from {new['from_address']}, user {new['user'] or '-'}")
+    return jsonify(ok=True, settings=mail.public_settings(new))
+
+
+@bp.route("/ui/api/mail/test", methods=["POST"])
+def api_mail_test():
+    """Send one test email with the settings on the page (saved or not)."""
+    core.headers_info()
+    if not can_brand() or not request.headers.get("AMC-sid"):
+        return jsonify(error="Only administrators can set up email sending."), 403
+    data = request.get_json(silent=True) or {}
+    to = str(data.get("to") or "").strip()
+    if not mail.valid_address(to):
+        return jsonify(error="Type the address to send the test to."), 400
+    try:
+        s = mail.check_settings(data.get("settings"), mail.load_settings(_mail_dir()))
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    if not mail.configured(s):
+        return jsonify(error="Fill in the mail server and the sender's address first."), 400
+    msg = mail.build_message(s, [to], "Test email from AMC",
+                             f"This test was sent from {request.host_url} by {_who() or 'the administrator'}.\n\n"
+                             "If you can read it, email sending works: teachers can now email annotated sheets "
+                             "to their students from an exam's Annotate step.\n")
+    try:
+        conn = mail.connect(s)
+        try:
+            conn.send_message(msg)
+        finally:
+            conn.quit()
+    except (smtplib.SMTPException, OSError) as e:
+        return jsonify(error=mail.explain(e))
+    return jsonify(ok=True)
 
 
 def class_list_refusal(filename):
@@ -4804,7 +5167,7 @@ def marking_inputs_for(pdir, name):
 # "What to do here" list also feeds the box at the top of that step.
 
 GUIDE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "guide", "en")
-GUIDE_PAGES = ("index",) + tuple(s for s in STEPS if s != "settings")
+GUIDE_PAGES = ("index",) + tuple(s for s in STEPS if s != "settings") + ("email",)  # Email results opens from Annotate
 
 
 @bp.route("/ui/api/guide")
@@ -4892,6 +5255,8 @@ SOCKET_EVENTS = {
     "ui-annotate": on_annotate,
     "ui-annotate-preview": on_annotate_preview,
     "ui-annotate-style": on_annotate_style,
+    "ui-email-send": on_email_send,
+    "ui-email-stop": on_email_stop,
     "ui-scale-refresh": on_scale_refresh,
     "ui-question-edit": on_question_edit,
     "ui-create-exam": on_create_exam,
