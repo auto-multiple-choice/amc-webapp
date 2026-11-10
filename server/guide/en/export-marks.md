@@ -17,7 +17,7 @@ Getting the marks out of the app, for a spreadsheet or the school's system.
 3. For CSV, check the **decimal mark** and what goes **between columns**, and tick the **class list columns** to add (a roll number, an email address…).
 4. Press **Export**. A CSV file opens in the preview panel; both can be downloaded.
 
-**CSV settings.** A decimal point (3.25) with commas between columns suits spreadsheets in English and most school systems: the file opens with a double click, numbers as numbers. A decimal comma (3,25) suits spreadsheets set to French, German, Spanish and other languages that write numbers that way; the columns are then separated by semicolons, never commas. Every column of the class list is added after copy, code and name unless you untick it; a new class list's columns are added too.
+**CSV settings.** A decimal point (3.25) with commas between columns suits spreadsheets in English and most school systems: the file opens with a double click, numbers as numbers. A decimal comma (3,25) suits spreadsheets set to French, German, Spanish and other languages that write numbers that way; the columns are then separated by semicolons, never commas. Every column of the class list is added after copy, code and name unless you untick it; a new class list's columns are added too. A few can't be added, and the page names them: a column whose name has accented or other non-English letters or a comma, or is one AMC uses itself (`mark`, `total`, `max`, `student`, `copy`). Rename it in the class list to add it.
 
 The **shareable marks link** is for tools that import marks from an address. Anyone with the link can see student codes and marks without signing in, so turn it on only when needed.
 

@@ -1844,13 +1844,33 @@ def _export_module():
 # own: unset means a decimal point, commas, and every class list column.
 CSV_SEPARATORS = {",": ",", ";": ";", "tab": "tab"}
 CSV_IDENTITY = "student.copy,student.key,student.name"
+# AMC's CSV module looks a column up among its own values for the sheet
+# before the class list's (CSV.pm: $m->{$c} ? $m->{$c} : the class list's),
+# so a class list column with one of these names would show AMC's figure
+# (the points, the sheet's number, a time) under the class list's heading.
+CSV_AMC_NAMES = frozenset((
+    "student", "copy", "total", "max", "mark", "creation", "abs", "copy.version",
+    "student.copy", "student.key", "student.name", "student.line", "student.all"))
+
+
+def csv_column_refused(c):
+    """Whether AMC's CSV export can't add the class list column named C:
+    its list of columns is separated by commas; it reads the names from
+    its command line as bytes, so a name with letters outside ASCII finds
+    no column (a garbled heading over empty cells); and it has values of
+    its own under some names (CSV_AMC_NAMES)."""
+    return "," in c or c in CSV_AMC_NAMES or not (c.isascii() and c.isprintable())
 
 
 def csv_class_columns(columns, key):
     """The class list columns the CSV can add: all but the code column
-    (already there as "A:<key>") and names AMC can't take in its
-    comma-separated list."""
-    return [c for c in columns if c and c != key and "," not in c]
+    (already there as "A:<key>") and those AMC can't take."""
+    return [c for c in columns if c and c != key and not csv_column_refused(c)]
+
+
+def csv_refused_columns(columns, key):
+    """The class list columns the CSV can't add, for the page to name."""
+    return [c for c in columns if c and c != key and csv_column_refused(c)]
 
 
 def csv_settings(o, columns, key):
@@ -1899,7 +1919,8 @@ def api_export():
         link = f"{request.root_url}public/{core.project_uuid()}/marks.csv"
     columns, key = _class_columns()
     return jsonify(project=name, options=o, files=files, public_link=link,
-                   csv=csv_settings(o, columns, key), class_columns=csv_class_columns(columns, key), list_key=key)
+                   csv=csv_settings(o, columns, key), class_columns=csv_class_columns(columns, key),
+                   class_columns_refused=csv_refused_columns(columns, key), list_key=key)
 
 
 def on_export(data=None):

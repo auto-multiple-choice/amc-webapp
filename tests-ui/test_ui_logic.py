@@ -149,6 +149,13 @@ check("csv: columns left out stay out, new ones come in", cs(app_csv_skip="surna
 a = oo(ui.csv_export_args({"app_csv_decimal": ",", "app_csv_skip": "name"}, cols, "id"))
 check("csv: the arguments AMC export takes", a == {"decimal": ",", "separateur": ";", "columns": "student.copy,student.key,student.name,surname,roll_no", "encodage": "UTF-8"})
 check("csv: no class list, only AMC's three columns", oo(ui.csv_export_args({}, [], None))["columns"] == "student.copy,student.key,student.name")
+odd = ["id", "roll_no", "total", "mark", "max", "student", "copy", "creation", "abs", "student.name", "Total", "Pr\u00e9nom", "\u0928\u093e\u092e", "Roll No", "a,b", "tab\there"]
+check("csv: a column named like one of AMC's own values isn't added (AMC would write its own figure under it)",
+      ui.csv_class_columns(odd, "id") == ["roll_no", "Total", "Roll No"])
+check("csv: ...nor one with letters outside ASCII (AMC finds no such column), a comma or a control character; the page names them",
+      ui.csv_refused_columns(odd, "id") == ["total", "mark", "max", "student", "copy", "creation", "abs", "student.name", "Pr\u00e9nom", "\u0928\u093e\u092e", "a,b", "tab\there"])
+check("csv: the code column is neither added nor named as refused", "id" not in ui.csv_class_columns(odd, "id") + ui.csv_refused_columns(odd, "id")
+      and oo(ui.csv_export_args({}, odd, "id"))["columns"] == "student.copy,student.key,student.name,roll_no,Total,Roll No")
 
 os.makedirs(os.path.join(pdir, "data"))
 c = sqlite3.connect(os.path.join(pdir, "data", "capture.sqlite"))

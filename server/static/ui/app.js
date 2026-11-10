@@ -3607,9 +3607,12 @@ function exportCard(x, st) {
 
 /* CSV only: decimal mark, separator and class list columns (issue #17).
    The server works out what is used (x.csv): a decimal comma never goes
-   with commas between columns. */
+   with commas between columns. It also says which class list columns AMC's
+   CSV export can't take (x.class_columns_refused). */
 function csvSettings(x) {
   const c = x.csv;
+  const refused = x.class_columns_refused || [];
+  const refusedHint = refused.length ? `<span class="field-hint" id="csv-refused">Can't be added: ${refused.map((col) => `<b>${esc(col)}</b>`).join(', ')}. AMC's CSV export takes a column whose name is in plain English letters, digits and signs, without a comma, and isn't a name it uses itself (mark, total, max, student, copy). Rename the column in the class list to add it.</span>` : '';
   const opt = (v, l, cur, dis = false) => `<option value="${v}" ${cur === v ? 'selected' : ''} ${dis ? 'disabled' : ''}>${l}</option>`;
   const comma = c.decimal === ',';
   return `<div class="form-grid" style="margin-top:12px">
@@ -3621,7 +3624,7 @@ function csvSettings(x) {
     <div class="field" style="margin-top:12px"><span class="field-label">Class list columns</span>
       ${x.class_columns.length ? `<div class="check-row">${x.class_columns.map((col) => `<label class="check"><input type="checkbox" data-csvcol="${esc(col)}" ${c.columns.includes(col) ? 'checked' : ''}><span>${esc(col)}</span></label>`).join('')}</div>
         <span class="field-hint">Added after copy, ${x.list_key ? `code (<code>${esc(x.list_key)}</code>)` : 'code'} and name, for the sheets matched to a student.</span>`
-    : '<span class="field-hint">Load a class list in Match students to add its columns, such as a roll number or an email address.</span>'}</div>`;
+    : refused.length ? '' : '<span class="field-hint">Load a class list in Match students to add its columns, such as a roll number or an email address.</span>'}${refusedHint}</div>`;
 }
 
 function publicLinkCard(x) {
