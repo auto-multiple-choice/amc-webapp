@@ -351,6 +351,17 @@ async function main() {
     await b.js(`document.querySelector('#em-table').scrollIntoView(); true`);
     await b.shot('r10-email-sent');
     emailed = true;
+    // An address corrected in the class list afterwards: the email went elsewhere, this student still has to get it
+    const toSend = `S.email.rows.filter(FILTERS.find((f) => f[0] === 'send')[2]).map((r) => r.student).join()`;
+    inApp('sed', '-i', 's/ada.lovelace@example.org/ada@new.example/', `${projectDir}/class-10B.csv`);
+    await b.js('loadEmail(); true');
+    b.check('A student whose address changed since the email shows as sent to another address, and is to send again',
+      await b.waitFor(`(() => { const r = S.email.rows.find((x) => x.student === 3); const cell = document.querySelector('#em-table tr[data-row="3:0"] .em-status');
+        return !!r && r.to[0] === 'ada@new.example' && !!r.log && r.log.elsewhere === true && !!cell && cell.textContent.includes('Sent to another address') && cell.textContent.includes('ada.lovelace@example.org') && ${toSend} === '3'; })()`, 10000),
+      J(await b.js(`[S.email.rows.find((x) => x.student === 3), ${toSend}]`)));
+    inApp('sed', '-i', 's/ada@new.example/ada.lovelace@example.org/', `${projectDir}/class-10B.csv`);
+    await b.js('loadEmail(); true');
+    b.check('...and as sent again with the address the email went to', await b.waitFor(`(() => { const r = S.email.rows.find((x) => x.student === 3); return !!r && r.to[0] === 'ada.lovelace@example.org' && r.log.ok && !r.log.elsewhere && ${toSend} === ''; })()`, 10000));
     await b.js(`postJSON('/ui/api/mail/settings', {host: ${J(host)}, port: ${J(port)}, security: 'none', from_address: 'exams@school.example', from_name: 'Test School', daily_limit: 4, delay: 0}); true`);
     await sleep(500);
     await b.click('[data-act="email-filter"][data-v="sent"]');

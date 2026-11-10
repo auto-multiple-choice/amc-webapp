@@ -116,9 +116,22 @@ def substitute(text, v):
     return _CODE.sub(one, text or "")
 
 
+# Control characters, and everything Python's email library takes for a
+# line break in a header (str.splitlines: also \v, \f, \x1c-\x1e, \x85 and
+# the Unicode line and paragraph separators, which come with pasted text).
+# It refuses a header holding one, so they go before it sees them.
+_CONTROL = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029]+")
+
+
 def one_line(s, most=300):
-    """A header value: no line breaks, not too long."""
-    return re.sub(r"[\r\n\t]+", " ", s or "").strip()[:most]
+    """A header value: no line breaks or control characters, not too long."""
+    return _CONTROL.sub(" ", s or "").strip()[:most]
+
+
+def same_addresses(sent_to, to):
+    """Whether an email recorded as sent to SENT_TO (the log's text) went
+    to the addresses TO, whatever their order or capitals."""
+    return {a.lower() for a in split_addresses(sent_to)[0]} == {a.lower() for a in to}
 
 
 def build_message(settings, to, subject, body, attachment=None, reply_to=None):
@@ -209,10 +222,17 @@ def check_settings(data, old):
         raise ValueError("The port is a number from 1 to 65535, such as 587.")
     s["port"] = port
     s["user"] = one_line(str(data.get("user", "")), 254)
-    if data.get("clear_password"):
-        s["password"] = ""
-    elif data.get("password"):
+    if data.get("password"):  # also after "Remove the saved password": what is typed counts
         s["password"] = str(data["password"])[:500]
+    elif data.get("clear_password"):
+        s["password"] = ""
+    elif s.get("password") and host.lower() != str(old.get("host") or "").lower():
+        # The saved password was typed for the server it is sent to. It
+        # never follows a change of server: a test email through a server
+        # of one's own would be a way to read it.
+        if host and s["user"]:
+            raise ValueError("The mail server changed: type its password again.")
+        s["password"] = ""
     addr = str(data.get("from_address", "")).strip()
     if host and not valid_address(addr):
         raise ValueError("The sender's address isn't an email address.")
@@ -223,7 +243,7 @@ def check_settings(data, old):
     try:
         s["daily_limit"] = max(1, min(LIMIT_MAX, int(data.get("daily_limit") or DEFAULTS["daily_limit"])))
         s["delay"] = max(0.0, min(float(DELAY_MAX), float(data.get("delay") if data.get("delay") not in (None, "") else DEFAULTS["delay"])))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise ValueError("The limit and the pause are numbers.")
     return s
 

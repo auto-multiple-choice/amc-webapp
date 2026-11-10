@@ -1039,7 +1039,9 @@ def on_unlock(data):
                 pass
 
     def change(rec):
-        for k in ("lock", "layout_ok", "marks"):
+        # email_log: who was sent which sheet. The sheets are gone, and the
+        # next scans' numbers belong to other students.
+        for k in ("lock", "layout_ok", "marks", "email_log"):
             rec.pop(k, None)
     _update_record(pdir, change)
     add_activity(pdir, "Unlocked: layout, scans, marks, matches, exported marks and annotated sheets removed")
@@ -2206,9 +2208,16 @@ def email_rows(pdir, rec):
         problem = ("unmatched" if student is None else "no-sheet" if key not in files
                    else "no-email" if not to else "bad-email" if bad else None)
         t, mx, m = marks.get(key, (None, None, None))
+        entry = log.get(f"{key[0]}:{key[1]}")
+        if entry and not mail.same_addresses(entry.get("to"), to):
+            # The log is kept per sheet. An email that went to other
+            # addresses (the sheet was matched to another student then, or
+            # the class list's address has changed) hasn't reached this
+            # student: the page says so and counts the sheet as to send.
+            entry = dict(entry, elsewhere=True)
         rows.append({"student": key[0], "copy": key[1], "id": sh["id"], "name": names.get(sh["id"]),
                      "to": to, "bad": bad, "file": files.get(key), "mark": m, "problem": problem,
-                     "log": log.get(f"{key[0]}:{key[1]}"),
+                     "log": entry,
                      "values": {"mark": m, "max": out_of, "total": t, "points": mx, "exam": exam,
                                 "name": names.get(sh["id"]) or "", "columns": student or {}}})
     return {"rows": rows, "column": column, "columns": cl["columns"] if usable else []}
@@ -2368,9 +2377,9 @@ def on_email_send(data):
             if pdf is None:
                 err = "The annotated sheet is missing: annotate again."
             else:
-                msg = mail.build_message(s, to, ("[Test] " if test_to else "") + mail.substitute(subject, r["values"]),
-                                         mail.substitute(body, r["values"]), (r["file"], pdf), reply_to)
                 try:
+                    msg = mail.build_message(s, to, ("[Test] " if test_to else "") + mail.substitute(subject, r["values"]),
+                                             mail.substitute(body, r["values"]), (r["file"], pdf), reply_to)
                     conn.send_message(msg, to_addrs=to)
                     ok = True
                 except smtplib.SMTPServerDisconnected:
@@ -2389,6 +2398,12 @@ def on_email_send(data):
                     raise
                 except (smtplib.SMTPException, OSError) as e:
                     err = mail.explain(e)
+                except Exception:
+                    # Something the mail library won't take in this one
+                    # email: the student's, not a reason to leave the
+                    # others without theirs.
+                    core.app.logger.exception(f"Email for <{os.path.basename(pdir)}>, sheet {r['student']}:{r['copy']}")
+                    err = "This email couldn't be written. Check the subject and this student's line in the class list."
             sent, failed = sent + ok, failed + (not ok)
             if ok:
                 mail.update_teacher(d, owner, sent=1)
@@ -2401,6 +2416,10 @@ def on_email_send(data):
                 core.socketio.sleep(s["delay"])
     except (smtplib.SMTPException, OSError) as e:
         error = mail.explain(e)
+    except Exception:
+        # The page waits for "ui-email-done": it gets it, with what is in the log.
+        core.app.logger.exception(f"Email for <{os.path.basename(pdir)}>")
+        error = "Something went wrong on the server. The server log has the details."
     finally:
         _mail_jobs.pop(pdir, None)
         if conn:

@@ -1550,6 +1550,17 @@ check("mail: one line headers, whatever is typed", m["Subject"] == "Mark Bcc: ev
 check("mail: to, reply-to and the PDF attached", m["To"] == "a@b.org, c@d.org" and m["Reply-To"] == "teacher@school.example"
       and [p.get_filename() for p in m.iter_attachments()] == ["0001-Curie.pdf"] and next(m.iter_attachments()).get_content() == b"%PDF-1.4 x")
 check("mail: a bad reply-to is left out", "Reply-To" not in ml.build_message(st, ["a@b.org"], "s", "b", reply_to="nope"))
+_seps = "\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029\x00\x7f"
+check("mail: one line also without the other line breaks and control characters", ml.one_line(f"Mark{_seps}for\u00a0Ada ") == "Mark for\u00a0Ada")
+try:  # Python's email library refuses a header holding any of them
+    m2 = ml.build_message(dict(st, from_name="Riverside\u2028School"), ["a@b.org"], "Mark for Ada\u2028Lovelace\x0c(pasted)", "b", ("0003-Ada\u2028Lovelace.pdf", b"%PDF"))
+    check("mail: a subject, sender name or file name with a pasted line separator still makes an email",
+          m2["Subject"] == "Mark for Ada Lovelace (pasted)" and b"Subject: Mark for Ada Lovelace (pasted)" in m2.as_bytes()
+          and next(m2.iter_attachments()).get_filename() == "0003-Ada Lovelace.pdf")
+except ValueError as e:
+    check("mail: a subject, sender name or file name with a pasted line separator still makes an email", False)
+check("mail: sent to the same addresses, whatever the order or capitals", ml.same_addresses("A@b.org, c@d.org", ["c@D.org", "a@b.org"])
+      and not ml.same_addresses("a@b.org", ["a@b.org", "c@d.org"]) and not ml.same_addresses("old@b.org", ["new@b.org"]) and not ml.same_addresses(None, ["a@b.org"]))
 check("mail: a sender name with accents and commas", ml.build_message(dict(st, from_name="École Saint-Jean, exams"), ["a@b.org"], "s", "b")["From"].addresses[0].display_name == "École Saint-Jean, exams"
       and ml.sender_text(dict(st, from_name="École")) == "École <exams@school.example>" and ml.sender_text(dict(st, from_name="")) == "exams@school.example")
 old = dict(ml.DEFAULTS, password="secret")
@@ -1563,12 +1574,32 @@ for bad in ({"host": "smtp.x.org; rm", "from_address": "a@b.org"}, {"host": "smt
         ml.check_settings(bad, old); check("mail: bad settings are refused", False)
     except ValueError:
         check("mail: bad settings are refused", True)
-n = ml.check_settings({"host": "smtp.gmail.com", "security": "ssl", "from_address": "a@b.org", "daily_limit": "999999", "delay": "-3"}, old)
+gm = dict(old, host="smtp.gmail.com", user="exams@school.example")
+n = ml.check_settings({"host": "SMTP.gmail.com", "user": "exams@school.example", "security": "ssl", "from_address": "a@b.org", "daily_limit": "999999", "delay": "-3"}, gm)
 check("mail: the port follows the security, the password is kept, limits are bounded",
       n["port"] == 465 and n["password"] == "secret" and n["daily_limit"] == ml.LIMIT_MAX and n["delay"] == 0)
 check("mail: a new password replaces it, and it can be removed",
       ml.check_settings({"host": "h.org", "from_address": "a@b.org", "password": "new"}, old)["password"] == "new"
       and ml.check_settings({"host": "h.org", "from_address": "a@b.org", "clear_password": True}, old)["password"] == "")
+check("mail: a password typed after \"Remove the saved password\" is the one kept",
+      ml.check_settings({"host": "smtp.gmail.com", "from_address": "a@b.org", "password": "typed", "clear_password": True}, gm)["password"] == "typed")
+try:
+    ml.check_settings({"host": "smtp.other.example", "user": "exams@school.example", "from_address": "a@b.org"}, gm)
+    check("mail: the saved password doesn't follow a change of server: it is asked again", False)
+except ValueError as e:
+    check("mail: the saved password doesn't follow a change of server: it is asked again", "password again" in str(e))
+check("mail: ...typed again, the new server gets the new one; without a user name or a server, it is dropped",
+      ml.check_settings({"host": "smtp.other.example", "user": "u", "from_address": "a@b.org", "password": "p2"}, gm)["password"] == "p2"
+      and ml.check_settings({"host": "smtp.other.example", "user": "", "from_address": "a@b.org"}, gm)["password"] == ""
+      and ml.check_settings({"host": "", "user": "exams@school.example", "from_address": ""}, gm)["password"] == "")
+for _odd in (float("inf"), float("nan"), "1e999"):
+    try:
+        ml.check_settings({"host": "", "daily_limit": _odd, "delay": _odd}, old); _r = "taken"
+    except ValueError as e:
+        _r = str(e)
+    except Exception as e:
+        _r = None
+    check("mail: a limit or pause that isn't a number is refused in words, or bounded", _r is not None)
 check("mail: an empty server turns email off", not ml.configured(ml.check_settings({"host": "", "from_address": ""}, old)))
 _md = tempfile.mkdtemp()
 ml.save_settings(_md, n)

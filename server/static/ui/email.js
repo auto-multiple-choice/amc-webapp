@@ -106,12 +106,14 @@ const PROBLEMS = {
 };
 const rowKey = (r) => `${r.student}:${r.copy}`;
 const canSend = (r) => !r.problem;
-const wasSent = (r) => !!(r.log && r.log.ok);
+/* log.elsewhere: the email went to other addresses than this student's now
+   (the sheet was matched to someone else then, or the address has changed). */
+const wasSent = (r) => !!(r.log && r.log.ok && !r.log.elsewhere);
 const FILTERS = [
   ['all', 'All', () => true],
   ['send', 'To send', (r) => canSend(r) && !wasSent(r)],
   ['sent', 'Sent', wasSent],
-  ['failed', 'Failed', (r) => canSend(r) && r.log && !r.log.ok],
+  ['failed', 'Failed', (r) => canSend(r) && r.log && !r.log.ok && !r.log.elsewhere],
   ['cant', 'Can\'t send', (r) => !canSend(r)],
 ];
 
@@ -121,6 +123,7 @@ async function loadEmail() {
   try { r = await getJSON('/ui/api/email'); } catch (e) { console.error(e); return; }
   if (S.project !== p || r.project !== p) return;
   const old = S.email;
+  r.testSaved = r.test_to;
   r.sel = old && old.project === p ? new Set([...old.sel].filter((k) => r.rows.some((x) => rowKey(x) === k && canSend(x))))
     : new Set(r.rows.filter((x) => canSend(x) && !wasSent(x)).map(rowKey));
   r.filter = old && old.project === p ? old.filter : 'all';
@@ -136,6 +139,10 @@ async function loadEmail() {
 function emailStatus(r) {
   if (r.problem) return `<span class="subtle">${PROBLEMS[r.problem]}${r.problem === 'bad-email' && r.bad ? `: ${esc(r.bad)}` : ''}</span>`;
   const when = (t) => new Date(t * 1000).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  if (r.log && r.log.elsewhere) {
+    return r.log.sent ? `<span class="chip chip-warning">${ic('warning-triangle')} Sent to another address</span> <span class="subtle">${esc(r.log.to || '')}, ${when(r.log.sent)}. Not to this one yet.</span>`
+      : '<span class="subtle">Ready</span>';
+  }
   if (r.log && r.log.ok) return `<span class="chip chip-success">${ic('check')} Sent ${when(r.log.at)}</span>`;
   if (r.log) return `<span class="chip chip-danger" title="${esc(r.log.error || '')}">${ic('warning-triangle')} Failed</span> <span class="subtle">${esc(r.log.error || '')}${r.log.sent ? ` · sent before, ${when(r.log.sent)}` : ''}</span>`;
   return '<span class="subtle">Ready</span>';
@@ -166,7 +173,8 @@ function emailFoot() {
       <div class="progress" style="margin-top:6px"><span style="width:${Math.round((p.done / Math.max(1, p.total)) * 100)}%"></span></div></div>
       <button class="btn" data-act="email-stop">${ic('pause')} Stop</button>`;
   }
-  if (E.sending) return '<span class="subtle" style="flex:1">Emails for this exam are being sent…</span>';
+  // Sending started before this page was loaded: no progress comes here, but it can be stopped.
+  if (E.sending) return `<span class="subtle" style="flex:1">Emails for this exam are being sent…</span><button class="btn" data-act="email-stop">${ic('pause')} Stop</button>`;
   const ready = E.configured && !E.single;
   return `<span class="subtle" style="flex:1">${plural(chosen.length, 'student', 'students')} chosen · ${E.remaining} of ${E.limit} emails left today</span>
     <button class="btn btn-primary" data-act="email-send" ${chosen.length && ready ? '' : 'disabled'}>${ic('send-mail')} ${chosen.length ? `Send ${plural(chosen.length, 'email', 'emails')}…` : 'Send emails…'}</button>`;
@@ -280,9 +288,11 @@ async function emailSaveNow() {
   const E = S.email;
   if (!E) return false;
   const okAddr = (v) => !v || EMAIL_RE.test(v);
-  if (!okAddr(E.reply_to) || !okAddr(E.test_to)) return false; // half-typed: saved once it is an address
-  const r = await postJSON('/ui/api/email/settings', { column: E.column, subject: E.subject, body: E.body, reply_to: E.reply_to, test_to: E.test_to });
-  if (r.error) toast(r.error, 'warning-triangle');
+  if (!okAddr(E.reply_to)) return false; // half-typed: saved once it is an address
+  // A half-typed test address keeps the one saved before; it doesn't hold up the message or a send.
+  const testTo = okAddr(E.test_to) ? E.test_to : (E.testSaved || '');
+  const r = await postJSON('/ui/api/email/settings', { column: E.column, subject: E.subject, body: E.body, reply_to: E.reply_to, test_to: testTo });
+  if (r.error) toast(r.error, 'warning-triangle'); else E.testSaved = testTo;
   return !r.error;
 }
 let emailSaveTimer = null;
