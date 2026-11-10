@@ -443,7 +443,7 @@ function onRoute() {
   if (r.name !== S.project) {
     S.previewPage = null; // the page found for a question of another exam
     S.status = null; S.files = null; S.config = null; S.scans = null;
-    S.marks = null; S.students = null; S.exportInfo = null; S.annotateInfo = null; S.matchSheet = null; S.questions = null;
+    S.marks = null; S.students = null; S.exportInfo = null; S.annotateInfo = null; S.matchSheet = null; S.questions = null; S.printInfo = null;
     render();
     openProject(r.name);
     return;
@@ -503,7 +503,7 @@ function enterStep() {
   if (S.route.step === 'questions') enterQuestions();
   if (S.route.step === 'settings' || S.route.step === 'marking-scheme') loadConfig();
   if (S.route.step === 'marking-scheme') { loadScoring(); loadQuestions({ refresh: true }); }
-  if (S.route.step === 'print') loadPrinters();
+  if (S.route.step === 'print') { loadPrinters(); loadPrintInfo(); }
   if (S.route.step === 'upload-scans') loadScans();
   if (S.route.step === 'check-scans') {
     loadScans().then(() => {
@@ -2890,7 +2890,7 @@ function viewPrint() {
       <section class="card"><div class="card-header"><h2>What to print</h2></div><div class="card-body">
         <div class="form-grid"><label class="field"><span class="field-label">From copy</span><input class="input" type="number" id="print-from" min="${r[0]}" max="${r[1]}" value="${r[0]}"></label>
         <label class="field"><span class="field-label">To copy</span><input class="input" type="number" id="print-to" min="${r[0]}" max="${r[1]}" value="${r[1]}"></label></div>
-        ${route === 'printer' ? `<label class="field" style="margin-top:14px"><span class="field-label">Printer</span><select class="select" id="print-printer">${pr.printers.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label>` : ''}
+        ${route === 'printer' ? `<label class="field" style="margin-top:14px"><span class="field-label">Printer</span><select class="select" id="print-printer">${pr.printers.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label>` : printFilesChoice()}
       </div></section>
       <section class="card"><div class="card-header"><h2>Before you print</h2></div><div class="card-body"><div class="checklist">
         <div class="checklist-item ok">${ic('page')}<span>A4 paper</span></div>
@@ -2906,6 +2906,28 @@ function viewPrint() {
     </div>
     <div style="margin-top:16px">${activityCard()}</div>
   </div>`;
+}
+
+/* Save PDFs, exam with a separate answer sheet: each copy's question paper
+   and answer sheet in separate files (the default), or one PDF per copy
+   (server/ui_print.py). */
+function printFilesChoice() {
+  const p = S.printInfo;
+  if (!p || !p.separate) return '';
+  const pages = (n) => (n ? ` (${plural(n, 'page', 'pages')})` : '');
+  const q = p.pages ? p.pages.questions : 0; const a = p.pages ? p.pages.sheet : 0;
+  return `<div class="field" style="margin-top:14px"><span class="field-label">Question paper and answer sheet</span>
+    <div class="segmented full" role="radiogroup" aria-label="Question paper and answer sheet">
+      <button role="radio" aria-pressed="${p.split}" aria-checked="${p.split}" data-act="print-split" data-v="1">Separate PDFs</button>
+      <button role="radio" aria-pressed="${!p.split}" aria-checked="${!p.split}" data-act="print-split" data-v="0">One PDF per copy</button></div>
+    <span class="field-hint">${p.split
+    ? `Two files per copy, in two folders of the zip: <code>question-papers/0001-questions.pdf</code>${pages(q)} and <code>answer-sheets/0001-answer-sheet.pdf</code>${pages(a)}. Print each folder on its own, for example the answer sheets single-sided.`
+    : `<code>0001.pdf</code>, <code>0002.pdf</code>…: each copy's question paper and answer sheet together${q && a ? `, ${plural(q + a, 'page', 'pages')}` : ''}.`}</span></div>`;
+}
+
+async function loadPrintInfo() {
+  try { const r = await getJSON('/ui/api/print'); if (r.project === S.project) S.printInfo = r; } catch { S.printInfo = null; }
+  if (S.route.step === 'print') renderMain(true);
 }
 
 async function printPapers() {
@@ -2926,7 +2948,7 @@ async function printPapers() {
   S.printing = { how: printer ? 'printer' : 'files', copies: `${from}–${to}` };
   // As text, like upstream's page: the server's command logger expects strings.
   if (printer) socket_emit('print-to-printer', [String(from), String(to), $('#print-printer').value]);
-  else socket_emit('print-to-files', [String(from), String(to)]);
+  else socket_emit('ui-print-files', [String(from), String(to)]);
 }
 
 async function markPrinted() {
@@ -4159,6 +4181,11 @@ const ACTIONS = {
       <li><b>Material outside the page:</b> a question group starts too close to the bottom; add <code>\\needspace</code> or a page break.</li>
     </ul><p class="subtle">Fix the source in Questions, then build the papers again.</p></div>
     <div class="dialog-foot"><a class="btn" href="${examPath(S.project, 'questions')}" data-nav data-act="dialog-ok">Go to Questions</a><button class="btn btn-primary" data-act="dialog-ok">OK</button></div>`),
+  'print-split': (el) => {
+    socket_emit('set-config', ['app_print_split', el.dataset.v]);
+    if (S.printInfo) S.printInfo.split = el.dataset.v === '1';
+    renderMain(true);
+  },
   'print-route': (el) => {
     if (el.dataset.route === 'printer' && !(S.printers && S.printers.available)) { toast('Direct printing needs a Linux shared machine with its printer connected. Save the PDFs instead.', 'info-circle'); return; }
     S.printRoute = el.dataset.route; renderMain(true);

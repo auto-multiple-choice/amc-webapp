@@ -15,7 +15,9 @@ is in the in-app Guide (`server/guide/en/`), the launcher's commands in
 - **Layout check.** Building the papers detects the layout; Print opens
   once the teacher confirms "Looks correct".
 - **Printing.** Save print-ready PDFs on any system, or print directly on
-  a Linux shared machine (`./amc printer on`).
+  a Linux shared machine (`./amc printer on`). With a separate answer
+  sheet, each copy's question paper and answer sheet are saved as two
+  PDFs in two folders (or one PDF per copy, if chosen).
 - **Lock after printing.** Questions, layout and the number of copies
   can't change once printed, and the server refuses such saves. The
   marking scheme, answer key corrections, neutralising a question and the

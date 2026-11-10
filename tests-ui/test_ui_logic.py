@@ -1455,5 +1455,53 @@ check("legend: ...and a run after that stamps nothing", lg.stamp_folder(_pdfs, l
 check("legend: the key names the cases", "Correct, not ticked" in subprocess.run(["pdftotext", os.path.join(_pdfs, "a.pdf"), "-"], capture_output=True, text=True).stdout)
 shutil.rmtree(_d)
 
+# ---- saving the papers: question paper and answer sheet apart (ui_print.py)
+import io, zipfile
+import ui_print as pr
+check("print: the separateanswersheet package option is a separate answer sheet",
+      pr.has_separate_sheet(["\\documentclass{article}\n\\usepackage[box, completemulti,separateanswersheet]{automultiplechoice}\n"]))
+check("print: ...in any of the exam's files", pr.has_separate_sheet(["\\begin{document}", "\\usepackage[separateanswersheet]{automultiplechoice}"]))
+check("print: answers on the question paper are not", not pr.has_separate_sheet(["\\usepackage[box,completemulti]{automultiplechoice}", "\\usepackage{automultiplechoice}"]))
+check("print: a commented-out option doesn't count", not pr.has_separate_sheet(["%\\usepackage[separateanswersheet]{automultiplechoice}\n\\usepackage{automultiplechoice}"])
+      and not pr.has_separate_sheet(["\\usepackage[box%,separateanswersheet\n]{automultiplechoice}"]))
+check("print: the option on another package doesn't count", not pr.has_separate_sheet(["\\usepackage[separateanswersheet]{other}"]))
+check("print: AMC-TXT's SeparateAnswerSheet: 1", pr.has_separate_sheet(["# AMC-TXT\nSeparateAnswerSheet: 1\n* Q?\n"], plain=True)
+      and not pr.has_separate_sheet(["SeparateAnswerSheet: 0\n"], plain=True) and not pr.has_separate_sheet(["# SeparateAnswerSheet: 1\n"], plain=True))
+rg = pr.page_ranges
+check("print: answer sheet at the end", rg((1, 9), (9, 9)) == {"questions": "1-8", "sheet": "9-9", "pages_questions": 8, "pages_sheet": 1})
+check("print: pages counted within the copy", rg((10, 13), (13, 13))["questions"] == "1-3" and rg((10, 13), (13, 13))["sheet"] == "4-4")
+check("print: answer sheet first", rg((1, 6), (1, 2)) == {"questions": "3-6", "sheet": "1-2", "pages_questions": 4, "pages_sheet": 2})
+check("print: answer sheet in the middle: questions before and after", rg((1, 8), (4, 5))["questions"] == "1-3,6-8")
+check("print: nothing but the answer sheet, or no answer sheet, isn't cut", rg((1, 2), (1, 2)) is None and rg((1, 4), (None, None)) is None and rg((1, 4), None) is None)
+check("print: an answer sheet outside the copy isn't cut", rg((1, 4), (3, 6)) is None)
+
+_d = tempfile.mkdtemp()
+_blank_pdf(os.path.join(_d, "one.pdf"))
+subprocess.run(["qpdf", "--empty", "--pages"] + [os.path.join(_d, "one.pdf")] * 5 + ["--", os.path.join(_d, "0001.pdf")], capture_output=True)  # 3: warnings about the hand-made file
+shutil.copy(os.path.join(_d, "0001.pdf"), os.path.join(_d, "0002.pdf"))
+shutil.copy(os.path.join(_d, "0001.pdf"), os.path.join(_d, "Curie Marie.pdf"))
+os.unlink(os.path.join(_d, "one.pdf"))
+_pages = lambda p: int(re.search(r"Pages:\s+(\d+)", subprocess.run(["pdfinfo", p], capture_output=True, text=True).stdout).group(1))
+cut, whole = pr.split_copies(_d, [(os.path.join(_d, "0001.pdf"), rg((1, 5), (5, 5))), (os.path.join(_d, "0002.pdf"), None),
+                                  (os.path.join(_d, "Curie Marie.pdf"), rg((6, 10), (6, 7))), (os.path.join(_d, "gone.pdf"), rg((1, 5), (5, 5)))])
+check("print: copies cut, one left whole, a missing file skipped", (cut, whole) == (2, 1))
+check("print: the question paper and the answer sheet in their folders",
+      _pages(os.path.join(_d, "question-papers", "0001-questions.pdf")) == 4 and _pages(os.path.join(_d, "answer-sheets", "0001-answer-sheet.pdf")) == 1
+      and not os.path.exists(os.path.join(_d, "0001.pdf")))
+check("print: a copy named by its student keeps the name", _pages(os.path.join(_d, "answer-sheets", "Curie Marie-answer-sheet.pdf")) == 2
+      and _pages(os.path.join(_d, "question-papers", "Curie Marie-questions.pdf")) == 3)
+check("print: a copy that can't be cut stays whole", os.path.isfile(os.path.join(_d, "0002.pdf")))
+_fail = lambda cmd, **k: subprocess.CompletedProcess(cmd, 2)
+shutil.copy(os.path.join(_d, "0002.pdf"), os.path.join(_d, "0003.pdf"))
+check("print: qpdf failing leaves the copy whole and no half-made files",
+      pr.split_copies(_d, [(os.path.join(_d, "0003.pdf"), rg((1, 5), (5, 5)))], run=_fail) == (0, 1)
+      and os.path.isfile(os.path.join(_d, "0003.pdf")) and not os.path.exists(os.path.join(_d, "answer-sheets", "0003-answer-sheet.pdf")))
+_z = io.BytesIO(); pr.zip_folder(_d, _z)
+check("print: the zip keeps the folders", sorted(zipfile.ZipFile(_z).namelist()) == ["0002.pdf", "0003.pdf", "answer-sheets/0001-answer-sheet.pdf", "answer-sheets/Curie Marie-answer-sheet.pdf",
+                                                                                   "question-papers/0001-questions.pdf", "question-papers/Curie Marie-questions.pdf"])
+_e = tempfile.mkdtemp(); shutil.copy(os.path.join(_d, "0002.pdf"), os.path.join(_e, "0001.pdf"))
+check("print: nothing cut, no empty folders", pr.split_copies(_e, [(os.path.join(_e, "0001.pdf"), None)]) == (0, 1) and os.listdir(_e) == ["0001.pdf"])
+shutil.rmtree(_d); shutil.rmtree(_e)
+
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

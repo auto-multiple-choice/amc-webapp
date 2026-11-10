@@ -24,6 +24,7 @@ The app's icon file only keeps icons named in `server/templates/*.html`, so icon
 - LaTeX for pro users (`server/ui_latex.py`): braces and environments that don't balance (escaped braces, `\verb`, comments and verbatim ignored), a log's first error traced to the item's file and line, the one-question check document, a section document split back (changed, missing, doubled separators refused), the preamble's macros; and a question written inline getting its LaTeX replaced, refused when it doesn't balance, holds two questions or takes a used name.
 - question banks (`server/ui_banks.py`): where banks live and which names they can have, `bank.json` read tidied, items placed and ordered in groups, free group names, the bank list, a second bank of the same name refused, question names changed where they clash (and swapped), fingerprints, the random pick, tags, the macros and packages an item needs found and added to an exam once, and a bank's own history and trash; copies (the way in and back exactly, every status, merges, names a newer version adds, macros defined differently); the search index (`server/ui_bankindex.py`: prefixes, accents, filters, a file changed by hand read again, archived items, a damaged index rebuilt, what is typed can't break the query), usage (an exam printed again counts once, "not printed since"), the exams holding a copy; bank zips (`server/ui_bankzip.py`: only a bank's kind of files, names climbing out, absolute names and links refused, a folder at the top, size limits unpacked), a bank's history in a git bundle (a broken one refused), and the names of imported banks; question statistics (`server/ui_stats.py`: share right, separation, answers chosen by the strongest and weakest, the notes, too few copies, a summary over exams, an exam marked again replacing its figures) and blueprints (rows checked, drawn without repeats, rows short of questions in words); who changed each line (blame), a log over several files, and `./amc doctor` (sound histories, a damaged one, one whose bank is gone).
 - the question editor (`server/ui_questions.py`): the spans the parser finds (text, answers, choices, numeric, explanation, figure, `\element` groups) and every edit operation, including where new questions go;
+- saving the papers (`server/ui_print.py`): a separate answer sheet found in the sources (LaTeX package option, AMC-TXT, comments ignored), each copy's question pages and answer sheet pages, the copies cut with qpdf into two folders (a copy named by its student, one that can't be cut left whole, no half-made files), and the zip with its folders;
 - the annotated sheets' symbols and key (`server/ui_legend.py`): AMC's settings read back as a preset, the default and custom choices, refused schemes, and the key stamped once on each file, with a file whose key failed left for the next run.
 
 It runs with the app's image:
@@ -83,6 +84,14 @@ node tests-ui/e2e-scans.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
 ```
 
 It also checks the upload parts that big uploads go in (`/ui/api/upload-part`). With `AMC_E2E_PARTS=1`, the scans themselves go up in 8 KB parts, the way uploads over 64 MB do on a public server.
+
+### Print
+
+`e2e-print.mjs` tests Save PDFs for an exam with a separate answer sheet (the blank starter): the choice shown and on by default, with each part's pages; the zip with `question-papers/` and `answer-sheets/`, a file of the right pages per copy, named after the exam; "One PDF per copy" saved for the exam and giving whole copies; and an exam with the answers on the question paper, which has nothing to separate.
+
+```
+node tests-ui/e2e-print.mjs http://127.0.0.1:8095 /tmp/amc-test-shots
+```
 
 ### Public server
 

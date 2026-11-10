@@ -25,9 +25,11 @@ import subprocess
 import tarfile
 import threading
 import time
+import urllib.parse
 import uuid
 
 import ui_gallery as gallery
+import ui_print as printing
 import ui_legend as legend
 import ui_structure as paper_structure
 import ui_builder as paper_builder
@@ -885,6 +887,131 @@ def on_printed(data):
                         else "Papers saved for printing")
                  + (f" (copies {copies})" if copies else ""))
     core.emit_msg("ui-changed", "lock")
+
+
+# ---- saving the papers: question paper and answer sheet apart (ui_print.py)
+
+PRINT_SPLIT = "app_print_split"  # "0": one PDF per copy; otherwise apart, for an exam with a separate answer sheet
+
+
+def exam_has_separate_sheet(pdir):
+    texts = []
+    for f in _source_files(pdir):
+        try:
+            with open(os.path.join(pdir, f), encoding="utf-8", errors="replace") as fh:
+                texts.append(fh.read())
+        except OSError:
+            pass
+    return printing.has_separate_sheet(texts, plain=core.get_option("filter") == "plain")
+
+
+def print_split(pdir):
+    """Whether Save PDFs separates each copy's question paper and answer sheet."""
+    return core.get_option(PRINT_SPLIT) != "0" and exam_has_separate_sheet(pdir)
+
+
+def copy_page_ranges(pdir):
+    """{copy number: ui_print.page_ranges()} from the layout AMC detected."""
+    db = _db_for(pdir, "layout")
+    if not db:
+        return {}
+    q = lambda sql: {s: (a, b) for s, a, b in _query(lambda: db.db.execute(sql).fetchall(), [])}
+    pages, sheets = q(printing.COPY_PAGES_SQL), q(printing.SHEET_PAGES_SQL)
+    return {s: printing.page_ranges(pages[s], sheets.get(s)) for s in pages}
+
+
+def _printed_files(pdir, folder, students):
+    """Each printed copy's file, as AMC recorded it (report type 3: the file
+    is named by the copy number, or by the student for papers printed with
+    names), inside FOLDER only."""
+    known = {}
+    db = _db_for(pdir, "report")
+    if db:
+        known = {s: f for s, f in _query(lambda: db.db.execute(
+            "SELECT student, file FROM report.report_student WHERE type=3").fetchall(), [])}
+    real = os.path.realpath(folder) + os.sep
+    out = {}
+    for s in students:
+        f = known.get(s) or os.path.join(folder, f"{s:04d}.pdf")
+        if os.path.realpath(f).startswith(real) and os.path.isfile(f):
+            out[s] = f
+    return out
+
+
+@bp.route("/ui/api/print")
+def api_print():
+    """What Save PDFs makes: whether the exam has a separate answer sheet,
+    whether its copies are saved apart, and the first copy's pages."""
+    name = _open_project()
+    if not name:
+        return jsonify(project=None)
+    pdir = core.project_dir()
+    separate = exam_has_separate_sheet(pdir)
+    pages = None
+    if separate:
+        ranges = copy_page_ranges(pdir)
+        first = ranges.get(min(ranges)) if ranges else None
+        if first:
+            pages = {"questions": first["pages_questions"], "sheet": first["pages_sheet"]}
+    return jsonify(project=name, separate=separate, split=separate and core.get_option(PRINT_SPLIT) != "0",
+                   pages=pages)
+
+
+def on_print_files(data):
+    """Save PDFs for printing (upstream's print-to-files), each copy's
+    question paper and answer sheet in separate files when the exam has a
+    separate answer sheet and the teacher didn't ask for one PDF per copy."""
+    try:
+        first, last = int(data[0]), int(data[1])
+    except (TypeError, ValueError, IndexError, KeyError):
+        core.dialog_msg(warn="Check the range of copies.")
+        return
+    if not 1 <= first <= last:
+        core.dialog_msg(warn="Check the range of copies.")
+        return
+    pdir = core.project_dir()
+    name = flask_g.project_name
+    folder = core.amc_user_tmp(f"printed/{name}")
+    shutil.rmtree(folder, ignore_errors=True)
+    os.makedirs(folder, exist_ok=True)
+    split = print_split(pdir)
+    core.app.logger.info(f"Printing <{name}> to files: {first}--{last}{' (question papers and answer sheets apart)' if split else ''}")
+    core.emit_msg("begin-command")
+    core.emit_msg("t", "Making the PDFs for printing")
+    # As text: the command logger expects strings. --no-split: never AMC's
+    # own split, whatever the teacher's AMC settings say.
+    messages, variables = core.amc_command(
+        "imprime", "--methode", "file", "--student-min", str(first), "--student-max", str(last),
+        "--progression-id", "PRT", "--progression", "1", "--output", folder,
+        "--no-split", "--no-answer-first")
+    core.log_messages(messages)
+    if split and not messages.get("ERR"):
+        core.emit_msg("t", "Separating question papers and answer sheets")
+        ranges = copy_page_ranges(pdir)
+        files = _printed_files(pdir, folder, range(first, last + 1))
+        cut, whole = printing.split_copies(folder, [(files[s], ranges.get(s)) for s in sorted(files)])
+        if whole:
+            messages["WARN"].append(f":{whole} cop{'y' if whole == 1 else 'ies'} couldn't be separated and "
+                                    f"{'is' if whole == 1 else 'are'} saved as one PDF (question paper and answer sheet together).")
+    core.emit_msg("end-command")
+    if core.show_messages(messages) == 0:
+        core.emit_msg("print-done")
+        core.emit_msg("print-to-files", f"/ui/printed/{urllib.parse.quote(name)}/papers.zip")
+
+
+@bp.route("/ui/printed/<project>/papers.zip")
+def printed_zip(project):
+    """The PDFs just saved for printing, folders included. They are in the
+    browser session's own temporary folder (amc_user_tmp)."""
+    try:
+        folder = core.amc_user_tmp(f"printed/{project}")
+    except ValueError:
+        abort(404)
+    data = io.BytesIO()
+    printing.zip_folder(folder, data)
+    data.seek(0)
+    return send_file(data, mimetype="application/zip", as_attachment=True,
+                     download_name=f"{project} - papers.zip")
 
 
 def on_unlock(data):
@@ -4675,6 +4802,7 @@ SOCKET_EVENTS = {
     "ui-layout-ok": on_layout_ok,
     "ui-mark-printed": on_mark_printed,
     "ui-printed": on_printed,
+    "ui-print-files": on_print_files,
     "ui-unlock": on_unlock,
     "ui-scoring-defaults": on_scoring_defaults,
     "ui-review-page": on_review_page,

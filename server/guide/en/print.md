@@ -16,11 +16,15 @@ Getting the papers onto paper exactly as built, because AMC finds each box by it
 - **Print on this machine**: send them to a printer connected to the shared machine. This needs a Linux shared machine where `./amc printer on` has been run.
 - Choose which copies to print, then press the button.
 
+**Exams with a separate answer sheet.** Saved PDFs come as two files per copy, in two folders of the zip: `question-papers/0001-questions.pdf` and `answer-sheets/0001-answer-sheet.pdf`. Print each folder on its own: for example the answer sheets single-sided, or on another paper. Choose **One PDF per copy** to keep each copy's question paper and answer sheet together. Exams with the answers on the question paper always give one PDF per copy.
+
 Printing locks the exam. If the papers were printed another way, use **Mark as printed**.
 
 ## Common problems
 
 **Pages aren't recognised after scanning.** The print was probably scaled. Print at 100% ("actual size"), with every corner mark fully on the paper.
+
+**The answer sheets are in the wrong order with the question papers.** Each file starts with its copy number: `0001-questions.pdf` goes with `0001-answer-sheet.pdf`. Hand them out together, or print the answer sheets in the same order as the question papers.
 
 **I need to print more copies.** Save or print the same papers again: they are identical. Copies beyond those built need a rebuild, which isn't possible once the exam is locked.
 
