@@ -1258,7 +1258,8 @@ PREVIEW_FILE = "ui-preview.pdf"         # one student's annotated sheet
 MARK_OPTIONS = ("note_max", "note_null", "note_min", "note_grain", "note_arrondi",
                 "note_max_plafond", "seuil", "seuil_up")
 EXPORT_OPTIONS = ("format_export", "export_include_abs", "export_ods_stats",
-                  "export_csv_ticked", "export_sort", "app_public_marks")
+                  "export_csv_ticked", "export_sort", "app_public_marks",
+                  "app_csv_decimal", "app_csv_separator", "app_csv_skip")
 ANNOTATE_OPTIONS = ("annote_position", "verdict", "regroupement_type",
                     "modele_regroupement", "regroupement_compose", "add_corrected",
                     "annotate_dont_overwrite")
@@ -1835,6 +1836,74 @@ def _export_module():
     return "CSV" if (core.get_option("format_export") or "").lower() == "csv" else "ods"
 
 
+# CSV: AMC's CSV module writes a decimal comma, a comma between fields and
+# only copy, code and name unless told otherwise (AMC/Export/CSV.pm), and
+# AMC's own app passes those settings with --option-out. AMC's names for
+# them (export_csv_separateur, export_csv_columns) already hold AMC's
+# defaults in every exam ("db upgrade" writes them), so the app keeps its
+# own: unset means a decimal point, commas, and every class list column.
+CSV_SEPARATORS = {",": ",", ";": ";", "tab": "tab"}
+CSV_IDENTITY = "student.copy,student.key,student.name"
+# AMC's CSV module looks a column up among its own values for the sheet
+# before the class list's (CSV.pm: $m->{$c} ? $m->{$c} : the class list's),
+# so a class list column with one of these names would show AMC's figure
+# (the points, the sheet's number, a time) under the class list's heading.
+CSV_AMC_NAMES = frozenset((
+    "student", "copy", "total", "max", "mark", "creation", "abs", "copy.version",
+    "student.copy", "student.key", "student.name", "student.line", "student.all"))
+
+
+def csv_column_refused(c):
+    """Whether AMC's CSV export can't add the class list column named C:
+    its list of columns is separated by commas; it reads the names from
+    its command line as bytes, so a name with letters outside ASCII finds
+    no column (a garbled heading over empty cells); and it has values of
+    its own under some names (CSV_AMC_NAMES)."""
+    return "," in c or c in CSV_AMC_NAMES or not (c.isascii() and c.isprintable())
+
+
+def csv_class_columns(columns, key):
+    """The class list columns the CSV can add: all but the code column
+    (already there as "A:<key>") and those AMC can't take."""
+    return [c for c in columns if c and c != key and not csv_column_refused(c)]
+
+
+def csv_refused_columns(columns, key):
+    """The class list columns the CSV can't add, for the page to name."""
+    return [c for c in columns if c and c != key and csv_column_refused(c)]
+
+
+def csv_settings(o, columns, key):
+    """What the CSV export uses, from the exam's options O (app_csv_*) and
+    the class list's COLUMNS and KEY: decimal mark, separator, and the
+    class list columns added after copy, code and name."""
+    decimal = "," if o.get("app_csv_decimal") == "," else "."
+    sep = CSV_SEPARATORS.get(o.get("app_csv_separator") or "", ",")
+    if decimal == "," and sep == ",":
+        sep = ";"  # never a comma between fields holding decimal commas
+    skip = {c for c in (o.get("app_csv_skip") or "").split(",") if c}
+    added = [c for c in csv_class_columns(columns, key) if c not in skip]
+    return {"decimal": decimal, "separator": sep, "columns": added}
+
+
+def csv_export_args(o, columns, key):
+    """AMC export's --option-out arguments for these settings."""
+    s = csv_settings(o, columns, key)
+    out = []
+    for k, v in (("decimal", s["decimal"]), ("separateur", s["separator"]),
+                 ("columns", ",".join([CSV_IDENTITY] + s["columns"])), ("encodage", "UTF-8")):
+        out += ["--option-out", f"{k}={v}"]
+    return out
+
+
+def _class_columns():
+    """The class list's columns and code column, or ([], None)."""
+    cl = class_list()
+    if not cl or cl.get("error"):
+        return [], None
+    return cl["columns"], cl["key"]
+
+
 @bp.route("/ui/api/export")
 def api_export():
     name = _open_project()
@@ -1848,18 +1917,24 @@ def api_export():
     link = None
     if core.to_bool(o["app_public_marks"]):
         link = f"{request.root_url}public/{core.project_uuid()}/marks.csv"
-    return jsonify(project=name, options=o, files=files, public_link=link)
+    columns, key = _class_columns()
+    return jsonify(project=name, options=o, files=files, public_link=link,
+                   csv=csv_settings(o, columns, key), class_columns=csv_class_columns(columns, key),
+                   class_columns_refused=csv_refused_columns(columns, key), list_key=key)
 
 
 def on_export(data=None):
     pdir = core.project_dir()
     module = _export_module()
     os.makedirs(f"{pdir}/exports", exist_ok=True)
+    extra = []
+    if module == "CSV":
+        extra = csv_export_args(core.get_options(list(EXPORT_OPTIONS)), *_class_columns())
     core.emit_msg("begin-command")
     core.emit_msg("t", "Exporting the marks")
     messages, variables = core.amc_command(
         "export", "--module", module, "--output", f"{pdir}/exports/marks.{module.lower()}",
-        "--export-ods-filter")
+        "--export-ods-filter", *extra)
     core.emit_msg("end-command")
     if not messages.get("ERR"):
         add_activity(pdir, f"Marks exported ({module.upper()})")

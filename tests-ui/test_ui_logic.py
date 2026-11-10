@@ -133,6 +133,30 @@ check("class list: other files are refused", ui.class_list_refusal("class.xlsx")
 check("class list: can't replace the main source", ui.class_list_refusal("source.tex") is not None)
 check("class list: can't replace the exam's options", ui.class_list_refusal("options.xml") is not None)
 
+# CSV export settings (issue #17): AMC's --option-out arguments
+cols = ["id", "surname", "name", "roll_no", "a,b"]
+cs = lambda **o: ui.csv_settings(o, cols, "id")
+def oo(args):
+    return dict(a.split("=", 1) for a in args[1::2]) if all(x == "--option-out" for x in args[0::2]) else None
+check("csv: by default a decimal point and commas", cs()["decimal"] == "." and cs()["separator"] == ",")
+check("csv: by default every class list column but the code, and none AMC can't name", cs()["columns"] == ["surname", "name", "roll_no"])
+check("csv: a decimal comma never goes with a comma between fields", cs(app_csv_decimal=",")["separator"] == ";"
+      and cs(app_csv_decimal=",", app_csv_separator=",")["separator"] == ";")
+check("csv: a decimal comma with tabs keeps tabs", cs(app_csv_decimal=",", app_csv_separator="tab")["separator"] == "tab")
+check("csv: a semicolon with a point is allowed", cs(app_csv_separator=";") == {"decimal": ".", "separator": ";", "columns": ["surname", "name", "roll_no"]})
+check("csv: unknown values fall back to the defaults", cs(app_csv_decimal="x", app_csv_separator="|")["decimal"] == "." and cs(app_csv_separator="|")["separator"] == ",")
+check("csv: columns left out stay out, new ones come in", cs(app_csv_skip="surname,gone")["columns"] == ["name", "roll_no"])
+a = oo(ui.csv_export_args({"app_csv_decimal": ",", "app_csv_skip": "name"}, cols, "id"))
+check("csv: the arguments AMC export takes", a == {"decimal": ",", "separateur": ";", "columns": "student.copy,student.key,student.name,surname,roll_no", "encodage": "UTF-8"})
+check("csv: no class list, only AMC's three columns", oo(ui.csv_export_args({}, [], None))["columns"] == "student.copy,student.key,student.name")
+odd = ["id", "roll_no", "total", "mark", "max", "student", "copy", "creation", "abs", "student.name", "Total", "Pr\u00e9nom", "\u0928\u093e\u092e", "Roll No", "a,b", "tab\there"]
+check("csv: a column named like one of AMC's own values isn't added (AMC would write its own figure under it)",
+      ui.csv_class_columns(odd, "id") == ["roll_no", "Total", "Roll No"])
+check("csv: ...nor one with letters outside ASCII (AMC finds no such column), a comma or a control character; the page names them",
+      ui.csv_refused_columns(odd, "id") == ["total", "mark", "max", "student", "copy", "creation", "abs", "student.name", "Pr\u00e9nom", "\u0928\u093e\u092e", "a,b", "tab\there"])
+check("csv: the code column is neither added nor named as refused", "id" not in ui.csv_class_columns(odd, "id") + ui.csv_refused_columns(odd, "id")
+      and oo(ui.csv_export_args({}, odd, "id"))["columns"] == "student.copy,student.key,student.name,roll_no,Total,Roll No")
+
 os.makedirs(os.path.join(pdir, "data"))
 c = sqlite3.connect(os.path.join(pdir, "data", "capture.sqlite"))
 c.executescript("""CREATE TABLE capture_page (student, page, copy, timestamp_auto, timestamp_manual, timestamp_annotate);

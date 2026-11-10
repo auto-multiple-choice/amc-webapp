@@ -3594,6 +3594,7 @@ function exportCard(x, st) {
       ${csv ? `<label class="field"><span class="field-label">Ticked boxes</span>${sel('export_csv_ticked', [['', 'Not included'], ['01', 'Included as 0 and 1'], ['AB', 'Included as letters']])}</label>`
     : `<label class="field"><span class="field-label">Statistics</span>${sel('export_ods_stats', [['', 'None'], ['h', 'Table, across'], ['v', 'Table, down']])}</label>`}
     </div>
+    ${csv && x.csv ? csvSettings(x) : ''}
     <label class="check" style="margin-top:12px"><input type="checkbox" data-option="export_include_abs" ${isOn(o.export_include_abs) ? 'checked' : ''} ${st.students_list ? '' : 'disabled'}>
       <span>Include absent students<br><span class="subtle">${st.students_list ? 'Students in the class list without a sheet, with no mark.' : 'Needs a class list.'}</span></span></label>
     ${x.files.length ? `<div class="list" style="margin:14px -16px -16px;border-top:1px solid var(--border)">${x.files.map((f) => `<div class="list-row"><span class="list-icon brand">${ic('page')}</span>
@@ -3602,6 +3603,28 @@ function exportCard(x, st) {
       <a class="btn btn-sm btn-icon" href="${fsUrl('exports/' + f.name, true)}" download="${esc(S.project + '-' + f.name)}" title="Download ${esc(f.name)}" aria-label="Download ${esc(f.name)}">${ic('download')}</a></div>`).join('')}</div>` : ''}
   </div>
   <div class="card-foot"><button class="btn btn-primary" data-act="export">${ic('download')} Export as ${csv ? 'CSV' : 'ODS'}</button></div></section>`;
+}
+
+/* CSV only: decimal mark, separator and class list columns (issue #17).
+   The server works out what is used (x.csv): a decimal comma never goes
+   with commas between columns. It also says which class list columns AMC's
+   CSV export can't take (x.class_columns_refused). */
+function csvSettings(x) {
+  const c = x.csv;
+  const refused = x.class_columns_refused || [];
+  const refusedHint = refused.length ? `<span class="field-hint" id="csv-refused">Can't be added: ${refused.map((col) => `<b>${esc(col)}</b>`).join(', ')}. AMC's CSV export takes a column whose name is in plain English letters, digits and signs, without a comma, and isn't a name it uses itself (mark, total, max, student, copy). Rename the column in the class list to add it.</span>` : '';
+  const opt = (v, l, cur, dis = false) => `<option value="${v}" ${cur === v ? 'selected' : ''} ${dis ? 'disabled' : ''}>${l}</option>`;
+  const comma = c.decimal === ',';
+  return `<div class="form-grid" style="margin-top:12px">
+      <label class="field"><span class="field-label">Decimal mark</span><select class="select" data-option="app_csv_decimal">${opt('.', 'Point: 3.25', c.decimal)}${opt(',', 'Comma: 3,25', c.decimal)}</select></label>
+      <label class="field"><span class="field-label">Between columns</span><select class="select" data-option="app_csv_separator">${opt(',', 'Comma', c.separator, comma)}${opt(';', 'Semicolon', c.separator)}${opt('tab', 'Tab', c.separator)}</select></label>
+    </div>
+    <p class="field-hint">${comma ? 'Decimal comma: for spreadsheets set to French, German, Spanish and other languages that write 3,25. Columns are then separated by semicolons, never commas.'
+    : 'Decimal point: for spreadsheets in English and most school systems. The file opens with a double click, numbers as numbers.'}</p>
+    <div class="field" style="margin-top:12px"><span class="field-label">Class list columns</span>
+      ${x.class_columns.length ? `<div class="check-row">${x.class_columns.map((col) => `<label class="check"><input type="checkbox" data-csvcol="${esc(col)}" ${c.columns.includes(col) ? 'checked' : ''}><span>${esc(col)}</span></label>`).join('')}</div>
+        <span class="field-hint">Added after copy, ${x.list_key ? `code (<code>${esc(x.list_key)}</code>)` : 'code'} and name, for the sheets matched to a student.</span>`
+    : refused.length ? '' : '<span class="field-hint">Load a class list in Match students to add its columns, such as a roll number or an email address.</span>'}${refusedHint}</div>`;
 }
 
 function publicLinkCard(x) {
@@ -4462,8 +4485,15 @@ document.addEventListener('change', async (e) => {
     socket_emit('set-config', [name, v]);
     [S.config, S.exportInfo, S.annotateInfo].forEach((x) => { if (x && x.options && name in x.options) x.options[name] = v; });
     toast('Saved.');
-    if (name === 'app_public_marks') setTimeout(loadExport, 300);
+    if (name === 'app_public_marks' || name.startsWith('app_csv_')) setTimeout(loadExport, 300);
     if (S.route.step === 'annotate' || S.route.step === 'export-marks') setTimeout(refreshStatus, 300);
+  }
+  if (t.matches('[data-csvcol]') && S.exportInfo) {
+    // Saved as the columns left out, so a new class list's columns are in by default.
+    const off = new Set([...document.querySelectorAll('[data-csvcol]')].filter((box) => !box.checked).map((box) => box.dataset.csvcol));
+    socket_emit('set-config', ['app_csv_skip', S.exportInfo.class_columns.filter((col) => off.has(col)).join(',')]);
+    toast('Saved.');
+    setTimeout(loadExport, 300);
   }
   if (t.id === 'astyle-legend') sendAnnotateStyle({ legend: t.value });
   if (t.dataset.astyle && S.annotateInfo && S.annotateInfo.style) {

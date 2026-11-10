@@ -47,6 +47,20 @@ const typeSearch = async (text) => {
 };
 const enterInSearch = () => b.js(`document.querySelector('#match-search').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})); true`);
 const fetchInfo = (url) => b.js(`fetch(${J(url)}, {cache: 'no-store'}).then(async r => ({status: r.status, type: r.headers.get('content-type') || '', size: (await r.arrayBuffer()).byteLength}))`);
+// A CSV file as rows of fields: quoted fields, SEP between them.
+const parseCsv = (text, sep) => {
+  const out = []; let row = []; let f = ''; let q = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (q) { if (ch === '"' && text[i + 1] === '"') { f += '"'; i += 1; } else if (ch === '"') q = false; else f += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === sep) { row.push(f); f = ''; }
+    else if (ch === '\n') { row.push(f); out.push(row); row = []; f = ''; }
+    else if (ch !== '\r') f += ch;
+  }
+  if (f || row.length) { row.push(f); out.push(row); }
+  return out;
+};
 const dismissServerDialog = async () => {
   if (await b.waitFor(`!!document.querySelector('.server-dialog')`, 1500)) {
     console.log('  server message: ' + (await b.text('.server-dialog')).replace(/\s+/g, ' ').slice(0, 240));
@@ -96,12 +110,13 @@ async function main() {
   // Out of date after a marking change, then recompute
   await b.click('.step[href$="/mark"]');
   await b.waitFor(`S.route.step === 'mark' && !!S.marks`);
-  await b.js(`socket_emit('set-config', ['note_max', '10']); refreshStatus(); true`);
+  // Out of 7: some marks have decimals, for the CSV checks below.
+  await b.js(`socket_emit('set-config', ['note_max', '7']); refreshStatus(); true`);
   b.check('Changing the final mark makes the marks out of date', await b.waitFor(`S.status.marks_info.stale === true && document.querySelector('#main').textContent.includes('out of date')`, 10000));
   b.check('...and the sidebar flags Mark', await b.js(`document.querySelector('.step[href$="/mark"]').classList.contains('is-attention')`));
   await b.click('.banner [data-act="mark"]');
   b.check('Recomputing brings them up to date', await b.waitFor(`S.status.marks_info.stale === false && !document.querySelector('#work')`, 180000));
-  b.check('...with the new final mark', await b.waitFor(`S.marks && S.marks.rows.length && S.marks.rows.every(r => r.mark <= 10)`, 10000), J(await b.js('S.marks.rows.map(r => r.mark)')));
+  b.check('...with the new final mark', await b.waitFor(`S.marks && S.marks.rows.length && S.marks.rows.every(r => r.mark <= 7)`, 10000), J(await b.js('S.marks.rows.map(r => r.mark)')));
   await dismissServerDialog();
 
   // The marking scheme panel agrees with AMC
@@ -125,7 +140,10 @@ async function main() {
   const dir = mkdtempSync(join(tmpdir(), 'amc-list-'));
   const listFile = join(dir, 'class-10B.csv');
   // Copy n reads code 100 + n; copy 4's code (104) isn't in the list.
-  writeFileSync(listFile, 'id;surname;name\n101;Curie;Marie\n102;Noether;Emmy\n103;Lovelace;Ada\n150;Hopper;Grace\n');
+  // "total" and "Série": columns AMC's CSV export can't add (a name it uses itself; a letter outside ASCII).
+  // Not a column AMC takes for the student's name, such as "Prénom".
+  writeFileSync(listFile, 'id;surname;name;roll_no;email;total;Série\n101;Curie;Marie;24MA00101;marie.curie@example.org;T101;Série A\n'
+    + '102;Noether;Emmy;24MA00102;emmy.noether@example.org;T102;Série B\n103;Lovelace;Ada;24MA00103;ada.lovelace@example.org;T103;Série A\n150;Hopper;Grace;24MA00150;;T150;Série B\n');
   await b.click('.step[href$="/match-students"]');
   b.check('Match students asks for the class list', await b.waitFor(`!!document.querySelector('#list-drop')`));
   await b.setFiles('#list-file', [listFile]);
@@ -174,6 +192,37 @@ async function main() {
   b.check('Exporting to CSV shows the file in the preview', await b.waitFor(`S.previewFile && S.previewFile.name === 'exports/marks.csv' && document.querySelector('#preview-body table') && document.querySelector('#preview-body').textContent.includes('Curie')`, 60000));
   await dismissServerDialog();
   await b.shot('r5-export');
+  // CSV settings (issue #17): a decimal point and commas by default, class list columns
+  const csvFile = () => inApp('cat', `${projectDir}/exports/marks.csv`);
+  const marksByCopy = await b.js(`Object.fromEntries(S.marks.rows.map(r => [r.student + ':' + r.copy, r.mark]))`);
+  b.check('Some marks have decimals, so the decimal mark shows', Object.values(marksByCopy).some((m) => m % 1 !== 0), J(marksByCopy));
+  let rows = parseCsv(csvFile(), ',');
+  const col = (name) => rows[0].indexOf(name);
+  b.check('By default the CSV has commas between quoted columns, and the class list columns after the name',
+    rows.length === COPIES + 1 && rows.every((r) => r.length === rows[0].length) && ['surname', 'name', 'roll_no', 'email'].every((c) => col(c) > col('Name')) && !rows[0].includes('id'), J(rows[0]));
+  const curie = rows.find((r) => r[col('surname')] === 'Curie');
+  b.check('...with each matched student\'s roll number and email', !!curie && curie[col('roll_no')] === '24MA00101' && curie[col('email')] === 'marie.curie@example.org', J(curie));
+  b.check('The class list columns AMC\'s CSV can\'t take ("total", "Série") are left out of the file', col('total') < 0 && !rows[0].some((h) => /^S.*rie$/.test(h)), J(rows[0]));
+  b.check('...and named on the page instead of offered', J(await b.js('S.exportInfo.class_columns_refused')) === J(['total', 'Série'])
+    && (await b.text('#csv-refused')).includes('Can\'t be added: total, Série') && !(await b.js(`!!document.querySelector('[data-csvcol="total"]')`)), J(await b.js('S.exportInfo.class_columns_refused')));
+  const markText = () => rows.slice(1).map((r) => [r[col('Exam')], r[col('Mark')]]);
+  const sameMarks = (dec) => markText().every(([exam, m]) => {
+    const [s, c] = exam.split(':'); const want = marksByCopy[`${s}:${c || 0}`];
+    return want !== undefined && m === String(want).replace('.', dec);
+  });
+  b.check('...and marks with a decimal point', sameMarks('.') && markText().every(([, m]) => !m.includes(',')), J(markText()));
+  await b.js(`(() => { const s = document.querySelector('[data-option="app_csv_decimal"]'); s.value = ','; s.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`);
+  b.check('A decimal comma switches the columns to semicolons', await b.waitFor(`S.exportInfo.csv.decimal === ',' && S.exportInfo.csv.separator === ';' && document.querySelector('[data-option="app_csv_separator"] option[value=","]').disabled`, 5000), J(await b.js('S.exportInfo.csv')));
+  await b.js(`(() => { const box = document.querySelector('[data-csvcol="email"]'); box.checked = false; box.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`);
+  b.check('A class list column can be left out', await b.waitFor(`!S.exportInfo.csv.columns.includes('email') && S.exportInfo.csv.columns.includes('roll_no')`, 5000), J(await b.js('S.exportInfo.csv')));
+  await b.click('[data-act="export"]');
+  await b.waitFor(`!document.querySelector('#work')`, 60000);
+  await sleep(500);
+  await dismissServerDialog();
+  rows = parseCsv(csvFile(), ';');
+  b.check('The CSV then has semicolons, decimal commas and no email column', rows.length === COPIES + 1 && rows.every((r) => r.length === rows[0].length) && col('email') < 0 && col('roll_no') > 0 && sameMarks(','), J(rows.slice(0, 3)));
+  await b.js(`(() => { const s = document.querySelector('[data-option="app_csv_decimal"]'); s.value = '.'; s.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`);
+  b.check('Back to a decimal point, the columns are commas again', await b.waitFor(`S.exportInfo.csv.decimal === '.' && S.exportInfo.csv.separator === ','`, 5000));
   await b.click('[data-act="export-format"][data-v="ods"]');
   await b.click('[data-act="export"]');
   b.check('Exporting to ODS makes the file', await b.waitFor(`S.exportInfo && S.exportInfo.files.some(f => f.name === 'marks.ods')`, 60000), J(await b.js('S.exportInfo && S.exportInfo.files')));
