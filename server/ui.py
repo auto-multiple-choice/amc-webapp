@@ -898,6 +898,16 @@ PRINT_SPLIT = "app_print_split"  # "0": one PDF per copy; otherwise apart, for a
 
 
 def exam_has_separate_sheet(pdir):
+    """Whether the exam's papers have a separate answer sheet. AMC records
+    it when it builds them (layout variable build:ensemble), whichever way
+    the sources ask for it. The sources are only read while there is no
+    such record: there, any LaTeX file in the folder counts, even one the
+    exam doesn't use."""
+    db = _db_for(pdir, "layout")
+    built = printing.built_with_separate_sheet(
+        _query(lambda: db.get_variable("layout", "build:ensemble")) if db else None)
+    if built is not None:
+        return built
     texts = []
     for f in _source_files(pdir):
         try:
@@ -973,6 +983,16 @@ def on_print_files(data):
         core.dialog_msg(warn="Check the range of copies.")
         return
     pdir = core.project_dir()
+    ranges = copy_page_ranges(pdir)  # every copy of the built papers
+    copies = [s for s in ranges if first <= s <= last]
+    if not copies:
+        # Nothing to save: an empty zip would still lock the exam as printed.
+        core.dialog_msg(warn=f"This exam has copies {min(ranges)} to {max(ranges)}. Check the range of copies."
+                        if ranges else "Build the papers first.")
+        return
+    # AMC goes through every number of the range it is given, so give it
+    # the copies that exist.
+    first, last = min(copies), max(copies)
     name = flask_g.project_name
     folder = core.amc_user_tmp(f"printed/{name}")
     shutil.rmtree(folder, ignore_errors=True)
@@ -990,8 +1010,7 @@ def on_print_files(data):
     core.log_messages(messages)
     if split and not messages.get("ERR"):
         core.emit_msg("t", "Separating question papers and answer sheets")
-        ranges = copy_page_ranges(pdir)
-        files = _printed_files(pdir, folder, range(first, last + 1))
+        files = _printed_files(pdir, folder, copies)
         cut, whole = printing.split_copies(folder, [(files[s], ranges.get(s)) for s in sorted(files)])
         if whole:
             messages["WARN"].append(f":{whole} cop{'y' if whole == 1 else 'ies'} couldn't be separated and "
@@ -1007,8 +1026,12 @@ def printed_zip(project):
     """The PDFs just saved for printing, folders included. They are in the
     browser session's own temporary folder (amc_user_tmp)."""
     try:
-        folder = core.amc_user_tmp(f"printed/{project}")
-    except ValueError:
+        # An exam's name only: ".." would be the session's whole temporary
+        # folder. is_file: the folder itself is made by saving, not by asking.
+        folder = core.amc_user_tmp(f"printed/{core.check_dir_name(project, 'project')}", is_file=True)
+    except (ValueError, RuntimeError):  # not a name, or no browser session
+        abort(404)
+    if not os.path.isdir(folder):  # nothing saved for this exam in this session
         abort(404)
     data = io.BytesIO()
     printing.zip_folder(folder, data)

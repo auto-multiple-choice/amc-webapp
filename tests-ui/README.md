@@ -88,7 +88,7 @@ It also checks the upload parts that big uploads go in (`/ui/api/upload-part`). 
 
 ### Print
 
-`e2e-print.mjs` tests Save PDFs for an exam with a separate answer sheet (the blank starter): the choice shown and on by default, with each part's pages; the zip with `question-papers/` and `answer-sheets/`, a file of the right pages per copy, named after the exam; "One PDF per copy" saved for the exam and giving whole copies; and an exam with the answers on the question paper, which has nothing to separate.
+`e2e-print.mjs` tests Save PDFs for an exam with a separate answer sheet (the blank starter, asking for it under the package's other name, `ensemble`): the choice shown and on by default, with each part's pages; a range with none of the exam's copies refused, without locking the exam; the zip with `question-papers/` and `answer-sheets/`, a file of the right pages per copy, named after the exam; no zip for an exam with nothing saved, or for an address that climbs out of the saved papers; "One PDF per copy" saved for the exam and giving whole copies; and an exam with the answers on the question paper, which has nothing to separate, even with another LaTeX file in its folder that asks for a separate answer sheet. It writes into the exam's folder with `docker exec` and needs `curl`.
 
 ```
 node tests-ui/e2e-print.mjs http://127.0.0.1:8095 /tmp/amc-test-shots

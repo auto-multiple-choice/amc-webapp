@@ -29,23 +29,37 @@ QUESTIONS_DIR = "question-papers"
 SHEETS_DIR = "answer-sheets"
 
 _USEPACKAGE_AMC = re.compile(r"\\usepackage\s*\[([^\]]*)\]\s*\{automultiplechoice\}")
-_TXT_SEPARATE = re.compile(r"^[ \t]*SeparateAnswerSheet[ \t]*:[ \t]*(\S+)", re.M | re.I)
+_SEPARATE_OPTIONS = ("separateanswersheet", "ensemble")  # the package's two names for it
+_TXT_SEPARATE = re.compile(r"^[ \t]*SeparateAnswerSheet:[ \t]*(.*)$", re.M | re.I)
 _COMMENT = re.compile(r"(?<!\\)%.*")
+
+
+def built_with_separate_sheet(value):
+    """What AMC recorded when it built the papers, from the layout variable
+    build:ensemble (written by the LaTeX package, "yes" or "no"): True,
+    False, or None when the build left no such record."""
+    return {"yes": True, "no": False}.get(value)
 
 
 def has_separate_sheet(texts, plain=False):
     """Whether the sources TEXTS ask AMC for a separate answer sheet: the
-    package option separateanswersheet (LaTeX), or SeparateAnswerSheet: 1
-    (AMC-TXT). Commented-out lines don't count."""
+    package option separateanswersheet or ensemble (LaTeX), or
+    SeparateAnswerSheet (AMC-TXT). Commented-out lines don't count.
+
+    Only for papers AMC hasn't built: built_with_separate_sheet() is what
+    AMC did, however the sources ask for it (\\PassOptionsToPackage, a class
+    file), and whatever other files lie in the exam's folder."""
     for t in texts:
         if plain:
-            m = _TXT_SEPARATE.search(t)
-            if m and m.group(1).lower() in ("1", "yes", "true", "on"):
+            # As AMC reads it (Filter/plain.pm, parse_bool): the last such
+            # line counts, and anything but nothing, 0, no or false is yes.
+            values = _TXT_SEPARATE.findall(t)
+            if values and values[-1].strip().lower() not in ("", "0", "no", "false"):
                 return True
             continue
         t = _COMMENT.sub("", t)
         for m in _USEPACKAGE_AMC.finditer(t):
-            if "separateanswersheet" in (o.strip() for o in m.group(1).split(",")):
+            if any(o.strip() in _SEPARATE_OPTIONS for o in m.group(1).split(",")):
                 return True
     return False
 

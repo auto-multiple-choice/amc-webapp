@@ -1489,8 +1489,17 @@ check("print: answers on the question paper are not", not pr.has_separate_sheet(
 check("print: a commented-out option doesn't count", not pr.has_separate_sheet(["%\\usepackage[separateanswersheet]{automultiplechoice}\n\\usepackage{automultiplechoice}"])
       and not pr.has_separate_sheet(["\\usepackage[box%,separateanswersheet\n]{automultiplechoice}"]))
 check("print: the option on another package doesn't count", not pr.has_separate_sheet(["\\usepackage[separateanswersheet]{other}"]))
+check("print: the package's other name for the option, ensemble, counts", pr.has_separate_sheet(["\\usepackage[francais,bloc,ensemble]{automultiplechoice}"]))
 check("print: AMC-TXT's SeparateAnswerSheet: 1", pr.has_separate_sheet(["# AMC-TXT\nSeparateAnswerSheet: 1\n* Q?\n"], plain=True)
       and not pr.has_separate_sheet(["SeparateAnswerSheet: 0\n"], plain=True) and not pr.has_separate_sheet(["# SeparateAnswerSheet: 1\n"], plain=True))
+check("print: AMC-TXT read as AMC reads it: anything but nothing, 0, no or false is yes",
+      all(pr.has_separate_sheet([f"SeparateAnswerSheet: {v}\n"], plain=True) for v in ("yes", "True", "2", "oui"))
+      and not any(pr.has_separate_sheet([f"SeparateAnswerSheet:{v}\n"], plain=True) for v in ("", " ", " No", " FALSE ", " 0 ")))
+check("print: AMC-TXT: the last such line counts", not pr.has_separate_sheet(["SeparateAnswerSheet: 1\nTitle: T\nSeparateAnswerSheet: 0\n"], plain=True)
+      and pr.has_separate_sheet(["SeparateAnswerSheet: 0\nSeparateAnswerSheet: 1\n"], plain=True))
+check("print: what AMC recorded at the build: yes, no, or no record",
+      pr.built_with_separate_sheet("yes") is True and pr.built_with_separate_sheet("no") is False
+      and pr.built_with_separate_sheet(None) is None and pr.built_with_separate_sheet("") is None)
 rg = pr.page_ranges
 check("print: answer sheet at the end", rg((1, 9), (9, 9)) == {"questions": "1-8", "sheet": "9-9", "pages_questions": 8, "pages_sheet": 1})
 check("print: pages counted within the copy", rg((10, 13), (13, 13))["questions"] == "1-3" and rg((10, 13), (13, 13))["sheet"] == "4-4")
