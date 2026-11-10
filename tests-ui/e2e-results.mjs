@@ -142,9 +142,10 @@ async function main() {
   const dir = mkdtempSync(join(tmpdir(), 'amc-list-'));
   const listFile = join(dir, 'class-10B.csv');
   // Copy n reads code 100 + n; copy 4's code (104) isn't in the list.
-  // "total" and "Prénom": columns AMC's CSV export can't add (a name it uses itself; a letter outside ASCII).
-  writeFileSync(listFile, 'id;surname;name;roll_no;email;total;Prénom\n101;Curie;Marie;24MA00101;marie.curie@example.org;T101;Marié\n'
-    + '102;Noether;Emmy;24MA00102;emmy.noether@example.org;T102;Emmý\n103;Lovelace;Ada;24MA00103;ada.lovelace@example.org;T103;Adà\n150;Hopper;Grace;24MA00150;;T150;Gräce\n');
+  // "total" and "Série": columns AMC's CSV export can't add (a name it uses itself; a letter outside ASCII).
+  // Not a column AMC takes for the student's name, such as "Prénom".
+  writeFileSync(listFile, 'id;surname;name;roll_no;email;total;Série\n101;Curie;Marie;24MA00101;marie.curie@example.org;T101;Série A\n'
+    + '102;Noether;Emmy;24MA00102;emmy.noether@example.org;T102;Série B\n103;Lovelace;Ada;24MA00103;ada.lovelace@example.org;T103;Série A\n150;Hopper;Grace;24MA00150;;T150;Série B\n');
   await b.click('.step[href$="/match-students"]');
   b.check('Match students asks for the class list', await b.waitFor(`!!document.querySelector('#list-drop')`));
   await b.setFiles('#list-file', [listFile]);
@@ -203,9 +204,9 @@ async function main() {
     rows.length === COPIES + 1 && rows.every((r) => r.length === rows[0].length) && ['surname', 'name', 'roll_no', 'email'].every((c) => col(c) > col('Name')) && !rows[0].includes('id'), J(rows[0]));
   const curie = rows.find((r) => r[col('surname')] === 'Curie');
   b.check('...with each matched student\'s roll number and email', !!curie && curie[col('roll_no')] === '24MA00101' && curie[col('email')] === 'marie.curie@example.org', J(curie));
-  b.check('The class list columns AMC\'s CSV can\'t take ("total", "Prénom") are left out of the file', col('total') < 0 && !rows[0].some((h) => /^Pr.*nom$/.test(h)), J(rows[0]));
-  b.check('...and named on the page instead of offered', J(await b.js('S.exportInfo.class_columns_refused')) === J(['total', 'Prénom'])
-    && (await b.text('#csv-refused')).includes('Can\'t be added: total, Prénom') && !(await b.js(`!!document.querySelector('[data-csvcol="total"]')`)), J(await b.js('S.exportInfo.class_columns_refused')));
+  b.check('The class list columns AMC\'s CSV can\'t take ("total", "Série") are left out of the file', col('total') < 0 && !rows[0].some((h) => /^S.*rie$/.test(h)), J(rows[0]));
+  b.check('...and named on the page instead of offered', J(await b.js('S.exportInfo.class_columns_refused')) === J(['total', 'Série'])
+    && (await b.text('#csv-refused')).includes('Can\'t be added: total, Série') && !(await b.js(`!!document.querySelector('[data-csvcol="total"]')`)), J(await b.js('S.exportInfo.class_columns_refused')));
   const markText = () => rows.slice(1).map((r) => [r[col('Exam')], r[col('Mark')]]);
   const sameMarks = (dec) => markText().every(([exam, m]) => {
     const [s, c] = exam.split(':'); const want = marksByCopy[`${s}:${c || 0}`];
